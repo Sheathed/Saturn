@@ -1,0 +1,13 @@
+# The value of AppId uniquely identifies this application.
+# Do not use the same AppId value in installers for other applications.
+app_id: saturn-music-player
+publisher: Sheathed
+publisher_url: https://saturn.kim
+display_name: Saturn
+create_desktop_icon: true
+# See: https://jrsoftware.org/ishelp/index.php?topic=setup_defaultdirname
+install_dir_name: "D:\\Saturn"
+# This path is relative to the root directory of your project; The format of icon file must be ico, can not be png or others
+setup_icon_file: assets/icon.ico
+locales:
+  - en

@@ -1,0 +1,34 @@
+output: dist/
+releases:
+  - name: linux
+    jobs:
+      - name: release-release-android-apk
+        package:
+          platform: android
+          target: apk
+          build_args:
+            target-platform: android-arm,android-arm64
+      - name: release-release-linux-rpm
+        package:
+          platform: linux
+          target: rpm
+      - name: release-release-linux-appimage
+        package:
+          platform: linux
+          target: appimage
+      - name: release-release-linux-deb
+        package:
+          platform: linux
+          target: deb
+  - name: windows
+    jobs:
+      - name: release-release-windows-exe
+        package:
+          platform: windows
+          target: exe
+  - name: macos  
+    jobs:
+      - name: release-release-mac-dmg
+        package:
+          platform: macos
+          target: dmg

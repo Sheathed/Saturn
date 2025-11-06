@@ -1,0 +1,31 @@
+display_name: Saturn
+
+icon: assets/icon.png
+
+keywords:
+  - Music
+  - Deezer
+  - Player
+  - Audio
+  - Saturn
+
+generic_name: Music Application
+
+categories:
+  - AudioVideo
+
+startup_notify: true
+
+# You can specify the shared libraries that you want to bundle with your app
+#
+# fastforge automatically detects the shared libraries that your app
+# depends on, but you can also specify them manually here.
+#
+# The following example shows how to bundle the libcurl library with your app.
+#
+# include:
+#   - libcurl.so.4
+include: []
+# You can also specify [metainfo](https://www.freedesktop.org/software/appstream/metainfocreator/#/) file
+# which contains metadata of the app.
+# metainfo: linux/packaging/myappid.appdata.xml

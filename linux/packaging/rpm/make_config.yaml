@@ -1,0 +1,27 @@
+icon: assets/icon.png
+summary: Saturn is a music player for Deezer.
+group: Application/Emulator
+vendor: Sheathed
+packager: Sheathed
+packagerEmail: hello@saturn.kim
+license: GPLv3
+url: https://saturn.kim/
+
+display_name: Saturn
+
+keywords:
+  - Music
+  - Deezer
+  - Player
+  - Audio
+  - Saturn
+
+generic_name: Music Application
+
+categories:
+  - AudioVideo
+
+startup_notify: true
+# You can also specify [metainfo](https://freedesktop.org/software/appstream/docs/chap-Quickstart.html) file
+# which contains metadata of the app.
+# metainfo: linux/packaging/myappid.appdata.xml

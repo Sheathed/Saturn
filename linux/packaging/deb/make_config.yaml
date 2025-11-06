@@ -1,0 +1,27 @@
+display_name: Saturn
+package_name: Saturn
+maintainer:
+  name: Sheathed
+  email: hello@saturn.kim
+priority: optional
+section: x11
+installed_size: 6604
+essential: false
+icon: assets/icon.png
+
+keywords:
+  - Music
+  - Deezer
+  - Player
+  - Audio
+  - Saturn
+
+generic_name: Music Application
+
+categories:
+  - AudioVideo
+
+startup_notify: true
+# You can also specify [metainfo](https://freedesktop.org/software/appstream/docs/chap-Quickstart.html) file
+# which contains metadata of the app.
+# metainfo: linux/packaging/myappid.appdata.xml

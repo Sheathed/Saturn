@@ -1,0 +1,186 @@
+name: saturn
+description: Saturn
+
+# The following line prevents the package from being accidentally published to
+# pub.dev using `pub publish`. This is preferred for private packages.
+publish_to: "none" # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version and the builder number may be overridden in flutter
+# build by specifying --build-name and --build-number, respectively.
+# In Android, build-name is used as versionName while build-number used as versionCode.
+# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
+# In iOS, build-name is used as CFBundleShortVersionString while build-number used as CFBundleVersion.
+# Read more about iOS versioning at
+# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+version: 3.0.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_localizations:
+    sdk: flutter
+  app_links: ^6.4.1
+  animations: ^2.1.0
+  async: ^2.13.0
+  audio_service: ^0.18.18
+  audio_session: ^0.2.2
+  cached_network_image: ^3.4.1
+  clipboard: ^2.0.2
+  collection: ^1.19.1
+  connectivity_plus: ^7.0.0
+  country_currency_pickers: ^3.0.0
+  envied: ^1.3.1
+
+  crypto: ^3.0.6
+  device_info_plus: ^12.2.0
+  disk_space_plus: ^0.2.6
+  universal_disk_space: ^0.2.3
+  draggable_scrollbar: ^0.1.0
+  filesize: ^2.0.1
+  fluttericon: ^2.0.0
+  fluttertoast: ^9.0.0
+  flutter_cache_manager: ^3.4.1
+  flutter_displaymode: ^0.7.0
+  #flutter_file_dialog: ^3.0.1
+  flutter_inappwebview: ^6.1.5
+  go_router: ^16.2.5
+  flutter_material_color_picker: ^1.2.0
+  flutter_screenutil: ^5.9.3
+  get_it: ^8.2.0
+  google_fonts: ^6.3.2
+  html: ^0.15.6
+  http: ^1.5.0
+  i18n_extension: ^15.0.7
+  intl: ^0.20.2
+  json_annotation: ^4.9.0
+  just_audio: ^0.10.5
+  just_audio_media_kit: ^2.1.0
+  media_kit_libs_linux: any
+  media_kit_libs_windows_audio: any
+  logging: ^1.3.0
+  marquee: ^2.3.0
+  numberpicker: ^2.1.2
+  package_info_plus: ^9.0.0
+  palette_generator: ^0.3.3+7
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  permission_handler: ^12.0.1
+  photo_view: ^0.15.0
+  quick_actions: ^1.1.0
+  rxdart: ^0.28.0
+  share_plus: ^12.0.1
+  sqflite: ^2.4.2
+  sqflite_common_ffi: ^2.3.6
+  url_launcher: ^6.3.2
+  visibility_detector: ^0.4.0+2
+  wakelock_plus: ^1.4.0
+  blowfish: ^1.0.2
+  encrypt: ^5.0.3
+  dart_blowfish:
+    git:
+      url: https://github.com/Pato05/dart_blowfish.git
+      ref: main 
+  audio_service_win: ^0.0.2
+  audio_service_mpris: ^0.2.0
+  metatagger: ^1.0.0
+  windows_single_instance: ^1.0.1 
+  unix_single_instance: ^0.0.4         
+  tray_manager: ^0.5.1                 
+  window_manager: ^0.5.1   
+  windows_taskbar: ^1.1.2
+  scrobblenaut:
+    git:
+      ref: dart-3-support
+      url: https://github.com/KRTirtho/scrobblenaut.git
+  external_path: ^2.2.0 
+  flutter_discord_rpc: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  json_serializable: ^6.7.1
+  build_runner: ^2.4.14
+  flutter_lints: ^6.0.0
+  envied_generator: ^1.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter.
+flutter:
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section, like this:
+  # assets:
+  #   - images/a_dot_burr.jpeg
+  #   - images/a_dot_ham.jpeg
+
+  assets:
+    - assets/cover.jpg
+    - assets/cover_thumb.jpg
+    - assets/icon.png
+    - assets/favorites_thumb.jpg
+    - assets/browse_icon.png
+    - assets/skip-previous.ico
+    - assets/play.ico
+    - assets/pause.ico
+    - assets/skip-next.ico
+    - assets/icon-taskbar-white.png
+    - assets/icon-taskbar-white.ico
+
+
+  fonts:
+    #    - family: Montserrat
+    #      fonts:
+    #        - asset: assets/fonts/Montserrat-Regular.ttf
+    #        - asset: assets/fonts/Montserrat-Bold.ttf
+    #          weight: 700
+    #        - asset: assets/fonts/Montserrat-Italic.ttf
+    #          style: italic
+    - family: MabryPro
+      fonts:
+        - asset: assets/fonts/MabryPro.otf
+        - asset: assets/fonts/MabryProItalic.otf
+          style: italic
+        - asset: assets/fonts/MabryProBold.otf
+          weight: 700
+        - asset: assets/fonts/MabryProBlack.otf
+          weight: 900
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/assets-and-images/#resolution-aware.
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/assets-and-images/#from-packages
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/custom-fonts/#from-packages

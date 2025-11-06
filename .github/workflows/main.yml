@@ -203,10 +203,9 @@ jobs:
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p "dist/$VERSION"
           
-          # Copy all split APKs and rename them
+          # Copy and rename all split APKs
           for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
             if [ -f "$apk" ]; then
-              # Extract ABI from filename (e.g., app-arm64-v8a-release.apk -> arm64-v8a)
               abi=$(basename "$apk" | sed 's/app-\(.*\)-release\.apk/\1/')
               cp "$apk" "dist/$VERSION/saturn-${VERSION}-android-${abi}.apk"
               echo "Copied: $apk -> saturn-${VERSION}-android-${abi}.apk"
@@ -216,23 +215,11 @@ jobs:
           echo "All APKs prepared:"
           ls -la "dist/$VERSION/"
       
-      - name: Upload ARM64 APK
+      - name: Upload all Android APKs
         uses: actions/upload-artifact@v4
         with:
-          name: android-arm64-v8a
-          path: dist/${{ steps.get_version.outputs.version }}/saturn-${{ steps.get_version.outputs.version }}-android-arm64-v8a.apk
-      
-      - name: Upload ARMv7 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-armeabi-v7a
-          path: dist/${{ steps.get_version.outputs.version }}/saturn-${{ steps.get_version.outputs.version }}-android-armeabi-v7a.apk
-      
-      - name: Upload x86_64 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-x86_64
-          path: dist/${{ steps.get_version.outputs.version }}/saturn-${{ steps.get_version.outputs.version }}-android-x86_64.apk
+          name: android-apks
+          path: dist/${{ steps.get_version.outputs.version }}/
 
   MACOSIOS:
     name: MacOS & iOS

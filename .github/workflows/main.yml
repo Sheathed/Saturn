@@ -114,17 +114,20 @@ jobs:
       - name: Build and release
         run: fastforge release --name linux
       
-      - name: Remove Android APKs if created
+      - name: Remove APKs created during Linux build
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
-          
-          # Remove any APK files from dist
-          find dist/$VERSION -type f -name "*.apk" -delete 2>/dev/null || true
-          
+
+          # Only delete APKs from this job’s dist folder
+          if [ -d "dist/$VERSION" ]; then
+            echo "Cleaning APKs from dist/$VERSION ..."
+            find "dist/$VERSION" -type f -name "*.apk" -delete
+          fi
+
           echo "Remaining Linux artifacts:"
-          ls -la dist/$VERSION/ || echo "No dist directory found"
-      
+          ls -la "dist/$VERSION" || echo "No dist folder found"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -135,7 +138,7 @@ jobs:
     name: Android
     runs-on: ubuntu-22.04
     environment: workflow
-    needs: VERSION_BUMP
+    needs: [VERSION_BUMP, LINUX]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -203,7 +206,6 @@ jobs:
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p "dist/$VERSION"
           
-          # Copy and rename all split APKs
           for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
             if [ -f "$apk" ]; then
               abi=$(basename "$apk" | sed 's/app-\(.*\)-release\.apk/\1/')
@@ -359,11 +361,11 @@ jobs:
           SAFE_VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p release_assets
           
-          # Find and move all files from the version folder inside each artifact
-          find artifacts -type f -path "*/$SAFE_VERSION/*" -print0 | xargs -0 -I{} cp {} release_assets/ || true
+          # Copy every file from downloaded artifacts (APKs, DMGs, AppImages, etc.)
+          find artifacts -type f -print0 | xargs -0 -I{} cp {} release_assets/ || true
           
-          # Remove any CR characters from filenames just in case
           for f in release_assets/*; do
+            [ -e "$f" ] || continue
             clean=$(printf '%s' "$f" | tr -d '\r\n')
             if [ "$f" != "$clean" ]; then
               mv "$f" "$clean"
@@ -371,7 +373,7 @@ jobs:
           done
           
           echo "Release assets:"
-          ls -la release_assets/
+          ls -la release_assets/ || echo "No release assets found"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

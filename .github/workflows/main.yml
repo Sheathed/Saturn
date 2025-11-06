@@ -35,7 +35,7 @@ jobs:
       - name: Bump version
         if: steps.check_skip.outputs.skip != 'true'
         run: |
-          CURRENT_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          CURRENT_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
           echo "Current version: $CURRENT_VERSION"
           
           IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
@@ -56,8 +56,8 @@ jobs:
           push_options: '--force'
           skip_dirty_check: true
 
-  LINUXANDROID:
-    name: Linux & Android
+  LINUX:
+    name: Linux
     runs-on: ubuntu-22.04
     environment: workflow
     needs: VERSION_BUMP
@@ -78,22 +78,21 @@ jobs:
         with:
           flutter-version: "3.35.4"
           cache: true
+
       - name: Create secret files
         run: |
-          pwd
-          ls -la
           mkdir -p lib/utils
           mkdir -p android
-          echo "${{ secrets.env }}" > lib/.env
-          echo "${{ secrets.envgdart }}" > lib/utils/env.g.dart
-          echo "${{ secrets.keyproperties }}" > android/key.properties
+          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
+          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
+          echo "${{ secrets.keyproperties }}" | tr -d '\r' > android/key.properties
           echo "${{ secrets.uploadkeystore }}" | base64 -d > android/app/upload-keystore.jks
           echo "Created files:"
-          ls -la lib/
-          ls -la lib/utils/
-          ls -la android/
+          ls -la lib/ lib/utils android/ android/app/
+      
       - name: Install Flutter dependencies
         run: flutter pub get
+      
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -101,22 +100,139 @@ jobs:
             libgtk-3-dev \
             libayatana-appindicator3-dev \
             libmpv-dev
+      
       - name: Install dependencies for AppImage
         run: |
           sudo apt install -y locate
           wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x appimagetool
           sudo mv appimagetool /usr/local/bin/
+      
       - name: Install Fastforge
         run: dart pub global activate fastforge
         
       - name: Build and release
         run: fastforge release --name linux
+      
+      - name: Remove Android APKs if created
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
+          VERSION="$(echo -n "$VERSION" | tr -d '\r')"
+          
+          # Remove any APK files from dist
+          find dist/$VERSION -type f -name "*.apk" -delete 2>/dev/null || true
+          
+          echo "Remaining Linux artifacts:"
+          ls -la dist/$VERSION/ || echo "No dist directory found"
+      
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ runner.os }}
           path: dist/
+
+  ANDROID:
+    name: Android
+    runs-on: ubuntu-22.04
+    environment: workflow
+    needs: VERSION_BUMP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.4"
+          cache: true
+
+      - name: Create secret files
+        run: |
+          mkdir -p lib/utils
+          mkdir -p android
+          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
+          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
+          echo "${{ secrets.keyproperties }}" | tr -d '\r' > android/key.properties
+          echo "${{ secrets.uploadkeystore }}" | base64 -d > android/app/upload-keystore.jks
+          echo "Created files:"
+          ls -la lib/ lib/utils android/ android/app/
+      
+      - name: Install Flutter dependencies
+        run: flutter pub get
+      
+      - name: Verify signing configuration
+        run: |
+          echo "Checking signing files:"
+          if [ -f android/key.properties ]; then
+            echo "✓ key.properties exists"
+          else
+            echo "✗ key.properties missing"
+            exit 1
+          fi
+          if [ -f android/app/upload-keystore.jks ]; then
+            echo "✓ Keystore exists"
+          else
+            echo "✗ Keystore missing"
+            exit 1
+          fi
+      
+      - name: Build signed Android APKs
+        run: |
+          flutter build apk --release --split-per-abi
+          echo "Built APKs:"
+          ls -la build/app/outputs/flutter-apk/
+      
+      - name: Get version from pubspec.yaml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Prepare all APKs for release
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="$(echo -n "$VERSION" | tr -d '\r')"
+          mkdir -p "dist/$VERSION"
+          
+          # Copy all split APKs and rename them
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            if [ -f "$apk" ]; then
+              # Extract ABI from filename (e.g., app-arm64-v8a-release.apk -> arm64-v8a)
+              abi=$(basename "$apk" | sed 's/app-\(.*\)-release\.apk/\1/')
+              cp "$apk" "dist/$VERSION/saturn-${VERSION}-android-${abi}.apk"
+              echo "Copied: $apk -> saturn-${VERSION}-android-${abi}.apk"
+            fi
+          done
+          
+          echo "All APKs prepared:"
+          ls -la "dist/$VERSION/"
+      
+      - name: Upload ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64-v8a
+          path: dist/${{ steps.get_version.outputs.version }}/saturn-${{ steps.get_version.outputs.version }}-android-arm64-v8a.apk
+      
+      - name: Upload ARMv7 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-armeabi-v7a
+          path: dist/${{ steps.get_version.outputs.version }}/saturn-${{ steps.get_version.outputs.version }}-android-armeabi-v7a.apk
+      
+      - name: Upload x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-x86_64
+          path: dist/${{ steps.get_version.outputs.version }}/saturn-${{ steps.get_version.outputs.version }}-android-x86_64.apk
 
   MACOSIOS:
     name: MacOS & iOS
@@ -140,14 +256,11 @@ jobs:
 
       - name: Create secret files
         run: |
-          pwd
-          ls -la
           mkdir -p lib/utils
-          echo "${{ secrets.env }}" > lib/.env
-          echo "${{ secrets.envgdart }}" > lib/utils/env.g.dart
+          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
+          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
           echo "Created files:"
-          ls -la lib/
-          ls -la lib/utils/
+          ls -la lib/ lib/utils/
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -164,17 +277,20 @@ jobs:
       - name: Get version from pubspec.yaml
         id: get_version
         run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
       - name: Package iOS IPA
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p "dist/$VERSION"
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r "dist/$VERSION/saturn-$VERSION-ios.ipa" Payload
+          cd dist/$VERSION
+          zip -r "saturn-${VERSION}-ios.ipa" ../../Payload
+          cd ../..
           rm -rf Payload
           echo "Packaged IPA:"
           ls -la "dist/$VERSION/"
@@ -205,14 +321,11 @@ jobs:
       - name: Create secret files
         shell: bash
         run: |
-          pwd
-          ls -la
           mkdir -p lib/utils
-          echo "${{ secrets.env }}" > lib/.env
-          echo "${{ secrets.envgdart }}" > lib/utils/env.g.dart
+          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
+          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
           echo "Created files:"
-          ls -la lib/
-          ls -la lib/utils/
+          ls -la lib/ lib/utils/
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -229,11 +342,10 @@ jobs:
           name: dist-${{ runner.os }}
           path: dist
 
-
   CREATE_RELEASE:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [LINUXANDROID, MACOSIOS, WINDOWS]
+    needs: [LINUX, ANDROID, MACOSIOS, WINDOWS]
     permissions:
       contents: write
     steps:
@@ -245,7 +357,7 @@ jobs:
       - name: Get version from pubspec.yaml
         id: get_version
         run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
@@ -257,10 +369,19 @@ jobs:
       - name: Prepare release assets
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
+          SAFE_VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p release_assets
           
           # Find and move all files from the version folder inside each artifact
-          find artifacts -type f -path "*/$VERSION/*" -exec cp {} release_assets/ \;
+          find artifacts -type f -path "*/$SAFE_VERSION/*" -print0 | xargs -0 -I{} cp {} release_assets/ || true
+          
+          # Remove any CR characters from filenames just in case
+          for f in release_assets/*; do
+            clean=$(printf '%s' "$f" | tr -d '\r\n')
+            if [ "$f" != "$clean" ]; then
+              mv "$f" "$clean"
+            fi
+          done
           
           echo "Release assets:"
           ls -la release_assets/

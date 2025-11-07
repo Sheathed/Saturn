@@ -61,6 +61,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   bool _scrobblenautReady = false;
   // Last logged track id
   String? _loggedTrackId;
+  bool emptied = false;
 
   //Visualizer
   final StreamController _visualizerController = StreamController.broadcast();
@@ -259,8 +260,10 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   @override
   Future<void> pause() async {
-    final rpc = await DiscordRPCService.getInstance();
-    rpc.clearRPC();
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      final rpc = await DiscordRPCService.getInstance();
+      rpc.clearRPC();
+    }
     _player.pause();
   }
 
@@ -268,8 +271,10 @@ class AudioPlayerHandler extends BaseAudioHandler
   Future<void> stop() async {
     Logger.root.info('stopping player');
     await _player.stop();
-    final rpc = await DiscordRPCService.getInstance();
-    rpc.clearRPC();
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      final rpc = await DiscordRPCService.getInstance();
+      rpc.clearRPC();
+    }
     await super.stop();
     Logger.root.info('saving queue');
     _saveQueueToFile();
@@ -325,6 +330,9 @@ class AudioPlayerHandler extends BaseAudioHandler
   Future<void> clearQueue() async {
     await updateQueue([]);
     currentQueue = [];
+    queueSource = null;
+    mediaItem.add(null);
+    emptied = true;
     await removeSavedQueueFile();
   }
 
@@ -709,23 +717,24 @@ class AudioPlayerHandler extends BaseAudioHandler
   Future<void> _addToHistory(MediaItem item) async {
     if (!_player.playing) return;
 
-    // Update Discord RPC
-    final rpc = await DiscordRPCService.getInstance();
-    rpc.updateRPC(
-      item.title,
-      item.artist ?? '',
-      item.artUri.toString(),
-      item.album ?? '',
-      timestamps: RPCTimestamps(
-        start:
-            DateTime.now().millisecondsSinceEpoch -
-            _player.position.inMilliseconds,
-        end:
-            DateTime.now().millisecondsSinceEpoch +
-            (item.duration! - _player.position).inMilliseconds,
-      ),
-    );
-
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      // Update Discord RPC
+      final rpc = await DiscordRPCService.getInstance();
+      rpc.updateRPC(
+        item.title,
+        item.artist ?? '',
+        item.artUri.toString(),
+        item.album ?? '',
+        timestamps: RPCTimestamps(
+          start:
+              DateTime.now().millisecondsSinceEpoch -
+              _player.position.inMilliseconds,
+          end:
+              DateTime.now().millisecondsSinceEpoch +
+              (item.duration! - _player.position).inMilliseconds,
+        ),
+      );
+    }
     // Scrobble to LastFM
     if (_scrobblenautReady && !(_loggedTrackId == item.id)) {
       Logger.root.info('scrobbling track ${item.id} to recently LastFM');

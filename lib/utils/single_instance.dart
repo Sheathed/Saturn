@@ -21,7 +21,7 @@ class SingleInstanceService {
     if (Platform.isWindows) {
       await WindowsSingleInstance.ensureSingleInstance(
         [],
-        "saturn_music_app",
+        'saturn_music_app',
         onSecondWindow: (args) async {
           await windowManager.show();
           await windowManager.focus();

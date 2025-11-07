@@ -9,6 +9,7 @@ import 'package:universal_disk_space/universal_disk_space.dart';
 import 'package:disk_space_plus/disk_space_plus.dart';
 import 'package:filesize/filesize.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' as material;
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 //import 'package:flutter_file_dialog/flutter_file_dialog.dart';
@@ -162,6 +163,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class LicenseDetail extends StatelessWidget {
+  final String title;
+  final String content;
+
+  const LicenseDetail({required this.title, required this.content, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: FreezerAppBar(title),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: SelectableText(
+          content.isNotEmpty ? content : 'No license text available'.i18n,
+          style: const TextStyle(fontSize: 14.0),
+        ),
       ),
     );
   }
@@ -2206,39 +2228,203 @@ class LicensesScreen extends StatefulWidget {
 }
 
 class _LicensesScreenState extends State<LicensesScreen> {
+  // Each entry: [packages, shortSubtitle, fullLicenseText]
   static final List<List<String>> licenses = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    _loadLicenses();
+  }
+
+  // Load licenses from Flutter's LicenseRegistry and populate `licenses`.
+  // We collect package names (comma-separated), a short subtitle (first line)
+  // and the full license text for the detail view.
+  Future<void> _loadLicenses() async {
+    // Don't reload if already loaded
+    if (licenses.isNotEmpty) return;
+
+    final List<List<String>> loaded = [];
+
+    try {
+      // Group by package name (normalized) -> collect distinct license texts and
+      // original package name variants for display.
+      final Map<String, Set<String>> pkgToTexts = {};
+      final Map<String, Set<String>> pkgToDisplayNames = {};
+
+      String normalizePkg(String pkg) {
+        var n = pkg.trim();
+        if (n.contains('/')) n = n.split('/').last;
+        if (n.contains(':')) n = n.split(':').last;
+        return n.toLowerCase();
+      }
+
+      await LicenseRegistry.licenses.forEach((LicenseEntry entry) {
+        // Build full text from paragraphs and normalize whitespace
+        final List<String> parts = entry.paragraphs
+            .map((p) => p.text.trim())
+            .where((t) => t.isNotEmpty)
+            .toList();
+        if (parts.isEmpty) return;
+        final String fullText = parts.join('\n\n').trim();
+
+        for (final pkg in entry.packages) {
+          final String key = normalizePkg(pkg);
+          pkgToTexts.putIfAbsent(key, () => <String>{});
+          pkgToDisplayNames.putIfAbsent(key, () => <String>{});
+          pkgToTexts[key]!.add(fullText);
+          pkgToDisplayNames[key]!.add(pkg.trim());
+        }
+      });
+
+      // Heuristic grouping: compute token frequencies from all display names
+      // (split on non-alphanumerics) and prefer tokens that appear across
+      // multiple packages (eg. 'accessibility'). This lets us group related
+      // packages by a common name fragment.
+      final Map<String, int> tokenFreq = {};
+      final RegExp splitter = RegExp(r'[^A-Za-z0-9]+');
+
+      for (final names in pkgToDisplayNames.values) {
+        for (final name in names) {
+          final tokens = name
+              .split(splitter)
+              .map((t) => t.toLowerCase())
+              .where((t) => t.length >= 4)
+              .toSet();
+          for (final t in tokens) {
+            tokenFreq[t] = (tokenFreq[t] ?? 0) + 1;
+          }
+        }
+      }
+
+      // For each package key, pick the best grouping token (highest global freq)
+      // from its display names. If none found, fall back to the normalized key.
+      final Map<String, Set<String>> groupKeyToPkgs = {};
+      final Map<String, Set<String>> groupKeyToTexts = {};
+
+      for (final key in pkgToDisplayNames.keys) {
+        final names = pkgToDisplayNames[key]!.toList();
+        String? bestToken;
+        int bestScore = 0;
+        for (final name in names) {
+          final tokens = name
+              .split(splitter)
+              .map((t) => t.toLowerCase())
+              .where((t) => t.length >= 4);
+          for (final t in tokens) {
+            final score = tokenFreq[t] ?? 0;
+            if (score > bestScore ||
+                (score == bestScore &&
+                    (bestToken == null || t.length > bestToken.length))) {
+              bestToken = t;
+              bestScore = score;
+            }
+          }
+        }
+
+        // Determine group key
+        final String groupKey = (bestToken != null && bestScore > 1)
+            ? bestToken
+            : key;
+
+        groupKeyToPkgs.putIfAbsent(groupKey, () => <String>{});
+        groupKeyToPkgs[groupKey]!.addAll(pkgToDisplayNames[key]!);
+
+        groupKeyToTexts.putIfAbsent(groupKey, () => <String>{});
+        groupKeyToTexts[groupKey]!.addAll(pkgToTexts[key]!);
+      }
+
+      // Build loaded entries from groups
+      for (final groupKey in groupKeyToPkgs.keys) {
+        final displayNames = groupKeyToPkgs[groupKey]!.toList()..sort();
+        final title = displayNames.join(', ');
+
+        final texts = groupKeyToTexts[groupKey]!.toList();
+        String subtitle;
+        String content;
+        if (texts.isEmpty) {
+          subtitle = 'License'.i18n;
+          content = '';
+        } else if (texts.length == 1) {
+          content = texts.first;
+          subtitle = content.split('\n').first.trim();
+        } else {
+          final sb = StringBuffer();
+          for (var i = 0; i < texts.length; i++) {
+            sb.writeln('----- License ${i + 1} -----');
+            sb.writeln(texts[i]);
+            sb.writeln();
+          }
+          content = sb.toString().trim();
+          subtitle = 'Multiple licenses (${texts.length})';
+        }
+
+        loaded.add([title, subtitle, content]);
+      }
+    } catch (e) {
+      // If something goes wrong, add a small fallback entry
+      loaded.add(['unknown', 'Failed to load licenses', 'Error: $e']);
+    }
+
+    if (mounted) {
+      setState(() {
+        licenses.clear();
+        licenses.addAll(loaded);
+        _loading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('Open-Source Licenses & Libs'.i18n),
-      body: ListView(
-        children: [
-          ...List.generate(
-            licenses.length,
-            (i) => ListTile(
-              title: Text(licenses[i][0]),
-              subtitle: Text(licenses[i][1] + ' | Click to view Repo'),
-              onTap: () {
-                launchUrlString(licenses[i][2]);
-              },
+      body: _loading && licenses.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  const SizedBox(height: 12.0),
+                  Text('Loading licenses...'.i18n),
+                ],
+              ),
+            )
+          : ListView(
+              children: [
+                ...List.generate(
+                  licenses.length,
+                  (i) => ListTile(
+                    title: Text(licenses[i][0]),
+                    subtitle: Text(licenses[i][1]),
+                    onTap: () {
+                      // Show the full license text on tap
+                      if (context.mounted) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => LicenseDetail(
+                              title: licenses[i][0],
+                              content: licenses[i][2],
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+                  child: Text(
+                    'Huge thanks to all contributors! <3'.i18n,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 16.0),
+                  ),
+                ),
+              ],
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
-            child: Text(
-              'Huge thanks to all contributors! <3'.i18n,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16.0),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

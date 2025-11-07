@@ -538,6 +538,7 @@ class _LibraryTracksState extends State<LibraryTracks> {
                   : tracks[i];
               return TrackTile(
                 t,
+                key: Key('track_${t.id}'),
                 onTap: () {
                   GetIt.I<AudioPlayerHandler>().playFromTrackList(
                     (tracks.length == (trackCount ?? 0)) ? _sorted : tracks,
@@ -586,6 +587,7 @@ class _LibraryTracksState extends State<LibraryTracks> {
               Track t = allTracks[i];
               return TrackTile(
                 t,
+                key: Key('offline_track_${t.id}'),
                 onTap: () {
                   GetIt.I<AudioPlayerHandler>().playFromTrackList(
                     allTracks,

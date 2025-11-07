@@ -94,41 +94,6 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         'Downloads'.i18n,
         actions: [
           IconButton(
-            icon: Icon(
-              Icons.delete_forever,
-              semanticLabel: 'Delete Downloads DB'.i18n,
-            ),
-            onPressed: () async {
-              // Show confirmation dialog
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text('Delete Downloads Database'.i18n),
-                  content: Text(
-                    'This will delete the entire Downloads table. This cannot be undone!'
-                        .i18n,
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: Text('Cancel'.i18n),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: Text('Delete'.i18n),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirm == true) {
-                await downloadManager.stop();
-                await downloadManager.db?.execute('DELETE FROM Downloads');
-                await _load();
-              }
-            },
-          ),
-          IconButton(
             icon: Icon(Icons.delete_sweep, semanticLabel: 'Clear all'.i18n),
             onPressed: () async {
               await downloadManager.removeDownloads(DownloadState.ERROR);

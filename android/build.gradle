@@ -41,8 +41,6 @@ subprojects {
                         jvmTarget = javaVersion.toString()
                     }
                 }
-                println("Setting java version to ${javaVersion.toString()} which is $javaVersion")
-                println("Setting compileSdk and targetSdk to $androidApiVersion")
             }
         }
     }

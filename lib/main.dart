@@ -52,11 +52,13 @@ void main() async {
     }
   }
 
-  await Permission.notification.isDenied.then((value) {
-    if (value) {
-      Permission.notification.request();
-    }
-  });
+  if (!Platform.isLinux && !Platform.isMacOS) {
+    await Permission.notification.isDenied.then((value) {
+      if (value) {
+        Permission.notification.request();
+      }
+    });
+  }
 
   await prepareRun();
 

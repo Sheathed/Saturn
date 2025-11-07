@@ -9,10 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:marquee/marquee.dart';
 import 'package:palette_generator/palette_generator.dart';
-import 'package:saturn/utils/navigator_keys.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 
@@ -1193,10 +1193,10 @@ class _QueueScreenState extends State<QueueScreen> with WidgetsBindingObserver {
               icon: Icon(Icons.close, semanticLabel: 'Clear all'.i18n),
               onPressed: () async {
                 await audioHandler.clearQueue();
-
-                mainNavigatorKey.currentState!.popUntil(
-                  (route) => route.isFirst,
-                );
+                if (context.mounted) {
+                  context.pop(); // Close queue screen
+                  context.pop(); // Close player screen
+                }
               },
             ),
           ),

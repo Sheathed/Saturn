@@ -1547,6 +1547,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             Track t = cache.history[cache.history.length - i - 1];
             return TrackTile(
               t,
+              key: Key('history_track_${t.id}'),
               onTap: () {
                 GetIt.I<AudioPlayerHandler>().playFromTrackList(
                   cache.history.reversed.toList(),

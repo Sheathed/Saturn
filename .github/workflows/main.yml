@@ -85,8 +85,6 @@ jobs:
           mkdir -p android
           echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
           echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
-          echo "${{ secrets.keyproperties }}" | tr -d '\r' > android/key.properties
-          echo "${{ secrets.uploadkeystore }}" | base64 -d > android/app/upload-keystore.jks
           echo "Created files:"
           ls -la lib/ lib/utils android/ android/app/
       
@@ -113,20 +111,6 @@ jobs:
         
       - name: Build and release
         run: fastforge release --name linux
-      
-      - name: Remove APKs created during Linux build
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
-          VERSION="$(echo -n "$VERSION" | tr -d '\r')"
-
-          # Only delete APKs from this job’s dist folder
-          if [ -d "dist/$VERSION" ]; then
-            echo "Cleaning APKs from dist/$VERSION ..."
-            find "dist/$VERSION" -type f -name "*.apk" -delete
-          fi
-
-          echo "Remaining Linux artifacts:"
-          ls -la "dist/$VERSION" || echo "No dist folder found"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -136,20 +120,14 @@ jobs:
 
   ANDROID:
     name: Android
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     environment: workflow
-    needs: [VERSION_BUMP, LINUX]
+    needs: [VERSION_BUMP]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
-      
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '17'
       
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

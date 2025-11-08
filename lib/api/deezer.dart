@@ -13,8 +13,6 @@ DeezerAPI deezerAPI = DeezerAPI();
 class DeezerAPI {
   DeezerAPI({this.arl});
 
-  static const String userAgent = 'Deezer/8.0.0.0 (Android; 13; Tablet; us)';
-
   String? arl;
   String? token;
   String? licenseToken;
@@ -27,7 +25,8 @@ class DeezerAPI {
 
   //Get headers
   Map<String, String> get headers => {
-    'User-Agent': DeezerAPI.userAgent,
+    'User-Agent':
+        'Deezer/8.0.0.0 (Android; ${8 + Random().nextInt(8)}; Tablet; ${settings.deezerLanguage})',
     'Content-Language': '${settings.deezerLanguage}-${settings.deezerCountry}',
     'Content-Type': 'text/plain;charset=UTF-8',
     //'origin': 'https://www.deezer.com',

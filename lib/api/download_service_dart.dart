@@ -631,6 +631,11 @@ class DownloadThread {
       // Download cover art
       await _downloadCoverArt(outFile, track);
 
+      // Download LRC lyrics if enabled
+      if (settings.downloadLyrics) {
+        await _downloadLrcLyrics(outFile, track);
+      }
+
       // Tag file with metadata
       await _tagFile(outFile, track);
     }
@@ -893,6 +898,67 @@ class DownloadThread {
     }
   }
 
+  /// Download LRC lyrics file
+  Future<void> _downloadLrcLyrics(File audioFile, Track track) async {
+    try {
+      // Check if track has synced lyrics
+      if (track.lyrics == null ||
+          track.lyrics!.syncedLyrics == null ||
+          track.lyrics!.syncedLyrics!.isEmpty) {
+        logger.log('No synced lyrics for track, skipping lyrics file');
+        return;
+      }
+
+      // Generate LRC filename
+      final lrcPath =
+          audioFile.path.substring(0, audioFile.path.lastIndexOf('.')) + '.lrc';
+      final lrcFile = File(lrcPath);
+
+      // Generate LRC content
+      final lrcData = _generateLRC(track);
+
+      // Write to file
+      await lrcFile.writeAsString(lrcData);
+
+      logger.log('Downloaded LRC lyrics: ${lrcFile.path}');
+    } catch (e) {
+      logger.error(
+        'Error downloading lyrics! $e',
+        DownloadInfo(trackId: download.trackId, id: download.id),
+      );
+    }
+  }
+
+  /// Generate LRC format from lyrics data
+  String _generateLRC(Track track) {
+    final output = StringBuffer();
+
+    // Write metadata
+    if (track.artists != null && track.artists!.isNotEmpty) {
+      final artists = track.artists!.map((a) => a.name).join(', ');
+      output.write('[ar:$artists]\r\n');
+    }
+
+    if (track.album?.title != null) {
+      output.write('[al:${track.album!.title}]\r\n');
+    }
+
+    if (track.title != null) {
+      output.write('[ti:${track.title}]\r\n');
+    }
+
+    // Write synced lyrics
+    if (track.lyrics?.syncedLyrics != null) {
+      for (var lyric in track.lyrics!.syncedLyrics!) {
+        if (lyric.lrcTimestamp != null && lyric.text != null) {
+          output.write('[${lyric.lrcTimestamp}]${lyric.text}\r\n');
+        }
+      }
+    }
+
+    return output.toString();
+  }
+
   /// Tag file with metadata
   Future<void> _tagFile(File audioFile, Track track) async {
     try {
@@ -1008,7 +1074,9 @@ class DownloadThread {
       }
 
       // Lyrics
-      if (settings.tags.contains('lyrics') && track.lyrics != null) {
+      if (settings.tags.contains('lyrics') &&
+          track.lyrics != null &&
+          track.lyrics!.unsyncedLyrics != null) {
         tags.add(
           MetadataTag.text(CommonTags.lyrics, track.lyrics!.unsyncedLyrics!),
         );
@@ -1023,14 +1091,17 @@ class DownloadThread {
       }
 
       // Write metadata
+      print(audioFile.path);
+      print(tags);
       await tagger.writeTags(audioFile.path, tags);
 
       logger.log('Tagged file: ${audioFile.path}');
-    } catch (e) {
+    } catch (e, stackTrace) {
       logger.error(
         'Tagging error! $e',
         DownloadInfo(trackId: download.trackId, id: download.id),
       );
+      logger.error(stackTrace.toString());
     }
   }
 }

@@ -578,7 +578,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     if (await f.exists()) {
       //return f.path;
       //Stream server URL
-      return 'http://localhost:36958/?id=${mediaItem.id}';
+      return 'http://localhost:10069/?id=${mediaItem.id}';
     }
 
     //Show episode direct link
@@ -605,7 +605,7 @@ class AudioPlayerHandler extends BaseAudioHandler
 
     if ((streamPlaybackDetails ?? []).length < 3) return null;
     String url =
-        'http://localhost:36958/?stream=true&id=${mediaItem.id}&streamTrackId=$streamItemId&trackToken=${streamPlaybackDetails?[2]}&mv=${streamPlaybackDetails?[1]}&md5origin=${streamPlaybackDetails?[0]}';
+        'http://localhost:10069/?stream=true&id=${mediaItem.id}&streamTrackId=$streamItemId&trackToken=${streamPlaybackDetails?[2]}&mv=${streamPlaybackDetails?[1]}&md5origin=${streamPlaybackDetails?[0]}';
     return url;
   }
 

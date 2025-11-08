@@ -45,8 +45,8 @@ class StreamServerDart {
     _deezer = DeezerAPI(arl: arl);
 
     try {
-      _server = await HttpServer.bind('127.0.0.1', 36958);
-      _logger!.log('Stream server started on 127.0.0.1:36958');
+      _server = await HttpServer.bind('127.0.0.1', 10069);
+      _logger!.log('Stream server started on 127.0.0.1:10069');
 
       _server!.listen(
         _handleRequest,

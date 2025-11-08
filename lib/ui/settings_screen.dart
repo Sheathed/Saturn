@@ -31,7 +31,6 @@ import 'package:external_path/external_path.dart';
 import '../api/cache.dart';
 import '../api/deezer.dart';
 import '../main.dart';
-import '../utils/navigator_keys.dart';
 import '../service/audio_service.dart';
 import '../settings.dart';
 import '../translations.i18n.dart';
@@ -131,10 +130,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: Text(l.name),
                       subtitle: Text('${l.locale}-${l.country}'),
                       onTap: () async {
-                        I18n.of(mainNavigatorKey.currentContext!).locale =
-                            Locale(l.locale, l.country);
+                        I18n.of(context).locale = Locale(l.locale, l.country);
                         setState(
-                          () => settings.language = '${l.locale}_${l.country}',
+                          () => settings.language = '${l.locale}-${l.country}',
                         );
                         await settings.save();
                         // Close the SimpleDialog

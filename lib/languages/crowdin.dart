@@ -1,5 +1,5 @@
 const crowdin = {
-  'ar_ar': {
+  'ar-ar': {
     'Home': 'القائمة الرئيسية',
     'Search': 'بحث',
     'Library': 'المكتبة',
@@ -380,9 +380,9 @@ const crowdin = {
     'Duration': 'المدة',
     'Sort': 'ترتيب',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'قد انتهت صلاحية الـ ARL الخاص بك، حاول تسجيل الخروج وتسجيل الدخول مرة أخرى باستخدام ARL أو بطريقة المتصفح.'
+        'قد انتهت صلاحية الـ ARL الخاص بك، حاول تسجيل الخروج وتسجيل الدخول مرة أخرى باستخدام ARL أو بطريقة المتصفح.',
   },
-  'ast_es': {
+  'ast-es': {
     'Home': 'Aniciu',
     'Search': 'Buscar',
     'Library': 'Biblioteca',
@@ -770,9 +770,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'bul_bg': {
+  'bul-bg': {
     'Home': 'Начало',
     'Search': 'Търсене',
     'Library': 'Библиотека',
@@ -1155,7 +1155,7 @@ const crowdin = {
     'Duration': 'Времетраене',
     'Sort': 'Сортиране',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Вашият ARL вероятно е изтекъл. Опитайте се да влезете в профила си отново, използвайки нов ARL или чрез браузър.'
+        'Вашият ARL вероятно е изтекъл. Опитайте се да влезете в профила си отново, използвайки нов ARL или чрез браузър.',
   },
   'zh-cn': {
     'Home': '主页',
@@ -1522,9 +1522,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'hr_hr': {
+  'hr-hr': {
     'Home': 'Početna',
     'Search': 'Pretraži',
     'Library': 'Biblioteka',
@@ -1912,9 +1912,9 @@ const crowdin = {
     'Duration': 'Trajanje',
     'Sort': 'Sortiraj',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Tvoj ARL možda je istekao, pokušaj se odjaviti i ponovno prijaviti koristeći novi ARL ili preko preglednika.'
+        'Tvoj ARL možda je istekao, pokušaj se odjaviti i ponovno prijaviti koristeći novi ARL ili preko preglednika.',
   },
-  'cs_cz': {
+  'cs-cz': {
     'Home': 'Domů',
     'Search': 'Hledat',
     'Library': 'Knihovna',
@@ -2296,9 +2296,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'nl_nl': {
+  'nl-nl': {
     'Home': 'Startpagina',
     'Search': 'Zoek',
     'Library': 'Bibliotheek',
@@ -2683,394 +2683,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'uwu_uwu': {
-    'Home': 'Home',
-    'Search': 'Seawch',
-    'Library': 'Wibwawy',
-    "Offline mode, can't play flow or smart track lists.":
-        "Offwine mode, can't pway fwow ow smawt twack wists.",
-    'Added to library': 'Added to wibwawy',
-    'Download': 'Downwoad',
-    'Disk': 'Disk',
-    'Offline': 'Offwine',
-    'Top Tracks': 'Top twacks',
-    'Show more tracks': 'Show mowe twacks',
-    'Top': 'Top',
-    'Top Albums': 'Top Awbums',
-    'Show all albums': 'Show aww awbums',
-    'Discography': 'Discogwaphy',
-    'Default': 'Defauwt',
-    'Reverse': 'Revewse',
-    'Alphabetic': 'Awphabetic',
-    'Artist': 'Awtist',
-    'Post processing...': 'Pwost pwocessing...',
-    'Done': 'Done',
-    'Delete': 'Dewete',
-    'Are you sure you want to delete this download?':
-        'Awe u suwe u wanna dewete dis downwoad?',
-    'Cancel': 'Cancew',
-    'Downloads': 'Downwoads',
-    'Clear queue': 'Cweaw queue',
-    "This won't delete currently downloading item":
-        "Dis won't dewete cuwwentwy downwoading item",
-    'Are you sure you want to delete all queued downloads?':
-        'Awe you suwe you want t-to dewete aww q-queued downwoads!?',
-    'Clear downloads history': 'Cweaw downwoads histowy',
-    'WARNING: This will only clear non-offline (external downloads)':
-        'Warning: dis wiww onwy cweaw non-offwine (extewnaw downwoads)',
-    'Please check your connection and try again later...':
-        'Pwease check youw connection and twy again watew...',
-    'Show more': 'Show mowe',
-    'Importer': 'Impowtew',
-    'Currently supporting only Spotify, with 100 tracks limit':
-        'Cuwwentwy suppowting onwy spotify, with 100 twacks wimit',
-    'Due to API limitations': 'Due to api wimitations',
-    'Enter your playlist link below': 'Entew youw pwaywist wink bewow',
-    'Error loading URL!': 'Ewwow woading url!',
-    'Convert': 'Convewt',
-    'Download only': 'Downwoad onwy',
-    'Downloading is currently stopped, click here to resume.':
-        'Downwoading ish cuwwentwy stopped, cwick hewe to wesume.',
-    'Tracks': 'Twacks',
-    'Albums': 'Awbums',
-    'Artists': 'Awtists',
-    'Playlists': 'Pwaywists',
-    'Import': 'Impowt',
-    'Import playlists from Spotify': 'Impowt pwaywists fwom spotify',
-    'Statistics': 'Statistics',
-    'Offline tracks': 'Offwine twacks',
-    'Offline albums': 'Offline albums',
-    'Offline playlists': 'Offwine pwaywists',
-    'Offline size': 'Offwine size',
-    'Free space': 'Fwee space',
-    'Loved tracks': 'Loved twacks',
-    'Favorites': 'Favowites',
-    'All offline tracks': 'Aww offwine twacks',
-    'Create new playlist': 'Cweate nyew pwaywist',
-    'Cannot create playlists in offline mode':
-        'Cannot cweate pwaywists in offwine mode',
-    'Error': 'Ewwow',
-    'Error logging in! Please check your token and internet connection and try again.':
-        'Ewwow wogging in! Pwease check youw token and intewnet connection and twy again.',
-    'Dismiss': 'Dismiss',
-    'Welcome to': 'Wewcome to',
-    'Please login using your Deezer account.':
-        'Pwease wogin using youw Deezew account.',
-    'Login using browser': 'Login using bwowsew',
-    'Login using token': 'Login using token',
-    'Enter ARL': 'Entew ARL (retard)',
-    'Token (ARL)': 'Token (ARL), use if retarded',
-    'Save': 'Savve',
-    "If you don't have account, you can register on deezer.com for free.":
-        'If u dun have account, u can wegistew on deezer.com fow fwee.',
-    'Open in browser': 'Open in bwowsew',
-    "By using this app, you don't agree with the Deezer ToS":
-        'By using dis app, u dun agwee with da Deezew ToS',
-    'Play next': 'Pway nyext',
-    'Add to queue': 'Add t-to queue',
-    'Add track to favorites': 'Add twack to favowites',
-    'Add to playlist': 'Add t-to pwaywist',
-    'Select playlist': 'Sewect pwaywist',
-    'Track added to': 'Twack added to',
-    'Remove from playlist': 'Wemuv fwom pwaywist',
-    'Track removed from': 'Twack wemuvd fwom',
-    'Remove favorite': 'Wemuv favowite',
-    'Track removed from library': 'Twack wemuvd fwom wibwawy',
-    'Go to': 'Go t-to',
-    'Make offline': 'Make offwinye',
-    'Add to library': 'Add t-to wibwawy',
-    'Remove album': 'Wemuv awbum',
-    'Album removed': 'Awbum wemuvd',
-    'Remove from favorites': 'Wemuv fwom f-favowites',
-    'Artist removed from library': 'Awtist wemuvd fwom wibwawy',
-    'Add to favorites': 'Add t-to f-favowites',
-    'Remove from library': 'Wemuv fwom wibwawy',
-    'Add playlist to library': 'Add pwaywist t-to wibwawy',
-    'Added playlist to library': 'Added pwaywist t-to wibwawy',
-    'Make playlist offline': 'Make pwaywist offwinye',
-    'Download playlist': 'Downwoad pwaywist',
-    'Create playlist': 'Cweate pwaywist',
-    'Title': 'Titwe',
-    'Description': 'Descwiption',
-    'Private': 'Pwivate',
-    'Collaborative': 'Cowwabowative',
-    'Create': 'Cweate',
-    'Playlist created!': 'Pwaywist cweated?!?! owo',
-    'Playing from:': 'Pwaying from:',
-    'Queue': 'Quewe',
-    'Offline search': 'Offwinye seawch',
-    'Search Results': 'Seawch Wesuwts',
-    'No results!': 'Nyo resuwts?!?',
-    'Show all tracks': 'Show awl twacks',
-    'Show all playlists': 'Show awl pwaywists',
-    'Settings': 'Settings *^*',
-    'General': 'Genyewaw',
-    'Appearance': 'Appeawance',
-    'Quality': 'Quawity >w<',
-    'Deezer': 'Deezew',
-    'Theme': 'Theme uwu',
-    'Currently': 'C-Cuwwentwy',
-    'Select theme': 'Sewect theme',
-    'Dark': 'Dawk',
-    'Black (AMOLED)': 'B-Bwack (AMOWED)',
-    'Deezer (Dark)': 'Deezew (Dawk)',
-    'Primary color': 'Pwimawy c-colow',
-    'Selected color': 'Sewected c-colow',
-    'Use album art primary color': 'Use awbum awt pwimawy c-cowow',
-    'Warning: might be buggy': 'Warning: m-might be buggy',
-    'Mobile streaming': 'Mobiwe stweaming',
-    'Wifi streaming': 'Wifi stweaming',
-    'External downloads': 'Extewnyaw downwoads',
-    'Content language': 'Content wanguage',
-    'Not app language, used in headers. Now':
-        'Nyot app wanguage, used in headews. Nyow',
-    'Select language': 'Sewect wanguage',
-    'Content country': 'Content countwy',
-    'Country used in headers. Now': 'Countwy used in headews. Nyow',
-    'Log tracks': 'Wog twacks',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
-        'Send twack wisten wogs t-to Deezew, enyabwe i-it fow featuwes wike Fwow t-to wowk (・`ω´・) pwopewwy',
-    'Offline mode': 'Offwinye mode',
-    'Will be overwritten on start.': 'Wiww be uvwwwitten on stawt.',
-    'Error logging in, check your internet connections.':
-        'Ewwow wogging in, check youw intewnyet connyections.',
-    'Logging in...': 'Wogging in... uwu',
-    'Download path': 'Downwoad path',
-    'Downloads naming': 'Downwoads nyaming',
-    'Downloaded tracks filename': 'Downwoaded twacks fiwenyame',
-    'Valid variables are': 'Vawid vawiabwes awe',
-    'Reset': 'Weset',
-    'Clear': 'Cweaw',
-    'Create folders for artist': 'Cweate fowdews fow awtist ;;w;;',
-    'Create folders for albums': 'Cweate fowdews fow awbums',
-    'Separate albums by discs': 'sepawate awbums by disks',
-    'Overwrite already downloaded files': 'Ovewwwite awweady downwoaded fiwes',
-    'Copy ARL': 'Copy ARL (retard)',
-    'Copy userToken/ARL Cookie for use in other apps.':
-        "Copy usewToken/AWW Cookie fow use in othew apps. (because you're retarded)",
-    'Copied': 'Copied',
-    'Log out': 'Wog out',
-    'Due to plugin incompatibility, login using browser is unavailable without restart.':
-        'Due t-to pwugin incompatibiwity, wogin u-using bwowsew is unyavaiwabwe without westawt.',
-    '(ARL ONLY) Continue': '(ARL ONWY) owo Continyue, retard',
-    'Log out & Exit': 'Wog out & E-Exit (byeeee uwu)',
-    'Pick-a-Path': 'Pick-a-Path',
-    'Select storage': 'Sewect stowage ;;w;;',
-    'Go up': 'Go up',
-    'Permission denied': 'Pewmission denyied',
-    'Language': "Wanguage (Don't change me >w<)",
-    'Language changed, please restart Saturn to apply!':
-        "Language changed, please restart Saturn to apply! (you changed me, nyow I'm gonnya k-kill youw famiwy uwu)",
-    'Importing...': 'I-I-Impowting...',
-    'Radio': 'Wadio',
-    'Flow': 'Flow',
-    'Track is not available on Deezer!':
-        'twack is nyot avaiwabwe on D-Deezew!!11',
-    'Failed to download track! Please restart.':
-        'Faiwed t-to downwoad twack?!?1 Pwease westawt.',
-    'Storage permission denied!': 'Stowage pewmission d-d-denyied!!11',
-    'Failed': 'Faiwed',
-    'Queued': 'Quewed',
-    'External': 'Stowage',
-    'Restart failed downloads': 'Westawt faiwed downwoads',
-    'Clear failed': 'Cweaw faiwed',
-    'Download Settings': 'Downwoad Settings',
-    'Create folder for playlist': 'Cweate fowdew fow pwaywist',
-    'Download .LRC lyrics': 'Downwoad .LRC lywics',
-    'Proxy': 'Pwoxy',
-    'Not set': 'Nyot set',
-    'Search or paste URL': 'Seawch ow (・`ω´・) paste URL',
-    'History': 'Histowy',
-    'Download threads': 'Concuwwent downwoads',
-    'Lyrics unavailable, empty or failed to load!':
-        'Wywics unyavaiwabwe, empty ow (・`ω´・) faiwed t-to woad!!',
-    'About': 'About owo',
-    'Telegram Channel': 'Tewegwam ÚwÚ Channyew',
-    'To get latest releases': 'To get latest reweases',
-    'Official chat': 'Officiaw chat',
-    'Telegram Group': 'Tewegwam ÚwÚ Gwoup',
-    'Huge thanks to all the contributors! <3':
-        'Huge t-t-thanks t-to aww the contwibutows!!11 <3',
-    'Edit playlist': 'Edit pwaywist',
-    'Update': 'Update',
-    'Playlist updated!': 'pwaywist updated!!11',
-    'Downloads added!': 'Downwoads added!',
-    'Save cover file for every track': 'Save cuvw fiwe fow evewy twack',
-    'Download Log': 'Downwoad Wog',
-    'Repository': 'Wepositowy',
-    'Source code, report issues there.': 'Souwce code, wepowt issues thewe.',
-    'Use system theme': 'Use system theme',
-    'Light': 'Shit theme',
-    'Popularity': 'Popuwawity',
-    'User': 'Usew',
-    'Track count': 'Twack count',
-    "If you want to use custom directory naming - use '/' as directory separator.":
-        "If you w-want t-to use custom diwectowy nyaming - use '/'' as diwectowy sepawatow. >w<",
-    'Share': 'Shawe',
-    'Save album cover': 'Save awbum cuvwr',
-    'Warning': 'Wawnying >w<',
-    'Using too many concurrent downloads on older/weaker devices might cause crashes!':
-        'Using too many concuwwent downwoads on oldew/weakew devices m-might cause cwashes?!?1 :3',
-    'Create .nomedia files': 'Cweate .nyomedia fiwes',
-    'To prevent gallery being filled with album art':
-        'To pwevent gawwewy b-being fiwwed with awbum awt',
-    'Sleep timer': 'Sweep timew',
-    'Minutes:': 'Minutes:',
-    'Hours:': 'Hours:',
-    'Cancel current timer': 'Cancew cuwwent timew',
-    'Current timer ends at': 'Cuwwent timew ends at',
-    'Smart track list': 'Smawt twack wist',
-    'Shuffle': 'Shuffwe >w<',
-    'Library shuffle': 'Wibwawy shuffwe',
-    'Ignore interruptions': 'Ignyowe intewwuptions',
-    'Requires app restart to apply!':
-        'Wequiwes app westawt t-to appwy?!?! ;;w;;',
-    'Ask before downloading': 'Ask befowe downwoading',
-    'Search history': 'Seawch histowy',
-    'Clear search history': 'Cleaw seawch histowy',
-    'LastFM': 'LastFM uwu',
-    'Login to enable scrobbling.': 'wogin ;;w;; t-to enyabwe scwobbwing.',
-    'Login to LastFM': 'Login to LastFM',
-    'Username': 'Usewnyame',
-    'Password': 'Passwowd (is for me?)',
-    'Login': 'Login',
-    'Authorization error!': 'Authowization erwow?!?! :<',
-    'Logged out!': 'W-Wogged out?!?1',
-    'Lyrics': 'Wywics',
-    'Player gradient background': 'Pwayew gwadient backgwound ',
-    'Updates': 'Updates',
-    'You are running latest version!': 'You awe wunnying watest vewsion?!?',
-    'New update available!': 'Nyew update avaiwabwe?!?! (Yayyyy uwu)',
-    'Current version: ': 'Cuwwent version: ',
-    'Unsupported platform!': 'Unsuppowted p-pwatfowm!? :<',
-    'Freezer Updates': 'Fweezew Updates',
-    'Update to latest version in the settings.':
-        'Update t-to watest vewsion in the settings.',
-    'Release date': 'W-Wewease date',
-    'Shows': 'Shows',
-    'Charts': 'Chawts',
-    'Browse': 'Bwowse',
-    'Quick access': 'Quick access',
-    'Play mix': 'Pway mix',
-    'Share show': 'Shawe show',
-    'Date added': 'Date added',
-    'Discord': 'discowd (join to talk to me owo)',
-    'Official Discord server': "Officiaw Discowd servew (i'm waiting :>)",
-    'Restart of app is required to properly log out!':
-        'Westawt of a-app is w-wequiwed to p-pwopewwy wog out!',
-    'Artist separator': 'Awtist sepawatow',
-    'Singleton naming': 'Singweton n-naming',
-    'Keep the screen on': 'Keep the scween o-on',
-    'Wakelock enabled!': 'Wakewock enabwed〜☆! ',
-    'Wakelock disabled!': 'Wakewock disabwed *:･ﾟ✧*:･ﾟ✧!',
-    'Show all shows': 'Show all shows oWo',
-    'Episodes': 'Episodes uwu daddy',
-    'Show all episodes': 'S-show all episodes >.<',
-    'Album cover resolution': 'A-awbum cover wesowution',
-    "WARNING: Resolutions above 1200 aren't officially supported":
-        "W-wawning: wesowutions above 1200 awen't officiawwy suppowted",
-    'Album removed from library!': 'Awbum wemuvd fwom libwawy *^*',
-    'Remove offline': 'Wemuv offwinye',
-    'Playlist removed from library!': 'pwaywist wemuvd fwom libwawy *^*',
-    'Blur player background': 'Bluw pwayew backgwound',
-    'Might have impact on performance': 'Migwt hawve impact on pewfowmance',
-    'Font': 'Font',
-    'Select font': 'Sewect font',
-    "This app isn't made for supporting many fonts, it can break layouts and overflow. Use at your own risk!":
-        "This app isn't made for suppowting many fonts, it can bweak wayouts and ovewflow. Use at youw own wisk!",
-    'Enable equalizer': 'Enable equawizew',
-    'Might enable some equalizer apps to work. Requires restart of Freezer':
-        'Migwt enable some equawizew apps to wowk. Wequiwes westawt of Fweezer',
-    'Visualizer': 'Visuawizew',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Show visuawizews on wywics page. WAWNING: Wequiwes micwophone pewmission!',
-    'Tags': 'Tawgs',
-    'Album': 'Awbum',
-    'Track number': 'Twack nyumbew',
-    'Disc number': 'Disk nyumbew',
-    'Album artist': 'Awbum awtist',
-    'Date/Year': 'Date/Yeaw',
-    'Label': 'Wabew',
-    'ISRC': 'ISWC',
-    'UPC': 'UPC',
-    'Track total': 'Twack totaw',
-    'BPM': 'BPM',
-    'Unsynchronized lyrics': 'Unsynchwonized wywics',
-    'Genre': 'Genwe',
-    'Contributors': 'Contwibutows',
-    'Album art': 'Awbum awt',
-    'Deezer is unavailable in your country, Saturn might not work properly. Please use a VPN':
-        'Deezer is unavailable in your country, Saturn might not work properly. Please use a VPN',
-    'Deezer is unavailable': 'Deezer is unavailable',
-    'Continue': 'Continue',
-    'Email Login': 'Email Login',
-    'Email': 'Email',
-    'Missing email or password!': 'Missing email or password!',
-    'Error logging in using email, please check your credentials.\nError:':
-        'Error logging in using email, please check your credentials.\nError:',
-    'Error logging in!': 'Error logging in!',
-    'Change display mode': 'Change display mode',
-    'Enable high refresh rates': 'Enable high refresh rates',
-    'Display mode': 'Display mode',
-    'Spotify v1': 'Spotify v1',
-    'Import Spotify playlists up to 100 tracks without any login.':
-        'Import Spotify playlists up to 100 tracks without any login.',
-    'Download imported tracks': 'Download imported tracks',
-    'Start import': 'Start import',
-    'Spotify v2': 'Spotify v2',
-    'Import any Spotify playlist, import from own Spotify library. Requires free account.':
-        'Import any Spotify playlist, import from own Spotify library. Requires free account.',
-    'Spotify Importer v2': 'Spotify Importer v2',
-    'This importer requires Spotify Client ID and Client Secret. To obtain them:':
-        'This importer requires Spotify Client ID and Client Secret. To obtain them:',
-    '1. Go to: developer.spotify.com/dashboard and create an app.':
-        '1. Go to: developer.spotify.com/dashboard and create an app.',
-    'Open in Browser': 'Open in Browser',
-    '2. In the app you just created go to settings, and set the Redirect URL to: ':
-        '2. In the app you just created go to settings, and set the Redirect URL to: ',
-    'Copy the Redirect URL': 'Copy the Redirect URL',
-    'Client ID': 'Client ID',
-    'Client Secret': 'Client Secret',
-    'Authorize': 'Authorize',
-    'Logged in as: ': 'Logged in as: ',
-    'Import playlists by URL': 'Import playlists by URL',
-    'URL': 'URL',
-    'Options': 'Options',
-    'Invalid/Unsupported URL': 'Invalid/Unsupported URL',
-    'Please wait...': 'Please wait...',
-    'Login using email': 'Login using email',
-    'Track removed from offline!': 'Track removed from offline!',
-    'Removed album from offline!': 'Removed album from offline!',
-    'Playlist removed from offline!': 'Playlist removed from offline!',
-    'Repeat': 'Repeat',
-    'Repeat one': 'Repeat one',
-    'Repeat off': 'Repeat off',
-    'Love': 'Love',
-    'Unlove': 'Unlove',
-    'Dislike': 'Dislike',
-    'Close': 'Close',
-    'Sort playlist': 'Sort playlist',
-    'Sort ascending': 'Sort ascending',
-    'Sort descending': 'Sort descending',
-    'Stop': 'Stop',
-    'Start': 'Start',
-    'Clear all': 'Clear all',
-    'Play previous': 'Play previous',
-    'Play': 'Play',
-    'Pause': 'Pause',
-    'Remove': 'Remove',
-    'Seekbar': 'Seekbar',
-    'Singles': 'Singles',
-    'Featured': 'Featured',
-    'Fans': 'Fans',
-    'Duration': 'Duration',
-    'Sort': 'Sort',
-    'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
-  },
-  'fil_ph': {
+  'fil-ph': {
     'Home': 'Tahanan',
     'Search': 'Hanapin',
     'Library': 'Aklatan',
@@ -3457,9 +3072,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'fr_fr': {
+  'fr-fr': {
     'Home': 'Accueil',
     'Search': 'Recherche',
     'Library': 'Bibliothèque',
@@ -3852,9 +3467,9 @@ const crowdin = {
     'Duration': 'Durée',
     'Sort': 'Tri',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Votre ARL a peut-être expiré, essayez de vous déconnecter et de vous reconnecter en utilisant un nouvel ARL ou un autre navigateur.'
+        'Votre ARL a peut-être expiré, essayez de vous déconnecter et de vous reconnecter en utilisant un nouvel ARL ou un autre navigateur.',
   },
-  'de_de': {
+  'de-de': {
     'Home': 'Startseite',
     'Search': 'Suche',
     'Library': 'Bibliothek',
@@ -4237,9 +3852,9 @@ const crowdin = {
     'Duration': 'Dauer',
     'Sort': 'Sortieren',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Ihre ARL könnte abgelaufen sein, versuchen Sie sich auszuloggen und sich mit einer neuer ARL oder dem Browser wieder einzuloggen.'
+        'Ihre ARL könnte abgelaufen sein, versuchen Sie sich auszuloggen und sich mit einer neuer ARL oder dem Browser wieder einzuloggen.',
   },
-  'el_gr': {
+  'el-gr': {
     'Home': 'Αρχική',
     'Search': 'Αναζήτηση',
     'Library': 'Βιβλιοθήκη',
@@ -4631,9 +4246,9 @@ const crowdin = {
     'Duration': 'Διάρκεια',
     'Sort': 'Ταξινόμηση',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Το ARL σας μπορεί να έχει λήξει, δοκιμάστε να αποσυνδεθείτε και να συνδεθείτε ξανά χρησιμοποιώντας νέο ARL ή το πρόγραμμα περιήγησης.'
+        'Το ARL σας μπορεί να έχει λήξει, δοκιμάστε να αποσυνδεθείτε και να συνδεθείτε ξανά χρησιμοποιώντας νέο ARL ή το πρόγραμμα περιήγησης.',
   },
-  'he_il': {
+  'he-il': {
     'Home': 'מסך הבית',
     'Search': 'חיפוש',
     'Library': 'הספרייה',
@@ -5013,9 +4628,9 @@ const crowdin = {
     'Duration': 'משך זמן',
     'Sort': 'מיון',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'hi_in': {
+  'hi-in': {
     'Home': 'होम',
     'Search': 'खोज',
     'Library': 'लाइब्रेरी',
@@ -5399,9 +5014,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'hu_hu': {
+  'hu-hu': {
     'Home': 'Kezdőlap',
     'Search': 'Keresés',
     'Library': 'Kedvencek',
@@ -5793,9 +5408,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'id_id': {
+  'id-id': {
     'Home': 'Beranda',
     'Search': 'Cari',
     'Library': 'Koleksi',
@@ -6180,9 +5795,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'it_it': {
+  'it-it': {
     'Home': 'Home',
     'Search': 'Cerca',
     'Library': 'Libreria',
@@ -6569,9 +6184,9 @@ const crowdin = {
     'Duration': 'Durata',
     'Sort': 'Ordina',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Il tuo ARL potrebbe essere scaduto, prova a disconnetterti e ad accedere usando un nuovo ARL o browser.'
+        'Il tuo ARL potrebbe essere scaduto, prova a disconnetterti e ad accedere usando un nuovo ARL o browser.',
   },
-  'ko_ko': {
+  'ko-ko': {
     'Home': '홈',
     'Search': '검색',
     'Library': '라이브러리',
@@ -6943,9 +6558,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'fa_ir': {
+  'fa-ir': {
     'Home': 'صفحه اصلی',
     'Search': 'جست‌وجو',
     'Library': 'مجموعه',
@@ -7328,9 +6943,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'pl_pl': {
+  'pl-pl': {
     'Home': 'Strona główna',
     'Search': 'Szukaj',
     'Library': 'Biblioteka',
@@ -7713,9 +7328,9 @@ const crowdin = {
     'Duration': 'Czas trwania',
     'Sort': 'Sortowanie',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Twój ARL mógł wygasnąć, spróbuj wylogować się i zalogować jeszcze raz używając nowego tokena ARL lub przeglądarki.'
+        'Twój ARL mógł wygasnąć, spróbuj wylogować się i zalogować jeszcze raz używając nowego tokena ARL lub przeglądarki.',
   },
-  'pt_br': {
+  'pt-br': {
     'Home': 'Início',
     'Search': 'Busca',
     'Library': 'Biblioteca',
@@ -8098,9 +7713,9 @@ const crowdin = {
     'Duration': 'Duração',
     'Sort': 'Ordenar',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Sua ARL pode estar expirada, tente descontar e fazer login novamente usando uma nova ARL ou via navegador.'
+        'Sua ARL pode estar expirada, tente descontar e fazer login novamente usando uma nova ARL ou via navegador.',
   },
-  'ro_ro': {
+  'ro-ro': {
     'Home': 'Pagina de pornire',
     'Search': 'Căutare',
     'Library': 'Librărie',
@@ -8488,9 +8103,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'ru_ru': {
+  'ru-ru': {
     'Home': 'Главная',
     'Search': 'Поиск',
     'Library': 'Избранное',
@@ -8872,9 +8487,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'sk_sk': {
+  'sk-sk': {
     'Home': 'Domov',
     'Search': 'Hľadať',
     'Library': 'Knižnica',
@@ -9257,9 +8872,9 @@ const crowdin = {
     'Duration': 'Dĺžka',
     'Sort': 'Zoradiť',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Vaše ARL vypršalo. Skúste sa odhlásiť a znovu prihlásiť s novým ARL alebo cez prehliadač.'
+        'Vaše ARL vypršalo. Skúste sa odhlásiť a znovu prihlásiť s novým ARL alebo cez prehliadač.',
   },
-  'sl_SL': {
+  'sl-SL': {
     'Home': 'Domov',
     'Search': 'Išči',
     'Library': 'Knjižnica',
@@ -9648,9 +9263,9 @@ const crowdin = {
     'Duration': 'Trajanje',
     'Sort': 'Razvrsti',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Vaš ARL je mogoče potekel, poskusite se odjaviti in prijaviti nazaj z novim ARL ali brskalnikom.'
+        'Vaš ARL je mogoče potekel, poskusite se odjaviti in prijaviti nazaj z novim ARL ali brskalnikom.',
   },
-  'es_es': {
+  'es-es': {
     'Home': 'Inicio',
     'Search': 'Buscar',
     'Library': 'Biblioteca',
@@ -10042,9 +9657,9 @@ const crowdin = {
     'Duration': 'Duración',
     'Sort': 'Ordenar',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Puede que tu ARL haya caducado, prueba a cerrar la sesión y volver a iniciar sesión usando ARL o navegador.'
+        'Puede que tu ARL haya caducado, prueba a cerrar la sesión y volver a iniciar sesión usando ARL o navegador.',
   },
-  'tr_tr': {
+  'tr-tr': {
     'Home': 'Ana Sayfa',
     'Search': 'Ara',
     'Library': 'Kütüphane',
@@ -10434,9 +10049,9 @@ const crowdin = {
     'Duration': 'Süre',
     'Sort': 'Sırala',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'uk_ua': {
+  'uk-ua': {
     'Home': 'Головна',
     'Search': 'Пошук',
     'Library': 'Бібліотека',
@@ -10821,9 +10436,9 @@ const crowdin = {
     'Duration': 'Тривалість',
     'Sort': 'Сортування',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Можливо, термін дії ARL минув, спробуйте вийти з обліковки та повернутися в систему за допомогою нового ARL або браузера.'
+        'Можливо, термін дії ARL минув, спробуйте вийти з обліковки та повернутися в систему за допомогою нового ARL або браузера.',
   },
-  'ur_pk': {
+  'ur-pk': {
     'Home': 'ہوم',
     'Search': 'تلاش کریں',
     'Library': 'لائبریری',
@@ -11204,9 +10819,9 @@ const crowdin = {
     'Duration': 'Duration',
     'Sort': 'Sort',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.'
+        'Your ARL might be expired, try logging out and logging back in using new ARL or browser.',
   },
-  'vi_vi': {
+  'vi-vi': {
     'Home': 'Trang chủ',
     'Search': 'Tìm kiếm',
     'Library': 'Thư viện',
@@ -11592,6 +11207,6 @@ const crowdin = {
     'Duration': 'Thời lượng',
     'Sort': 'Sắp xếp',
     'Your ARL might be expired, try logging out and logging back in using new ARL or browser.':
-        'ARL của bạn có thể đã hết hạn, hãy đăng xuất và đăng nhập lại bằng ARL mới hoặc qua trình duyệt.'
-  }
+        'ARL của bạn có thể đã hết hạn, hãy đăng xuất và đăng nhập lại bằng ARL mới hoặc qua trình duyệt.',
+  },
 };

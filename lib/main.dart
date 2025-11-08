@@ -108,11 +108,16 @@ class _SaturnAppState extends State<SaturnApp> {
   }
 
   Locale? _locale() {
-    if ((settings.language?.split('_').length ?? 0) < 2) return null;
-    return Locale(
-      settings.language!.split('_')[0],
-      settings.language!.split('_')[1],
-    );
+    if (settings.language == null) return null;
+
+    // Support both old format (underscore) and new format (hyphen)
+    String language = settings.language!;
+    List<String> parts = language.contains('-')
+        ? language.split('-')
+        : language.split('_');
+
+    if (parts.length < 2) return null;
+    return Locale(parts[0], parts[1]);
   }
 
   @override

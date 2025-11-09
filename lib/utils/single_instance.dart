@@ -43,8 +43,6 @@ class SingleInstanceService {
     if (Platform.isLinux || Platform.isMacOS) {
       return _singleInstance ?? true;
     }
-
-    // For Windows, we already handle this in initialize()
     return true;
   }
 }

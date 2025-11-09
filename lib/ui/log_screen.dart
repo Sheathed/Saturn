@@ -19,8 +19,8 @@ class _ApplicationLogViewerState extends State<ApplicationLogViewer> {
 
   //Load log from file
   Future _load() async {
-    Directory? directory = await getExternalStorageDirectory();
-    String path = p.join(directory!.path, 'saturn.log');
+    Directory? directory = await getApplicationSupportDirectory();
+    String path = p.join(directory.path, 'saturn.log');
     File file = File(path);
     if (await file.exists()) {
       String d = await file.readAsString();

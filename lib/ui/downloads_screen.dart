@@ -396,8 +396,8 @@ class _DownloadLogViewerState extends State<DownloadLogViewer> {
 
   //Load log from file
   Future _load() async {
-    Directory? directory = await getExternalStorageDirectory();
-    String path = p.join(directory!.path, 'download.log');
+    Directory? directory = await getApplicationSupportDirectory();
+    String path = p.join(directory.path, 'download.log');
     File file = File(path);
     if (await file.exists()) {
       String d = await file.readAsString();

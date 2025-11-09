@@ -160,6 +160,12 @@ class Settings {
   @JsonKey(defaultValue: false)
   bool enableDiscordRPC = false;
 
+  //premium
+  @JsonKey(defaultValue: false)
+  bool noPremium = false;
+  @JsonKey(defaultValue: null)
+  String? tier;
+
   Settings({this.downloadPath, this.arl});
 
   // List of rainbow colors
@@ -622,7 +628,7 @@ class Settings {
   };
 
   Future<String> getPath() async =>
-      p.join((await getApplicationDocumentsDirectory()).path, 'settings.json');
+      p.join((await getApplicationSupportDirectory()).path, 'settings.json');
 
   //JSON
   factory Settings.fromJson(Map<String, dynamic> json) =>

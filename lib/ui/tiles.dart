@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fluttericon/octicons_icons.dart';
 import 'package:get_it/get_it.dart';
+import 'package:saturn/api/cache.dart';
+import 'package:saturn/ui/menu.dart';
+import 'package:saturn/ui/toast.dart';
 
 import '../api/deezer.dart';
 import '../api/definitions.dart';
@@ -67,73 +70,168 @@ class _TrackTileState extends State<TrackTile> {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(
-        widget.track.title ?? '',
-        maxLines: 1,
-        overflow: TextOverflow.clip,
-        style: TextStyle(
-          color: nowPlaying ? Theme.of(context).primaryColor : null,
-        ),
-      ),
-      subtitle: Text(widget.track.artistString ?? '', maxLines: 1),
-      leading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CachedImage(url: widget.track.albumArt?.thumb ?? '', width: 48),
-          if (widget.track.variation != null)
-            Padding(
-              padding: EdgeInsets.only(left: 8.0),
-              child: Icon(
-                !widget.track.variation!.isNegative &&
-                        widget.track.variation! != 0
-                    ? Icons.arrow_upward
-                    : !widget.track.variation!.isNegative &&
-                          widget.track.variation! == 0
-                    ? Icons.arrow_forward
-                    : Icons.arrow_downward,
-                color:
-                    !widget.track.variation!.isNegative &&
-                        widget.track.variation! != 0
-                    ? Colors.green
-                    : !widget.track.variation!.isNegative &&
-                          widget.track.variation! == 0
-                    ? Colors.grey
-                    : Colors.orange,
-                size: 30.0,
-              ),
-            ),
-        ],
-      ),
-      onTap: widget.onTap,
-      onLongPress: widget.onHold,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_isOffline)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 2.0),
-              child: Icon(
-                Octicons.primitive_dot,
-                color: Colors.green,
-                size: 12.0,
-              ),
-            ),
-          if (widget.track.explicit ?? false)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 2.0),
-              child: Text('E', style: TextStyle(color: Colors.red)),
-            ),
-          SizedBox(
-            width: 42.0,
-            child: Text(
-              widget.track.durationString ?? '',
-              textAlign: TextAlign.center,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWideScreen = constraints.maxWidth >= 668;
+
+        return ListTile(
+          title: Text(
+            widget.track.title ?? '',
+            maxLines: 1,
+            overflow: TextOverflow.clip,
+            style: TextStyle(
+              color: nowPlaying ? Theme.of(context).primaryColor : null,
             ),
           ),
-          widget.trailing ?? const SizedBox(width: 0, height: 0),
-        ],
-      ),
+          subtitle: Text(widget.track.artistString ?? '', maxLines: 1),
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CachedImage(url: widget.track.albumArt?.thumb ?? '', width: 48),
+              if (widget.track.variation != null)
+                Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: Icon(
+                    !widget.track.variation!.isNegative &&
+                            widget.track.variation! != 0
+                        ? Icons.arrow_upward
+                        : !widget.track.variation!.isNegative &&
+                              widget.track.variation! == 0
+                        ? Icons.arrow_forward
+                        : Icons.arrow_downward,
+                    color:
+                        !widget.track.variation!.isNegative &&
+                            widget.track.variation! != 0
+                        ? Colors.green
+                        : !widget.track.variation!.isNegative &&
+                              widget.track.variation! == 0
+                        ? Colors.grey
+                        : Colors.orange,
+                    size: 30.0,
+                  ),
+                ),
+            ],
+          ),
+          onTap: widget.onTap,
+          onLongPress: widget.onHold,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isOffline)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 2.0),
+                  child: Icon(
+                    Octicons.primitive_dot,
+                    color: Colors.green,
+                    size: 12.0,
+                  ),
+                ),
+              if (widget.track.explicit ?? false)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 2.0),
+                  child: Text('E', style: TextStyle(color: Colors.red)),
+                ),
+              SizedBox(
+                width: 42.0,
+                child: Text(
+                  widget.track.durationString ?? '',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              widget.trailing ?? const SizedBox(width: 0, height: 0),
+              if (widget.trailing == null && isWideScreen) ...[
+                IconButton(
+                  icon: cache.checkTrackFavorite(widget.track)
+                      ? const Icon(Icons.favorite)
+                      : const Icon(Icons.favorite_border),
+                  onPressed: () async {
+                    cache.libraryTracks ??= [];
+                    if (cache.checkTrackFavorite(widget.track)) {
+                      //Remove from library
+                      setState(
+                        () => cache.libraryTracks?.remove(widget.track.id),
+                      );
+                      await deezerAPI.removeFavorite(widget.track.id ?? '');
+                      await cache.save();
+                    } else {
+                      //Add
+                      setState(
+                        () => cache.libraryTracks?.add(widget.track.id ?? ''),
+                      );
+                      await deezerAPI.addFavoriteTrack(widget.track.id ?? '');
+                      await cache.save();
+                    }
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.playlist_add_outlined),
+                  onPressed: () async {
+                    await showDialog(
+                      context: context,
+                      builder: (context) {
+                        return SelectPlaylistDialog(
+                          track: widget.track,
+                          callback: (Playlist p) async {
+                            await deezerAPI.addToPlaylist(
+                              widget.track.id!,
+                              p.id!,
+                            );
+                            //Update the playlist if offline
+                            if (await downloadManager.checkOffline(
+                              playlist: p,
+                            )) {
+                              downloadManager.addOfflinePlaylist(p);
+                            }
+                            Fluttertoast.showToast(
+                              msg: 'Track added to'.i18n + ' ${p.title}',
+                              toastLength: Toast.LENGTH_SHORT,
+                              gravity: ToastGravity.BOTTOM,
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+                Builder(
+                  builder: (BuildContext buttonContext) {
+                    return IconButton(
+                      icon: const Icon(Icons.more_vert),
+                      onPressed: () {
+                        // Get button position for popup menu
+                        final RenderBox button =
+                            buttonContext.findRenderObject() as RenderBox;
+                        final RenderBox overlay =
+                            Overlay.of(buttonContext).context.findRenderObject()
+                                as RenderBox;
+                        final RelativeRect position = RelativeRect.fromRect(
+                          Rect.fromPoints(
+                            button.localToGlobal(
+                              Offset.zero,
+                              ancestor: overlay,
+                            ),
+                            button.localToGlobal(
+                              button.size.bottomRight(Offset.zero),
+                              ancestor: overlay,
+                            ),
+                          ),
+                          Offset.zero & overlay.size,
+                        );
+
+                        MenuSheet().defaultTrackPopup(
+                          widget.track,
+                          context: context,
+                          position: position,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

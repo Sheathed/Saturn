@@ -13,7 +13,7 @@ class DownloadLog {
   /// Open/Create file
   Future<void> open() async {
     try {
-      Directory? directory = await getApplicationDocumentsDirectory();
+      Directory? directory = await getApplicationSupportDirectory();
 
       _logFile = File('${directory.path}/download.log');
 

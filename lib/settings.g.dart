@@ -88,7 +88,9 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       ..lastFMPassword = json['lastFMPassword'] as String?
       ..lastFMAPIKey = json['lastFMAPIKey'] as String?
       ..lastFMAPISecret = json['lastFMAPISecret'] as String?
-      ..enableDiscordRPC = json['enableDiscordRPC'] as bool? ?? false;
+      ..enableDiscordRPC = json['enableDiscordRPC'] as bool? ?? false
+      ..noPremium = json['noPremium'] as bool? ?? false
+      ..tier = json['tier'] as String?;
 
 Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'language': instance.language,
@@ -137,6 +139,8 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'lastFMAPIKey': instance.lastFMAPIKey,
   'lastFMAPISecret': instance.lastFMAPISecret,
   'enableDiscordRPC': instance.enableDiscordRPC,
+  'noPremium': instance.noPremium,
+  'tier': instance.tier,
 };
 
 const _$AudioQualityEnumMap = {

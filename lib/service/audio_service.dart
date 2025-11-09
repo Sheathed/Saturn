@@ -754,7 +754,7 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   // Get queue save file path
   Future<String> _getQueueFilePath() async {
-    Directory? directory = await getApplicationDocumentsDirectory();
+    Directory? directory = await getApplicationSupportDirectory();
     return p.join(directory.path, 'playback.json');
   }
 

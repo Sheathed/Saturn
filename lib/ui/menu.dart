@@ -1,8 +1,10 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:numberpicker/numberpicker.dart';
@@ -46,6 +48,47 @@ class MenuSheet {
           child: SingleChildScrollView(child: Column(children: options)),
         );
       },
+    );
+  }
+
+  //Show popup menu (anchored to button position)
+  Future<void> showPopup(
+    BuildContext context,
+    List<Widget> options,
+    RelativeRect position,
+  ) async {
+    // Convert ListTile widgets to PopupMenuItems
+    final items = options
+        .map((widget) {
+          if (widget is ListTile) {
+            return PopupMenuItem<VoidCallback>(
+              padding: EdgeInsets.zero,
+              onTap: () {
+                // Schedule the onTap callback to run after the popup menu dismisses
+                // This avoids navigator lock errors
+                if (widget.onTap != null) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    widget.onTap!();
+                  });
+                }
+              },
+              child: ListTile(
+                leading: widget.leading,
+                title: widget.title,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16.0),
+                dense: true,
+              ),
+            );
+          }
+          return null;
+        })
+        .whereType<PopupMenuItem<VoidCallback>>()
+        .toList();
+
+    await showMenu<VoidCallback>(
+      context: context,
+      position: position,
+      items: items,
     );
   }
 
@@ -153,6 +196,34 @@ class MenuSheet {
       ),
       ...options,
     ]);
+  }
+
+  //Default track popup menu (shows as popup instead of bottom sheet)
+  Future<void> defaultTrackPopup(
+    Track track, {
+    required BuildContext context,
+    required RelativeRect position,
+    List<Widget> options = const [],
+    Function? onRemove,
+  }) async {
+    await showPopup(context, [
+      addToQueueNext(track, context),
+      addToQueue(track, context),
+      (cache.checkTrackFavorite(track))
+          ? removeFavoriteTrack(track, context, onUpdate: onRemove)
+          : addTrackFavorite(track, context),
+      addToPlaylist(track, context),
+      downloadTrack(track, context),
+      offlineTrack(track, context),
+      shareTile('track', track.id ?? ''),
+      playMix(track, context),
+      showAlbum(track.album!, context),
+      ...List.generate(
+        track.artists?.length ?? 0,
+        (i) => showArtist(track.artists![i], context),
+      ),
+      ...options,
+    ], position);
   }
 
   //===================
@@ -712,9 +783,28 @@ class MenuSheet {
     title: Text('Share'.i18n),
     leading: const Icon(Icons.share),
     onTap: () async {
-      SharePlus.instance.share(
-        ShareParams(uri: Uri.parse('https://deezer.com/$type/$id')),
-      );
+      if (Platform.isAndroid || Platform.isIOS) {
+        if (Platform.isIOS || Platform.isAndroid) {
+          SharePlus.instance.share(
+            ShareParams(uri: Uri.parse('https://deezer.com/$type/$id')),
+          );
+          return;
+        } else {
+          String url = 'https://deezer.com/$type/$id';
+          await Clipboard.setData(ClipboardData(text: url));
+          Fluttertoast.showToast(
+            msg: 'Link copied to clipboard!'.i18n,
+            gravity: ToastGravity.BOTTOM,
+          );
+        }
+      } else {
+        String url = 'https://deezer.com/$type/$id';
+        await Clipboard.setData(ClipboardData(text: url));
+        Fluttertoast.showToast(
+          msg: 'Link copied to clipboard!'.i18n,
+          gravity: ToastGravity.BOTTOM,
+        );
+      }
     },
   );
 

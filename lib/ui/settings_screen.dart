@@ -1658,6 +1658,7 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                         onPressed: () async {
                           await logOut();
                           if (context.mounted) Navigator.of(context).pop();
+                          updateTheme();
                         },
                       ),
                     ],

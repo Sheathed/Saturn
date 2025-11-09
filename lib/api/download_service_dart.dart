@@ -1091,8 +1091,6 @@ class DownloadThread {
       }
 
       // Write metadata
-      print(audioFile.path);
-      print(tags);
       await tagger.writeTags(audioFile.path, tags);
 
       logger.log('Tagged file: ${audioFile.path}');

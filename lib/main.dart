@@ -31,6 +31,7 @@ import 'translations.i18n.dart';
 import 'ui/restartable.dart';
 import 'ui/search.dart';
 import 'ui/toast.dart';
+import 'utils/directory_migration.dart';
 import 'utils/logging.dart';
 
 late Function updateTheme;
@@ -68,6 +69,16 @@ void main() async {
 Future<void> prepareRun() async {
   await initializeLogging();
   Logger.root.info('Starting Saturn App...');
+
+  // Run directory migration before loading settings
+  Logger.root.info('Running directory migration...');
+  final migrationSuccess = await DirectoryMigration.migrate();
+  if (migrationSuccess) {
+    Logger.root.info('Directory migration completed successfully');
+  } else {
+    Logger.root.warning('Directory migration completed with errors');
+  }
+
   settings = await Settings().loadSettings();
   cache = await Cache.load();
 }
@@ -428,11 +439,19 @@ class _AppInitializerState extends State<AppInitializer> {
     }
     await downloadManager.stop();
     await StreamServerDart.instance.stop();
-    setState(() {
+    // Avoid calling setState if this State has been disposed. If we're no
+    // longer mounted apply the assignments directly.
+    if (mounted) {
+      setState(() {
+        settings.arl = null;
+        settings.offlineMode = false;
+        deezerAPI = DeezerAPI();
+      });
+    } else {
       settings.arl = null;
       settings.offlineMode = false;
       deezerAPI = DeezerAPI();
-    });
+    }
     await settings.save();
     await Cache.wipe();
     Restartable.restart();

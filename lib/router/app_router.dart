@@ -48,10 +48,11 @@ class AppRoutes {
   static const String logs = '/logs';
   static const String error = '/error';
   static const String searchResults = '/search/results';
+  static const String noPremium = '/nopremium';
 }
 
 // Global navigator keys
-final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'root',
 );
 final GlobalKey<NavigatorState> _shellNavigatorKey = GlobalKey<NavigatorState>(
@@ -60,7 +61,7 @@ final GlobalKey<NavigatorState> _shellNavigatorKey = GlobalKey<NavigatorState>(
 
 // GoRouter configuration
 final GoRouter appRouter = GoRouter(
-  navigatorKey: _rootNavigatorKey,
+  navigatorKey: rootNavigatorKey,
   initialLocation: AppRoutes.home,
   debugLogDiagnostics: true,
   routes: [
@@ -206,19 +207,19 @@ final GoRouter appRouter = GoRouter(
     // Full-screen routes (outside shell)
     GoRoute(
       path: AppRoutes.player,
-      parentNavigatorKey: _rootNavigatorKey,
+      parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const PlayerScreen(),
     ),
 
     GoRoute(
       path: AppRoutes.logs,
-      parentNavigatorKey: _rootNavigatorKey,
+      parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const ApplicationLogViewer(),
     ),
 
     GoRoute(
       path: AppRoutes.error,
-      parentNavigatorKey: _rootNavigatorKey,
+      parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const ErrorScreen(),
     ),
   ],

@@ -4,9 +4,9 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:saturn/main.dart';
 import '../api/definitions.dart';
 import '../settings.dart';
-import '../main.dart';
 
 DeezerAPI deezerAPI = DeezerAPI();
 
@@ -573,12 +573,21 @@ class DeezerAPI {
     // Call API to get user data
     Map usrdata = await callGwApi('deezer.getUserData', params: {});
     // Extract OFFER_NAME from user data
+    int offerId = usrdata['results'] != null
+        ? usrdata['results']['OFFER_ID']
+        : null;
     String offerName = usrdata['results'] != null
         ? usrdata['results']['OFFER_NAME']
         : null;
 
-    if (offerName == 'Deezer Free') {
-      await logOut();
+    if (offerId == 0 &&
+        usrdata['results']['USER']['SETTING']['global']['recommendation_country'] !=
+            'FM') {
+      settings.noPremium = true;
+      settings.tier = offerName;
+      settings.save();
+      logOut();
+      updateTheme();
     }
 
     Map data = await callGwApi(

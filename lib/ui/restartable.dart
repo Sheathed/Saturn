@@ -14,9 +14,19 @@ class Restartable extends StatefulWidget {
   _RestartableState createState() => _RestartableState();
 
   static void restart() {
-    mainNavigatorKey.currentContext!
-        .findAncestorStateOfType<_RestartableState>()!
-        .restartApp();
+    // Be defensive: mainNavigatorKey.currentContext may be null during
+    // certain lifecycle transitions. Try to restart immediately if
+    // possible, otherwise schedule a post-frame attempt.
+    final ctx = mainNavigatorKey.currentContext;
+    if (ctx != null) {
+      ctx.findAncestorStateOfType<_RestartableState>()?.restartApp();
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx2 = mainNavigatorKey.currentContext;
+      ctx2?.findAncestorStateOfType<_RestartableState>()?.restartApp();
+    });
   }
 }
 

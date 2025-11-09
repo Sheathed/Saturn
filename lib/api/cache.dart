@@ -98,7 +98,7 @@ class Cache {
   //Save, load
   static Future<String> getPath() async {
     return p.join(
-      (await getApplicationDocumentsDirectory()).path,
+      (await getApplicationSupportDirectory()).path,
       'metacache.json',
     );
   }

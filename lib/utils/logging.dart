@@ -38,7 +38,7 @@ class LogQueueManager {
 
 Future<void> initializeLogging() async {
   final String path = p.join(
-    (await getApplicationDocumentsDirectory()).path,
+    (await getApplicationSupportDirectory()).path,
     'saturn.log',
   );
   final File logFile = File(path);

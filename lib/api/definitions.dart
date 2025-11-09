@@ -1008,7 +1008,7 @@ class HomePage {
 
   //Save/Load
   Future<String> _getPath() async {
-    Directory d = await getApplicationDocumentsDirectory();
+    Directory d = await getApplicationSupportDirectory();
     return p.join(d.path, 'homescreen.json');
   }
 

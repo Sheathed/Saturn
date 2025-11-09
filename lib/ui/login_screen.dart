@@ -10,7 +10,6 @@ import '../api/deezer_login.dart';
 import '../ui/toast.dart';
 import '../api/deezer.dart';
 import '../api/definitions.dart';
-import '../utils/navigator_keys.dart';
 import '../settings.dart';
 import '../translations.i18n.dart';
 import 'home_screen.dart';
@@ -54,33 +53,32 @@ class _LoginWidgetState extends State<LoginWidget> {
   void _checkAvailability() async {
     bool? available = await DeezerAPI.checkAvailability();
     if (!(available ?? false)) {
-      showDialog(
-        context: mainNavigatorKey.currentContext!,
-        builder: (context) => AlertDialog(
-          title: Text('Deezer is unavailable'.i18n),
-          content: Text(
-            'Deezer is unavailable in your country, Saturn might not work properly. Please use a VPN'
-                .i18n,
-          ),
-          actions: [
-            TextButton(
-              child: Text('Continue'.i18n),
-              onPressed: () {
-                if (context.mounted) Navigator.of(context).pop();
-              },
+      // Avoid showing a dialog during init/build phase. Schedule it after the
+      // first frame so we don't call setState/push routes while widgets are
+      // being built.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Deezer is unavailable'.i18n),
+            content: Text(
+              'Deezer is unavailable in your country, Saturn might not work properly. Please use a VPN'
+                  .i18n,
             ),
-          ],
-        ),
-      );
+            actions: [
+              TextButton(
+                child: Text('Continue'.i18n),
+                onPressed: () {
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+              ),
+            ],
+          ),
+        );
+      });
     }
   }
-
-  /* No idea why this is needed, seems to trigger superfluous _start() execution...
-  @override
-  void didUpdateWidget(LoginWidget oldWidget) {
-    _start();
-    super.didUpdateWidget(oldWidget);
-  }*/
 
   @override
   void initState() {
@@ -160,6 +158,8 @@ class _LoginWidgetState extends State<LoginWidget> {
     _update();
   }
 
+  bool premiumOpen = false;
+
   @override
   Widget build(BuildContext context) {
     //If arl is null, show loading
@@ -178,6 +178,53 @@ class _LoginWidgetState extends State<LoginWidget> {
         return KeyEventResult.handled;
       },
     );
+    if (settings.noPremium == true && !premiumOpen) {
+      // Avoid side-effects and showing dialogs directly during build.
+      // Schedule the dialog and the settings mutation after the frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        premiumOpen = true;
+        String tier = settings.tier ?? 'Unknown';
+        settings.noPremium = false;
+        settings.tier = null;
+        await settings.save();
+        await showDialog(
+          // ignore: use_build_context_synchronously
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Non-Premium Account'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const Icon(Icons.account_circle, color: Colors.red, size: 64.0),
+                Container(height: 4.0),
+                Text(
+                  'Saturn doesn\'t allow for usage of non-paid accounts.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                Container(height: 4.0),
+                Text(
+                  'Current Tier: $tier',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                Container(height: 16.0),
+              ],
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: Text('Dismiss'),
+                onPressed: () async {
+                  premiumOpen = false;
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          ),
+        );
+      });
+    }
     if (settings.arl == null) {
       return Scaffold(
         body: Padding(

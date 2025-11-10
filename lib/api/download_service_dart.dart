@@ -901,11 +901,23 @@ class DownloadThread {
   /// Download LRC lyrics file
   Future<void> _downloadLrcLyrics(File audioFile, Track track) async {
     try {
+      // Fetch lyrics if not already loaded
+      Lyrics? lyrics = track.lyrics;
+      if (lyrics == null || !lyrics.isLoaded()) {
+        try {
+          logger.log('Fetching lyrics for track ${download.trackId}');
+          lyrics = await deezer.lyrics(download.trackId);
+        } catch (e) {
+          logger.log('Failed to fetch lyrics: $e');
+          return;
+        }
+      }
+
       // Check if track has synced lyrics
-      if (track.lyrics == null ||
-          track.lyrics!.syncedLyrics == null ||
-          track.lyrics!.syncedLyrics!.isEmpty) {
-        logger.log('No synced lyrics for track, skipping lyrics file');
+      if (lyrics.syncedLyrics == null || lyrics.syncedLyrics!.isEmpty) {
+        logger.log(
+          'No synced lyrics available for track, skipping lyrics file',
+        );
         return;
       }
 
@@ -915,7 +927,7 @@ class DownloadThread {
       final lrcFile = File(lrcPath);
 
       // Generate LRC content
-      final lrcData = _generateLRC(track);
+      final lrcData = _generateLRC(track, lyrics);
 
       // Write to file
       await lrcFile.writeAsString(lrcData);
@@ -930,7 +942,7 @@ class DownloadThread {
   }
 
   /// Generate LRC format from lyrics data
-  String _generateLRC(Track track) {
+  String _generateLRC(Track track, Lyrics lyrics) {
     final output = StringBuffer();
 
     // Write metadata
@@ -948,10 +960,11 @@ class DownloadThread {
     }
 
     // Write synced lyrics
-    if (track.lyrics?.syncedLyrics != null) {
-      for (var lyric in track.lyrics!.syncedLyrics!) {
+    if (lyrics.syncedLyrics != null) {
+      for (var lyric in lyrics.syncedLyrics!) {
         if (lyric.lrcTimestamp != null && lyric.text != null) {
-          output.write('[${lyric.lrcTimestamp}]${lyric.text}\r\n');
+          // lrcTimestamp already contains brackets, don't add more
+          output.write('${lyric.lrcTimestamp}${lyric.text}\r\n');
         }
       }
     }

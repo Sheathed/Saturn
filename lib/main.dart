@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
@@ -53,12 +54,22 @@ void main() async {
     }
   }
 
-  if (!Platform.isLinux && !Platform.isMacOS) {
-    await Permission.notification.isDenied.then((value) {
-      if (value) {
-        Permission.notification.request();
+  // Request notification permissions on all platforms
+  try {
+    // Android, iOS, Windows support permission_handler
+    if (Platform.isAndroid || Platform.isIOS || Platform.isWindows) {
+      final status = await Permission.notification.status;
+      if (status.isDenied || status.isPermanentlyDenied) {
+        await Permission.notification.request();
       }
-    });
+    }
+    // macOS and Linux notification permissions are typically handled at app level
+    // or during notification initialization
+  } catch (e) {
+    // Silently fail if permission handler doesn't support this platform
+    if (kDebugMode) {
+      print('Notification permission request error: $e');
+    }
   }
 
   await prepareRun();

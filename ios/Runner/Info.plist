@@ -69,5 +69,8 @@
 	<string>Saturn needs access to save album artwork to your photo library.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Saturn needs access to save album artwork to your photo library.</string>
+	<!-- User Notifications for download progress and completion -->
+    <key>NSUserNotificationAlertStyle</key>
+    <string>Saturn uses notifications to provide you updates on your downloads.</string>
 </dict>
 </plist>

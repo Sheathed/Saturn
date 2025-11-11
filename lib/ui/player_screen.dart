@@ -748,10 +748,13 @@ class _PlaybackControlsState extends State<PlaybackControls> {
             ),
             onPressed: () async {
               await deezerAPI.dislikeTrack(audioHandler.mediaItem.value!.id);
-              while (true) {
-                if (audioHandler.queueState.hasNext) {
-                  audioHandler.skipToNext();
-                }
+              Fluttertoast.showToast(
+                msg: 'Track disliked!'.i18n,
+                gravity: ToastGravity.BOTTOM,
+                toastLength: Toast.LENGTH_SHORT,
+              );
+              if (audioHandler.queueState.hasNext) {
+                audioHandler.skipToNext();
               }
             },
           ),

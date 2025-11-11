@@ -75,6 +75,11 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           e['action'] == 'onDownloadError') {
         _load();
       }
+
+      //Downloads added - reload to show new downloads
+      if (e['action'] == 'onDownloadsAdded') {
+        _load();
+      }
     });
 
     super.initState();

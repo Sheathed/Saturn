@@ -570,7 +570,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     if (Platform.isAndroid || Platform.isIOS) {
       directory = await getExternalStorageDirectory();
     } else {
-      directory = await getDownloadsDirectory();
+      directory = await getApplicationSupportDirectory();
     }
     offlinePath = p.join(directory!.path, 'offline/');
 

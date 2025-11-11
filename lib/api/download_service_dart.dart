@@ -6,6 +6,7 @@ import 'package:metatagger/metatagger.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/deezer.dart';
 import '../api/download_isolate.dart';
@@ -32,6 +33,14 @@ class DownloadServiceDart {
   final List<DownloadIsolateManager> _isolates = [];
   Timer? _progressUpdateTimer;
 
+  // Notification support
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+  bool _notificationsInitialized = false;
+  static const int _notificationIdStart = 6969;
+  static const String _channelId = 'saturn_downloads';
+  static const String _channelName = 'Downloads';
+
   int get maxThreads => settings.downloadThreads;
 
   Stream<Map<String, dynamic>> get serviceEvents => _serviceEvents.stream;
@@ -52,7 +61,98 @@ class DownloadServiceDart {
       _isolates.add(isolate);
     }
 
+    // Initialize notifications
+    await _initNotifications();
+
+    // Load existing downloads from database
+    await _loadDownloads();
+
     _createProgressUpdateTimer();
+  }
+
+  /// Initialize notifications
+  Future<void> _initNotifications() async {
+    try {
+      // Platform-specific initialization settings
+      const androidSettings = AndroidInitializationSettings(
+        '@mipmap/ic_launcher',
+      );
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
+      const macosSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
+      const linuxSettings = LinuxInitializationSettings(
+        defaultActionName: 'Open',
+      );
+      const windowsSettings = WindowsInitializationSettings(
+        appName: 'Saturn',
+        appUserModelId: 's.s.saturn.SaturnApp',
+        guid: '8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a', // Windows 10/11 GUID
+      );
+
+      // Initialize for all platforms
+      final initSettings = InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+        macOS: macosSettings,
+        linux: linuxSettings,
+        windows: windowsSettings,
+      );
+
+      final initialized = await _notificationsPlugin.initialize(initSettings);
+
+      if (initialized == false) {
+        _logger?.log('Notification initialization returned false');
+      }
+
+      // Create notification channel on Android
+      if (Platform.isAndroid) {
+        const androidChannel = AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: 'Download progress notifications',
+          importance: Importance.low,
+          enableVibration: false,
+          playSound: false,
+        );
+
+        await _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.createNotificationChannel(androidChannel);
+      }
+
+      // Request permissions on iOS/macOS
+      if (Platform.isIOS || Platform.isMacOS) {
+        await _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin
+            >()
+            ?.requestPermissions(alert: true, badge: false, sound: false);
+
+        await _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              MacOSFlutterLocalNotificationsPlugin
+            >()
+            ?.requestPermissions(alert: true, badge: false, sound: false);
+      }
+
+      _notificationsInitialized = true;
+      _logger?.log(
+        'Notifications initialized successfully for ${Platform.operatingSystem}',
+      );
+    } catch (e, stackTrace) {
+      _logger?.error('Failed to initialize notifications: $e');
+      _logger?.error('Stack trace: $stackTrace');
+      _notificationsInitialized = false;
+    }
   }
 
   void _createProgressUpdateTimer() {
@@ -85,6 +185,16 @@ class DownloadServiceDart {
       await isolate.stop();
     }
     _isolates.clear();
+
+    // Cancel all download notifications
+    if (_notificationsInitialized) {
+      for (var thread in _threads) {
+        await _notificationsPlugin.cancel(
+          _notificationIdStart + thread.download.id,
+        );
+      }
+    }
+
     _updateState();
   }
 
@@ -155,6 +265,12 @@ class DownloadServiceDart {
     }
 
     await _loadDownloads();
+
+    // Emit event to notify UI that downloads were added
+    _serviceEvents.add({
+      'action': 'onDownloadsAdded',
+      'count': downloads.length,
+    });
   }
 
   /// Remove download
@@ -254,6 +370,10 @@ class DownloadServiceDart {
           // Log completion/error
           if (state == DownloadStateDart.DONE) {
             _logger?.log('Download completed: ${d.title}');
+
+            // Show completion notification
+            await _showCompletionNotification(d);
+
             _serviceEvents.add({
               'action': 'onDownloadComplete',
               'id': d.id,
@@ -370,6 +490,207 @@ class DownloadServiceDart {
         .toList();
 
     _serviceEvents.add({'action': 'onProgress', 'data': downloads});
+
+    // Update notifications
+    if (_notificationsInitialized) {
+      for (var thread in _threads) {
+        _updateNotification(thread.download);
+      }
+    }
+  }
+
+  /// Update or cancel notification for a download
+  Future<void> _updateNotification(DownloadTask download) async {
+    if (!_notificationsInitialized) return;
+
+    final notificationId = _notificationIdStart + download.id;
+
+    // Cancel notification for done/none/error downloads
+    if (download.state == DownloadStateDart.NONE || download.state.index >= 3) {
+      await _notificationsPlugin.cancel(notificationId);
+      return;
+    }
+
+    // On desktop (Windows/Linux/macOS), only show completion notification
+    // to avoid notification spam since we can't update in-place reliably
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Don't show progress notifications on desktop
+      return;
+    }
+
+    // Mobile (Android/iOS) - show progress notifications
+    if (Platform.isAndroid) {
+      await _showAndroidNotification(download, notificationId);
+    } else if (Platform.isIOS) {
+      await _showIOSNotification(download, notificationId);
+    }
+  }
+
+  /// Show Android notification with progress
+  Future<void> _showAndroidNotification(
+    DownloadTask download,
+    int notificationId,
+  ) async {
+    final androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: 'Download progress notifications',
+      importance: Importance.low,
+      priority: Priority.low,
+      showProgress: download.state == DownloadStateDart.DOWNLOADING,
+      maxProgress: download.filesize > 0 ? download.filesize : 100,
+      progress: download.received,
+      indeterminate: download.state == DownloadStateDart.POST,
+      ongoing: true,
+      autoCancel: false,
+      enableVibration: false,
+      playSound: false,
+    );
+
+    final notificationDetails = NotificationDetails(android: androidDetails);
+
+    String contentText;
+    if (download.state == DownloadStateDart.DOWNLOADING) {
+      contentText =
+          '${_formatFilesize(download.received)} / ${_formatFilesize(download.filesize)}';
+    } else if (download.state == DownloadStateDart.POST) {
+      contentText = 'Post processing...';
+    } else {
+      contentText = 'Downloading...';
+    }
+
+    await _notificationsPlugin.show(
+      notificationId,
+      download.title,
+      contentText,
+      notificationDetails,
+    );
+  }
+
+  /// Show iOS notification (simplified, no progress bar)
+  Future<void> _showIOSNotification(
+    DownloadTask download,
+    int notificationId,
+  ) async {
+    final iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: false,
+      presentSound: false,
+    );
+
+    final notificationDetails = NotificationDetails(iOS: iosDetails);
+
+    String contentText;
+    if (download.state == DownloadStateDart.DOWNLOADING) {
+      contentText =
+          '${_formatFilesize(download.received)} / ${_formatFilesize(download.filesize)}';
+    } else if (download.state == DownloadStateDart.POST) {
+      contentText = 'Post processing...';
+    } else {
+      contentText = 'Downloading...';
+    }
+
+    await _notificationsPlugin.show(
+      notificationId,
+      download.title,
+      contentText,
+      notificationDetails,
+    );
+  }
+
+  /// Show completion notification (for all platforms)
+  Future<void> _showCompletionNotification(DownloadTask download) async {
+    if (!_notificationsInitialized) return;
+
+    const notificationId = 9999; // Use a fixed ID for completion notifications
+
+    try {
+      if (Platform.isAndroid) {
+        const androidDetails = AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: 'Download completion notifications',
+          importance: Importance.low,
+          priority: Priority.low,
+          enableVibration: false,
+          playSound: false,
+          autoCancel: true,
+        );
+        const notificationDetails = NotificationDetails(
+          android: androidDetails,
+        );
+
+        await _notificationsPlugin.show(
+          notificationId,
+          'Download Complete',
+          download.title,
+          notificationDetails,
+        );
+      } else if (Platform.isIOS) {
+        const iosDetails = DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: false,
+          presentSound: false,
+        );
+        const notificationDetails = NotificationDetails(iOS: iosDetails);
+
+        await _notificationsPlugin.show(
+          notificationId,
+          'Download Complete',
+          download.title,
+          notificationDetails,
+        );
+      } else if (Platform.isMacOS) {
+        const macDetails = DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: false,
+          presentSound: false,
+        );
+        const notificationDetails = NotificationDetails(macOS: macDetails);
+
+        await _notificationsPlugin.show(
+          notificationId,
+          'Download Complete',
+          download.title,
+          notificationDetails,
+        );
+      } else if (Platform.isLinux) {
+        const linuxDetails = LinuxNotificationDetails(
+          urgency: LinuxNotificationUrgency.low,
+        );
+        const notificationDetails = NotificationDetails(linux: linuxDetails);
+
+        await _notificationsPlugin.show(
+          notificationId,
+          'Download Complete',
+          download.title,
+          notificationDetails,
+        );
+      } else if (Platform.isWindows) {
+        // Windows notification
+        await _notificationsPlugin.show(
+          notificationId,
+          'Download Complete',
+          download.title,
+          null, // Windows will use default notification details
+        );
+      }
+
+      _logger?.log('Completion notification shown for: ${download.title}');
+    } catch (e, stackTrace) {
+      _logger?.error('Failed to show completion notification: $e');
+      _logger?.error('Stack trace: $stackTrace');
+    }
+  }
+
+  /// Format file size for display
+  String _formatFilesize(int size) {
+    if (size <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    int digitGroups = (size.toString().length - 1) ~/ 3;
+    if (digitGroups >= units.length) digitGroups = units.length - 1;
+    double value = size / (1024 * digitGroups);
+    return '${value.toStringAsFixed(2)} ${units[digitGroups]}';
   }
 
   /// Update settings
@@ -408,6 +729,12 @@ class DownloadServiceDart {
   Future<void> dispose() async {
     await stop();
     _progressUpdateTimer?.cancel();
+
+    // Cancel all notifications
+    if (_notificationsInitialized) {
+      await _notificationsPlugin.cancelAll();
+    }
+
     await _logger?.close();
     await _serviceEvents.close();
   }
@@ -583,7 +910,7 @@ class DownloadThread {
     if (Platform.isAndroid || Platform.isIOS) {
       directory = await getExternalStorageDirectory();
     } else {
-      directory = await getDownloadsDirectory();
+      directory = await getApplicationSupportDirectory();
     }
 
     if (directory == null) {
@@ -597,6 +924,9 @@ class DownloadThread {
     // Download file
     final success = await _downloadFile(url, tmpFile);
     if (!success) return;
+
+    // Set state to POST processing
+    download.state = DownloadStateDart.POST;
 
     // Decrypt if needed
     File finalFile = tmpFile;
@@ -628,8 +958,16 @@ class DownloadThread {
 
     // Cover & Tags for non-private downloads
     if (!download.private && track != null) {
-      // Download cover art
+      // Always download cover art for tagging purposes
+      final coverPath =
+          outFile.path.substring(0, outFile.path.lastIndexOf('.')) + '.jpg';
+      final coverFile = File(coverPath);
       await _downloadCoverArt(outFile, track);
+
+      // Download album cover if enabled
+      if (settings.albumCover) {
+        await _downloadAlbumCover(outFile, track, album);
+      }
 
       // Download LRC lyrics if enabled
       if (settings.downloadLyrics) {
@@ -638,6 +976,12 @@ class DownloadThread {
 
       // Tag file with metadata
       await _tagFile(outFile, track);
+
+      // Delete track cover if trackCover setting is disabled
+      if (!settings.trackCover && await coverFile.exists()) {
+        await coverFile.delete();
+        logger.log('Deleted track cover (trackCover setting disabled)');
+      }
     }
 
     download.state = DownloadStateDart.DONE;
@@ -881,20 +1225,141 @@ class DownloadThread {
           audioFile.path.substring(0, audioFile.path.lastIndexOf('.')) + '.jpg';
       final coverFile = File(coverPath);
 
-      // Get cover URL
-      final coverUrl = track.albumArt?.full ?? track.album?.art?.full;
-      if (coverUrl == null) return;
+      // Get image hash (MD5) for cover image
+      String? imageHash;
+      if (track.albumArt?.imageHash != null) {
+        imageHash = track.albumArt!.imageHash;
+      } else if (track.album?.art?.imageHash != null) {
+        imageHash = track.album!.art!.imageHash;
+      }
+
+      if (imageHash == null) {
+        // Fallback: try to get from public API
+        try {
+          Map<dynamic, dynamic> publicTrack = await deezer.callPublicApi(
+            '/track/${download.trackId}',
+          );
+          if (publicTrack['album'] != null &&
+              publicTrack['album']['md5_image'] != null) {
+            imageHash = publicTrack['album']['md5_image'];
+          }
+        } catch (e) {
+          logger.log('Could not fetch image hash from public API: $e');
+        }
+      }
+
+      if (imageHash == null) {
+        logger.log('No album art hash found for track');
+        return;
+      }
+
+      // Use settings for album art resolution
+      final resolution = settings.albumArtResolution;
+      final coverUrl =
+          'http://e-cdn-images.deezer.com/images/cover/$imageHash/${resolution}x$resolution-000000-80-0-0.jpg';
 
       // Download cover
       final response = await http.get(Uri.parse(coverUrl));
       if (response.statusCode == 200) {
         await coverFile.writeAsBytes(response.bodyBytes);
+        logger.log('Downloaded track cover art: ${coverFile.path}');
       }
     } catch (e) {
       logger.error(
         'Error downloading cover! $e',
         DownloadInfo(trackId: download.trackId, id: download.id),
       );
+    }
+  }
+
+  /// Download album cover (cover.jpg in album folder)
+  Future<void> _downloadAlbumCover(
+    File audioFile,
+    Track track,
+    Album? album,
+  ) async {
+    try {
+      // Check if path contains %album% placeholder (has album folder)
+      if (!download.path.contains('%album%')) {
+        return;
+      }
+
+      final parentDir = audioFile.parent;
+      final coverFile = File(p.join(parentDir.path, 'cover.jpg'));
+
+      // Don't download if already exists
+      if (await coverFile.exists()) {
+        return;
+      }
+
+      // Get image hash (MD5) for cover image
+      String? imageHash;
+      if (album?.art?.imageHash != null) {
+        imageHash = album!.art!.imageHash;
+      } else if (track.album?.art?.imageHash != null) {
+        imageHash = track.album!.art!.imageHash;
+      } else if (track.albumArt?.imageHash != null) {
+        imageHash = track.albumArt!.imageHash;
+      }
+
+      if (imageHash == null) {
+        // Fallback: try to get from public API
+        try {
+          Map<dynamic, dynamic> publicAlbum = await deezer.callPublicApi(
+            '/album/${track.album?.id}',
+          );
+          if (publicAlbum['md5_image'] != null) {
+            imageHash = publicAlbum['md5_image'];
+          }
+        } catch (e) {
+          logger.log('Could not fetch image hash from public API: $e');
+        }
+      }
+
+      if (imageHash == null) {
+        logger.log('No album art hash found for album cover');
+        return;
+      }
+
+      // Use settings for album art resolution
+      final resolution = settings.albumArtResolution;
+      final coverUrl =
+          'http://e-cdn-images.deezer.com/images/cover/$imageHash/${resolution}x$resolution-000000-80-0-0.jpg';
+
+      // Create file to lock it
+      await coverFile.create(recursive: true);
+
+      // Download cover
+      final response = await http.get(Uri.parse(coverUrl));
+      if (response.statusCode == 200) {
+        await coverFile.writeAsBytes(response.bodyBytes);
+        logger.log('Downloaded album cover: ${coverFile.path}');
+
+        // Create .nomedia file if enabled
+        if (settings.nomediaFiles) {
+          final nomediaFile = File(p.join(parentDir.path, '.nomedia'));
+          if (!await nomediaFile.exists()) {
+            await nomediaFile.create();
+            logger.log('Created .nomedia file in ${parentDir.path}');
+          }
+        }
+      } else {
+        // Delete failed file
+        await coverFile.delete();
+      }
+    } catch (e) {
+      logger.error(
+        'Error downloading album cover! $e',
+        DownloadInfo(trackId: download.trackId, id: download.id),
+      );
+      // Clean up on error
+      try {
+        final parentDir = audioFile.parent;
+        final coverFile = File(p.join(parentDir.path, 'cover.jpg'));
+        if (await coverFile.exists()) {
+          await coverFile.delete();
+        }
+      } catch (_) {}
     }
   }
 
@@ -980,7 +1445,7 @@ class DownloadThread {
         '/album/${track.album?.id}',
       );
       Map<dynamic, dynamic> publicTrack = await deezer.callPublicApi(
-        '/track/${track.album?.id}',
+        '/track/${download.trackId}',
       );
 
       // Title
@@ -1033,12 +1498,11 @@ class DownloadThread {
 
       // Track total
       if (settings.tags.contains('trackTotal') &&
-          track.album != null &&
-          track.album!.tracks != null) {
+          publicAlbum['nb_tracks'] != null) {
         tags.add(
           MetadataTag.text(
             CommonTags.trackTotal,
-            track.album!.tracks!.length.toString(),
+            publicAlbum['nb_tracks'].toString(),
           ),
         );
       }
@@ -1049,15 +1513,19 @@ class DownloadThread {
       }
 
       // Genre
-      int genreId = publicAlbum['genre_id'];
-      if (settings.tags.contains('genre') &&
-          publicAlbum['genres'][genreId] != null) {
-        tags.add(
-          MetadataTag.text(
-            CommonTags.genre,
-            publicAlbum['genres'][genreId]['name'],
-          ),
-        );
+      if (settings.tags.contains('genre')) {
+        String? genreName;
+
+        // Try to get genre from genres array
+        if (publicAlbum['genres'] != null &&
+            publicAlbum['genres']['data'] != null &&
+            (publicAlbum['genres']['data'] as List).isNotEmpty) {
+          genreName = publicAlbum['genres']['data'][0]['name'];
+        }
+
+        if (genreName != null) {
+          tags.add(MetadataTag.text(CommonTags.genre, genreName));
+        }
       }
 
       // BPM
@@ -1069,21 +1537,17 @@ class DownloadThread {
 
       // Label
       if (settings.tags.contains('label') && publicAlbum['label'] != null) {
-        tags.add(
-          MetadataTag(key: CommonTags.label, value: publicAlbum['label']),
-        );
+        tags.add(MetadataTag.text(CommonTags.label, publicAlbum['label']));
       }
 
       // ISRC
       if (settings.tags.contains('isrc') && publicTrack['isrc'] != null) {
-        tags.add(MetadataTag(key: CommonTags.isrc, value: publicTrack['isrc']));
+        tags.add(MetadataTag.text(CommonTags.isrc, publicTrack['isrc']));
       }
 
       // UPC
       if (settings.tags.contains('upc') && publicAlbum['upc'] != null) {
-        tags.add(
-          MetadataTag(key: CommonTags.barcode, value: publicAlbum['upc']),
-        );
+        tags.add(MetadataTag.text(CommonTags.barcode, publicAlbum['upc']));
       }
 
       // Lyrics

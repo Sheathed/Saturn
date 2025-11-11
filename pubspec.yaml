@@ -101,6 +101,7 @@ dependencies:
       url: https://github.com/KRTirtho/scrobblenaut.git
   external_path: ^2.2.0 
   flutter_discord_rpc: ^1.1.0
+  flutter_local_notifications: ^19.5.0
 
 dev_dependencies:
   flutter_test:

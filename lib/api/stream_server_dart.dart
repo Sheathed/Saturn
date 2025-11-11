@@ -35,7 +35,7 @@ class StreamServerDart {
     if (Platform.isAndroid || Platform.isIOS) {
       directory = await getExternalStorageDirectory();
     } else {
-      directory = await getDownloadsDirectory();
+      directory = await getApplicationSupportDirectory();
     }
 
     _offlinePath = p.join(directory!.path, 'offline/');

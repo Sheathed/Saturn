@@ -846,7 +846,11 @@ class MenuSheet {
     },
   );
 
-  void _close(BuildContext context) => Navigator.of(context).pop();
+  void _close(BuildContext context) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  } 
 }
 
 class SleepTimerDialog extends StatefulWidget {

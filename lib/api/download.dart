@@ -95,7 +95,7 @@ class DownloadManager {
     if (Platform.isAndroid || Platform.isIOS) {
       directory = await getExternalStorageDirectory();
     } else {
-      directory = await getDownloadsDirectory();
+      directory = await getApplicationSupportDirectory();
     }
     offlinePath = p.join((await getDatabasesPath()), 'offline/');
     await Directory(offlinePath!).create(recursive: true);
@@ -106,20 +106,6 @@ class DownloadManager {
 
     //Update settings
     await updateServiceSettings();
-
-    // Initialize download service
-    await _downloadService.init(db!);
-
-    //Listen to state change event from Dart service
-    _downloadService.serviceEvents.listen((e) {
-      if (e['action'] == 'onStateChange') {
-        running = e['running'];
-        queueSize = e['queueSize'];
-      }
-
-      //Forward
-      serviceEvents.add(e);
-    });
 
     // Create Downloads table if it doesn't exist
     await db!.execute('''CREATE TABLE IF NOT EXISTS Downloads (
@@ -136,6 +122,20 @@ class DownloadManager {
       trackToken TEXT,
       streamTrackId TEXT
     )''');
+
+    // Initialize download service (this will try to load downloads from DB)
+    await _downloadService.init(db!);
+
+    //Listen to state change event from Dart service
+    _downloadService.serviceEvents.listen((e) {
+      if (e['action'] == 'onStateChange') {
+        running = e['running'];
+        queueSize = e['queueSize'];
+      }
+
+      //Forward
+      serviceEvents.add(e);
+    });
   }
 
   //Get all downloads from db

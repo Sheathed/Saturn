@@ -41,5 +41,8 @@
 	<array>
 		<string>_http._tcp</string>
 	</array>
+	<!-- User Notifications for download progress and completion -->
+    <key>NSUserNotificationAlertStyle</key>
+    <string>Saturn uses notifications to provide you updates on your downloads.</string>
 </dict>
 </plist>

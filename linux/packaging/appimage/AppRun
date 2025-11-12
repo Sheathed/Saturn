@@ -1,0 +1,58 @@
+#!/bin/bash
+set -e
+
+# Get the directory where this script is located (the AppImage root)
+APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Export library path to include bundled libraries
+export LD_LIBRARY_PATH="${APPDIR}/lib:${LD_LIBRARY_PATH}"
+
+# Try to find the dynamic linker in common locations
+find_ld_linux() {
+    local ld_name="ld-linux-x86-64.so.2"
+    
+    # Check common locations in order of preference
+    for path in \
+        "/lib64/${ld_name}" \
+        "/lib/${ld_name}" \
+        "/lib/x86_64-linux-gnu/${ld_name}" \
+        "/usr/lib64/${ld_name}" \
+        "/usr/lib/${ld_name}"; do
+        if [ -f "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    
+    # If not found in standard locations, try using ldd to find it
+    if command -v ldd &> /dev/null; then
+        local ldd_output=$(ldd /bin/bash 2>/dev/null | grep "ld-linux" | awk '{print $1}')
+        if [ -n "$ldd_output" ] && [ -f "$ldd_output" ]; then
+            echo "$ldd_output"
+            return 0
+        fi
+    fi
+    
+    # If still not found, try using ldconfig
+    if command -v ldconfig &> /dev/null; then
+        local ldconfig_output=$(ldconfig -p 2>/dev/null | grep "ld-linux-x86-64.so.2" | awk '{print $NF}')
+        if [ -n "$ldconfig_output" ] && [ -f "$ldconfig_output" ]; then
+            echo "$ldconfig_output"
+            return 0
+        fi
+    fi
+    
+    return 1
+}
+
+# Get the path to the dynamic linker
+LD_LINUX=$(find_ld_linux)
+
+if [ -z "$LD_LINUX" ]; then
+    echo "Error: Could not find dynamic linker (ld-linux-x86-64.so.2)" >&2
+    echo "Tried common locations: /lib64, /lib, /lib/x86_64-linux-gnu, /usr/lib64, /usr/lib" >&2
+    exit 1
+fi
+
+# Execute the Saturn binary with the found dynamic linker
+exec "$LD_LINUX" --library-path "${APPDIR}/lib:${LD_LIBRARY_PATH}" "${APPDIR}/Saturn" "$@"

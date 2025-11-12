@@ -112,6 +112,49 @@ jobs:
       - name: Build and release
         run: fastforge release --name linux
 
+      - name: Replace AppRun
+        run: |
+          # Find the AppImage file
+          APPIMAGE_FILE=$(find dist -name "*.AppImage" -type f | head -1)
+          if [ -z "$APPIMAGE_FILE" ]; then
+            echo "No AppImage found, skipping AppRun replacement"
+            exit 0
+          fi
+          
+          # Convert to absolute path
+          APPIMAGE_FILE="$(cd "$(dirname "$APPIMAGE_FILE")" && pwd)/$(basename "$APPIMAGE_FILE")"
+          echo "Found AppImage: $APPIMAGE_FILE"
+          
+          # Make AppImage executable
+          chmod +x "$APPIMAGE_FILE"
+          
+          # Extract the AppImage
+          APPIMAGE_DIR=$(mktemp -d)
+          echo "Extracting to: $APPIMAGE_DIR"
+          cd "$APPIMAGE_DIR"
+          "$APPIMAGE_FILE" --appimage-extract
+          
+          # Check if extraction was successful
+          if [ ! -d squashfs-root ]; then
+            echo "Error: AppImage extraction failed"
+            exit 1
+          fi
+          
+          # Replace the AppRun script with our distro-agnostic version
+          if [ -f squashfs-root/AppRun ]; then
+            cp "$GITHUB_WORKSPACE/linux/packaging/appimage/AppRun" squashfs-root/AppRun
+            chmod +x squashfs-root/AppRun
+            echo "Replaced AppRun script"
+          else
+            echo "Warning: AppRun not found in extracted AppImage"
+          fi
+          
+          # Rebuild the AppImage
+          cd "$GITHUB_WORKSPACE"
+          appimagetool -n "$APPIMAGE_DIR/squashfs-root" "$APPIMAGE_FILE"
+          rm -rf "$APPIMAGE_DIR"
+          echo "AppImage rebuilt with custom AppRun"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

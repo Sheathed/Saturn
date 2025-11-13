@@ -19,6 +19,7 @@ import '../ui/details_screens.dart';
 import '../ui/elements.dart';
 import '../ui/error.dart';
 import '../ui/tiles.dart';
+import '../ui/local_playlists.dart';
 import 'menu.dart';
 
 class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -1199,6 +1200,10 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
                 ),
               ),
             ),
+            LocalPlaylistsSection(
+              onPlaylistsChanged: () => setState(() {}),
+            ),
+            const FreezerDivider(),
             ListTile(
               title: Text('Create new playlist'.i18n),
               leading: const LeadingIcon(

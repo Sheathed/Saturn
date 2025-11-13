@@ -1006,7 +1006,10 @@ class _SelectPlaylistDialogState extends State<SelectPlaylistDialog> {
     return AlertDialog(
       title: Text('Select playlist'.i18n),
       content: FutureBuilder(
-        future: deezerAPI.getPlaylists(),
+        future: Future.wait([
+          deezerAPI.getPlaylists(),
+          downloadManager.localPlaylistManager.getAllPlaylists(),
+        ]),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             const SizedBox(height: 100, child: ErrorScreen());
@@ -1023,26 +1026,65 @@ class _SelectPlaylistDialogState extends State<SelectPlaylistDialog> {
           }
 
           // Check if snapshot has data before accessing it
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          if (!snapshot.hasData || snapshot.data == null) {
             return const SizedBox(child: ErrorScreen());
           }
 
-          List<Playlist> playlists = snapshot.data!;
+          List<Playlist> deezerPlaylists = snapshot.data![0] as List<Playlist>;
+          List<LocalPlaylist> localPlaylists = snapshot.data![1] as List<LocalPlaylist>;
+
           return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ...List.generate(
-                  playlists.length,
-                  (i) => ListTile(
-                    title: Text(playlists[i].title!),
-                    leading: CachedImage(url: playlists[i].image?.thumb ?? ''),
-                    onTap: () {
-                      widget.callback(playlists[i]);
-                      Navigator.of(context).pop();
-                    },
+                // Local Playlists Section
+                if (localPlaylists.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                    child: Text(
+                      'Local Playlists'.i18n,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
+                  ...List.generate(
+                    localPlaylists.length,
+                    (i) => ListTile(
+                      title: Text(localPlaylists[i].title),
+                      leading: const Icon(Icons.playlist_play),
+                      onTap: () {
+                        // Add track ID to local playlist
+                        downloadManager.localPlaylistManager.addTracksToPlaylist(
+                          localPlaylists[i].id,
+                          [widget.track!.id!],
+                        );
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                  const Divider(),
+                ],
+                // Deezer Playlists Section
+                if (deezerPlaylists.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                    child: Text(
+                      'Deezer Playlists'.i18n,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  ...List.generate(
+                    deezerPlaylists.length,
+                    (i) => ListTile(
+                      title: Text(deezerPlaylists[i].title!),
+                      leading: CachedImage(url: deezerPlaylists[i].image?.thumb ?? ''),
+                      onTap: () {
+                        widget.callback(deezerPlaylists[i]);
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                  ),
+                  const Divider(),
+                ],
                 ListTile(
                   title: Text('Create new playlist'.i18n),
                   leading: const Icon(Icons.add),

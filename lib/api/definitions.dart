@@ -546,6 +546,71 @@ class Playlist {
 }
 
 @JsonSerializable()
+class LocalPlaylist {
+  String id;
+  String title;
+  String? description;
+  List<String> trackIds;
+  DateTime createdAt;
+  DateTime updatedAt;
+
+  LocalPlaylist({
+    required this.id,
+    required this.title,
+    this.description,
+    required this.trackIds,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  int get trackCount => trackIds.length;
+
+  Duration get duration => Duration.zero;
+
+  String get durationString => "0:00:00";
+
+  Map<String, dynamic> toExportJson() => {
+    'title': title,
+    'description': description,
+    'trackIds': trackIds,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+  };
+
+  factory LocalPlaylist.fromExportJson(Map<String, dynamic> json) =>
+      LocalPlaylist(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: json['title'] ?? 'Imported Playlist',
+        description: json['description'],
+        trackIds: List<String>.from(json['trackIds'] ?? []),
+        createdAt: DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
+        updatedAt: DateTime.parse(json['updatedAt'] ?? DateTime.now().toIso8601String()),
+      );
+
+  Map<String, dynamic> toSQL() => {
+    'id': id,
+    'title': title,
+    'description': description,
+    'trackIds': trackIds.join(','),
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+  };
+
+  factory LocalPlaylist.fromSQL(Map<String, dynamic> data) => LocalPlaylist(
+    id: data['id'],
+    title: data['title'],
+    description: data['description'],
+    trackIds: (data['trackIds'] as String?)?.split(',').where((id) => id.isNotEmpty).toList() ?? [],
+    createdAt: DateTime.parse(data['createdAt']),
+    updatedAt: DateTime.parse(data['updatedAt']),
+  );
+
+  factory LocalPlaylist.fromJson(Map<String, dynamic> json) =>
+      _$LocalPlaylistFromJson(json);
+  Map<String, dynamic> toJson() => _$LocalPlaylistToJson(this);
+}
+
+@JsonSerializable()
 class User {
   String? id;
   String? name;

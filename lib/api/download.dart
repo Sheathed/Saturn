@@ -16,6 +16,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../ui/toast.dart';
 import '../api/deezer.dart';
 import '../api/definitions.dart';
+import '../api/local_playlist_manager.dart';
 import '../utils/navigator_keys.dart';
 import '../router/app_router.dart';
 import '../settings.dart';
@@ -38,6 +39,9 @@ class DownloadManager {
 
   // Dart download service
   final DownloadServiceDart _downloadService = DownloadServiceDart();
+  
+  // Local playlist manager
+  late LocalPlaylistManager localPlaylistManager;
 
   //Start/Resume downloads
   Future start() async {
@@ -125,6 +129,10 @@ class DownloadManager {
 
     // Initialize download service (this will try to load downloads from DB)
     await _downloadService.init(db!);
+
+    // Initialize local playlist manager
+    localPlaylistManager = LocalPlaylistManager();
+    await localPlaylistManager.init(db!);
 
     //Listen to state change event from Dart service
     _downloadService.serviceEvents.listen((e) {

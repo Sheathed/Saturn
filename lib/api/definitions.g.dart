@@ -190,6 +190,28 @@ Map<String, dynamic> _$PlaylistToJson(Playlist instance) => <String, dynamic>{
   'description': instance.description,
 };
 
+LocalPlaylist _$LocalPlaylistFromJson(Map<String, dynamic> json) =>
+    LocalPlaylist(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String?,
+      trackIds: (json['trackIds'] as List<dynamic>)
+          .map((e) => e as String)
+          .toList(),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+    );
+
+Map<String, dynamic> _$LocalPlaylistToJson(LocalPlaylist instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'title': instance.title,
+      'description': instance.description,
+      'trackIds': instance.trackIds,
+      'createdAt': instance.createdAt.toIso8601String(),
+      'updatedAt': instance.updatedAt.toIso8601String(),
+    };
+
 User _$UserFromJson(Map<String, dynamic> json) => User(
   id: json['id'] as String?,
   name: json['name'] as String?,

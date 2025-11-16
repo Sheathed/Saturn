@@ -1,58 +1,69 @@
 #!/bin/bash
-set -e
 
-# Get the directory where this script is located (the AppImage root)
+set -u
+
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SATURN_BIN="${APPDIR}/Saturn"
 
-# Export library path to include bundled libraries
-export LD_LIBRARY_PATH="${APPDIR}/lib:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${APPDIR}/lib:${APPDIR}/lib64"
 
-# Try to find the dynamic linker in common locations
-find_ld_linux() {
-    local ld_name="ld-linux-x86-64.so.2"
-    
-    # Check common locations in order of preference
-    for path in \
-        "/lib64/${ld_name}" \
-        "/lib/${ld_name}" \
-        "/lib/x86_64-linux-gnu/${ld_name}" \
-        "/usr/lib64/${ld_name}" \
-        "/usr/lib/${ld_name}"; do
-        if [ -f "$path" ]; then
-            echo "$path"
-            return 0
-        fi
-    done
-    
-    # If not found in standard locations, try using ldd to find it
-    if command -v ldd &> /dev/null; then
-        local ldd_output=$(ldd /bin/bash 2>/dev/null | grep "ld-linux" | awk '{print $1}')
-        if [ -n "$ldd_output" ] && [ -f "$ldd_output" ]; then
-            echo "$ldd_output"
-            return 0
-        fi
+SYSTEM_LIBDIRS=(
+    "/usr/lib/x86_64-linux-gnu"      # Debian/Ubuntu
+    "/usr/lib64"                     # Fedora/RHEL/openSUSE (64-bit)
+    "/usr/lib"                       # Generic (many distros)
+    "/lib/x86_64-linux-gnu"          # Debian/Ubuntu
+    "/lib64"                         # Fedora/RHEL/openSUSE (64-bit)
+    "/lib"                           # Generic (Arch, Alpine, etc.)
+    "/usr/local/lib"                 # User-installed libraries
+    "/usr/local/lib64"               # User-installed libraries (64-bit)
+)
+
+for libdir in "${SYSTEM_LIBDIRS[@]}"; do
+    if [ -d "$libdir" ]; then
+        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${libdir}"
     fi
-    
-    # If still not found, try using ldconfig
-    if command -v ldconfig &> /dev/null; then
-        local ldconfig_output=$(ldconfig -p 2>/dev/null | grep "ld-linux-x86-64.so.2" | awk '{print $NF}')
-        if [ -n "$ldconfig_output" ] && [ -f "$ldconfig_output" ]; then
-            echo "$ldconfig_output"
-            return 0
-        fi
-    fi
-    
-    return 1
-}
+done
 
-# Get the path to the dynamic linker
-LD_LINUX=$(find_ld_linux)
-
-if [ -z "$LD_LINUX" ]; then
-    echo "Error: Could not find dynamic linker (ld-linux-x86-64.so.2)" >&2
-    echo "Tried common locations: /lib64, /lib, /lib/x86_64-linux-gnu, /usr/lib64, /usr/lib" >&2
-    exit 1
+# Preserve any existing LD_LIBRARY_PATH from the user's environment
+if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}"
 fi
 
-# Execute the Saturn binary with the found dynamic linker
-exec "$LD_LINUX" --library-path "${APPDIR}/lib:${LD_LIBRARY_PATH}" "${APPDIR}/Saturn" "$@"
+if [ -x "$SATURN_BIN" ]; then
+    # check if AOT library exists and is readable
+    if [ -f "${APPDIR}/lib/libapp.so" ]; then
+        export FLUTTER_AOT_LIBRARY="${APPDIR}/lib/libapp.so"
+    fi
+    exec "$SATURN_BIN" "$@"
+fi
+
+# all common locations for the x86-64 dynamic linker
+DYNAMIC_LINKERS=(
+    "/lib64/ld-linux-x86-64.so.2"
+    "/lib/ld-linux-x86-64.so.2"
+    "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+    "/usr/lib64/ld-linux-x86-64.so.2"
+    "/usr/lib/ld-linux-x86-64.so.2"
+)
+
+for ld_path in "${DYNAMIC_LINKERS[@]}"; do
+    if [ -f "$ld_path" ]; then
+        exec "$ld_path" --library-path "${LD_LIBRARY_PATH}" "$SATURN_BIN" "$@"
+    fi
+done
+
+# GG
+echo "Error: Failed to start Saturn" >&2
+echo "" >&2
+echo "Diagnostics:" >&2
+echo "  Saturn binary: $SATURN_BIN" >&2
+echo "  Binary exists: $([ -f "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
+echo "  Binary executable: $([ -x "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
+echo "  LD_LIBRARY_PATH: ${LD_LIBRARY_PATH}" >&2
+echo "" >&2
+echo "To fix this, ensure the following packages are installed:" >&2
+echo "  Arch Linux:        pacman -S gtk3 libayatana-appindicator" >&2
+echo "  Debian/Ubuntu:     apt install libgtk-3-0 libayatana-appindicator3-1" >&2
+echo "  Fedora/RHEL:       dnf install gtk3 libayatana-appindicator" >&2
+echo "  openSUSE:          zypper install gtk3 libayatana-appindicator3" >&2
+exit 1

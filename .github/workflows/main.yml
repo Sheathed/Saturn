@@ -99,6 +99,13 @@ jobs:
             libayatana-appindicator3-dev \
             libmpv-dev
       
+      - name: Set glibc compatibility
+        run: |
+          # Build with maximum glibc compatibility
+          export GLIBC_COMPATIBILITY=1
+          export CFLAGS="-march=x86-64 -mtune=generic"
+          export CXXFLAGS="-march=x86-64 -mtune=generic"
+      
       - name: Install dependencies for AppImage
         run: |
           sudo apt install -y locate

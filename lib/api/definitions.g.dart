@@ -31,6 +31,9 @@ Track _$TrackFromJson(Map<String, dynamic> json) => Track(
   diskNumber: (json['diskNumber'] as num?)?.toInt(),
   explicit: json['explicit'] as bool?,
   addedDate: (json['addedDate'] as num?)?.toInt(),
+  contributors: json['contributors'] == null
+      ? null
+      : Contributors.fromJson(json['contributors'] as Map<String, dynamic>),
   fallback: json['fallback'] == null
       ? null
       : Track.fromJson(json['fallback'] as Map<String, dynamic>),
@@ -52,11 +55,41 @@ Map<String, dynamic> _$TrackToJson(Track instance) => <String, dynamic>{
   'diskNumber': instance.diskNumber,
   'explicit': instance.explicit,
   'addedDate': instance.addedDate,
+  'contributors': instance.contributors,
   'fallback': instance.fallback,
   'variation': instance.variation,
   'playbackDetails': instance.playbackDetails,
   'playbackDetailsFallback': instance.playbackDetailsFallback,
 };
+
+Contributors _$ContributorsFromJson(Map<String, dynamic> json) => Contributors(
+  composers: (json['composers'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  engineers: (json['engineers'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  mixers: (json['mixers'] as List<dynamic>?)?.map((e) => e as String).toList(),
+  producers: (json['producers'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  authors: (json['authors'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  writers: (json['writers'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+);
+
+Map<String, dynamic> _$ContributorsToJson(Contributors instance) =>
+    <String, dynamic>{
+      'composers': instance.composers,
+      'engineers': instance.engineers,
+      'mixers': instance.mixers,
+      'producers': instance.producers,
+      'authors': instance.authors,
+      'writers': instance.writers,
+    };
 
 Album _$AlbumFromJson(Map<String, dynamic> json) => Album(
   id: json['id'] as String?,

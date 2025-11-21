@@ -11,7 +11,7 @@ import '../settings.dart';
 DeezerAPI deezerAPI = DeezerAPI();
 
 class DeezerAPI {
-  DeezerAPI({this.arl});
+  DeezerAPI({this.arl, this.settingsMap});
 
   String? arl;
   String? token;
@@ -20,21 +20,26 @@ class DeezerAPI {
   String? userName;
   String? favoritesPlaylistId;
   String? sid;
+  Map<String, dynamic>? settingsMap;
 
   Future? _authorizing;
+  
+  // Helper to get settings value, fallback to global settings if settingsMap not provided
+  String get _deezerLanguage => settingsMap?['deezerLanguage'] ?? settings.deezerLanguage;
+  String get _deezerCountry => settingsMap?['deezerCountry'] ?? settings.deezerCountry;
 
   //Get headers
   Map<String, String> get headers => {
     'User-Agent':
-        'Deezer/8.0.0.0 (Android; ${8 + Random().nextInt(8)}; Tablet; ${settings.deezerLanguage})',
-    'Content-Language': '${settings.deezerLanguage}-${settings.deezerCountry}',
+        'Deezer/8.0.0.0 (Android; ${8 + Random().nextInt(8)}; Tablet; $_deezerLanguage)',
+    'Content-Language': '$_deezerLanguage-$_deezerCountry',
     'Content-Type': 'text/plain;charset=UTF-8',
     //'origin': 'https://www.deezer.com',
     //'Cache-Control': 'max-age=0',
     'Accept': '*/*',
     'Accept-Charset': 'utf-8,ISO-8859-1;q=0.7,*;q=0.3',
     'Accept-Language':
-        '${settings.deezerLanguage}-${settings.deezerCountry},${settings.deezerLanguage};q=0.9,en-US;q=0.8,en;q=0.7',
+        '$_deezerLanguage-$_deezerCountry,$_deezerLanguage;q=0.9,en-US;q=0.8,en;q=0.7',
     'Connection': 'keep-alive',
     //'sec-fetch-site': 'same-origin',
     //'sec-fetch-mode': 'same-origin',
@@ -218,6 +223,7 @@ class DeezerAPI {
         'sng_ids': [id],
       },
     );
+    print(data);
     return Track.fromPrivateJson(data['results']['data'][0]);
   }
 
@@ -225,8 +231,16 @@ class DeezerAPI {
   Future<Album> album(String id) async {
     Map<dynamic, dynamic> data = await callGwApi(
       'deezer.pageAlbum',
-      params: {'alb_id': id, 'header': true, 'lang': settings.deezerLanguage},
+      params: {'alb_id': id, 'header': true, 'lang': _deezerLanguage},
     );
+    if (data['error'] != null && data['payload'] != null && data['payload']['FALLBACK']['ALB_ID'] != null) {
+      Map<dynamic, dynamic> fbdata = await callGwApi(
+        'deezer.pageAlbum',
+        params: {'alb_id': data['payload']['FALLBACK']['ALB_ID'], 'header': true, 'lang': _deezerLanguage},
+      );
+      data = fbdata;
+    }
+
     return Album.fromPrivateJson(
       data['results']['DATA'],
       songsJson: data['results']['SONGS'],
@@ -237,7 +251,7 @@ class DeezerAPI {
   Future<Artist> artist(String id) async {
     Map<dynamic, dynamic> data = await callGwApi(
       'deezer.pageArtist',
-      params: {'art_id': id, 'lang': settings.deezerLanguage},
+      params: {'art_id': id, 'lang': _deezerLanguage},
     );
     return Artist.fromPrivateJson(
       data['results']['DATA'],
@@ -257,7 +271,7 @@ class DeezerAPI {
       'deezer.pagePlaylist',
       params: {
         'playlist_id': id,
-        'lang': settings.deezerLanguage,
+        'lang': _deezerLanguage,
         'nb': nb,
         'tags': true,
         'start': start,
@@ -274,7 +288,7 @@ class DeezerAPI {
       'deezer.pagePlaylist',
       params: {
         'playlist_id': id,
-        'lang': settings.deezerLanguage,
+        'lang': _deezerLanguage,
         'nb': nb,
         'tags': true,
         'start': 0,
@@ -611,7 +625,7 @@ class DeezerAPI {
           'large-card': ['album', 'playlist', 'show', 'video-link'],
           'ads': [], //Nope
         },
-        'LANG': settings.deezerLanguage,
+        'LANG': _deezerLanguage,
         'OPTIONS': [],
       }),
     );
@@ -671,7 +685,7 @@ class DeezerAPI {
           'large-card': ['album', 'playlist', 'show', 'video-link'],
           'ads': [], //Nope
         },
-        'LANG': settings.deezerLanguage,
+        'LANG': _deezerLanguage,
         'OPTIONS': [],
       }),
     );
@@ -808,8 +822,8 @@ class DeezerAPI {
     Map data = await callGwApi(
       'deezer.pageShow',
       params: {
-        'country': settings.deezerCountry,
-        'lang': settings.deezerLanguage,
+        'country': _deezerCountry,
+        'lang': _deezerLanguage,
         'nb': 1000,
         'show_id': showId,
         'start': 0,

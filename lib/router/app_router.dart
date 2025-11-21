@@ -160,7 +160,7 @@ final GoRouter appRouter = GoRouter(
 
         GoRoute(
           path: '/album/:id',
-          builder: (context, state) {
+          builder: (context, state){
             final album = state.extra as Album?;
             if (album != null) {
               return AlbumDetails(album);

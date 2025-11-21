@@ -8,6 +8,7 @@ class DownloadLog {
   IOSink? _writer;
   File? _logFile;
   bool _isWriting = false;
+  bool _isClosed = false;
   final List<String> _writeQueue = [];
 
   /// Open/Create file
@@ -29,8 +30,19 @@ class DownloadLog {
 
   /// Close log
   Future<void> close() async {
+    if (_isClosed) return; // Already closed
+    _isClosed = true;
+    
     try {
+      // Wait for any pending writes to complete
+      while (_isWriting || _writeQueue.isNotEmpty) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      
+      // Now close the writer
+      await _writer?.flush();
       await _writer?.close();
+      _writer = null;
     } catch (e) {
       debugPrint('Error closing download log: $e');
     }
@@ -43,7 +55,7 @@ class DownloadLog {
 
   /// Write error to log
   void error(String info, [DownloadInfo? download]) {
-    if (_writer == null) return;
+    if (_writer == null || _isClosed) return;
 
     String data;
     if (download != null) {
@@ -59,7 +71,7 @@ class DownloadLog {
 
   /// Write warning to log
   void warn(String info, [DownloadInfo? download]) {
-    if (_writer == null) return;
+    if (_writer == null || _isClosed) return;
 
     String data;
     if (download != null) {
@@ -75,7 +87,7 @@ class DownloadLog {
 
   /// Write info to log
   void log(String info) {
-    if (_writer == null) return;
+    if (_writer == null || _isClosed) return;
 
     final data = 'I:${_time()}: $info';
 
@@ -91,11 +103,11 @@ class DownloadLog {
 
   /// Process the write queue sequentially
   Future<void> _processQueue() async {
-    if (_isWriting || _writeQueue.isEmpty || _writer == null) return;
+    if (_isWriting || _writeQueue.isEmpty || _writer == null || _isClosed) return;
 
     _isWriting = true;
 
-    while (_writeQueue.isNotEmpty) {
+    while (_writeQueue.isNotEmpty && !_isClosed) {
       final data = _writeQueue.removeAt(0);
       try {
         _writer!.writeln(data);

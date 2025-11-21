@@ -30,6 +30,7 @@ class Track {
   bool? explicit;
   //Date added to playlist / favorites
   int? addedDate;
+  Contributors? contributors;
   Track? fallback;
   //Charts
   int? variation;
@@ -52,6 +53,7 @@ class Track {
     this.diskNumber,
     this.explicit,
     this.addedDate,
+    this.contributors,
     this.fallback,
     this.playbackDetailsFallback,
     this.variation,
@@ -79,6 +81,7 @@ class Track {
       'lyrics': jsonEncode(lyrics?.toJson()),
       'albumId': album?.id,
       'artists': jsonEncode(artists?.map<Map>((art) => art.toJson()).toList()),
+      'contributors': jsonEncode(contributors?.toJson()),
       'fallbackId': fallback?.id,
       'playbackDetailsFallback': jsonEncode(playbackDetailsFallback),
       'variation': variation,
@@ -102,6 +105,13 @@ class Track {
           .map<String>((e) => e.toString())
           .toList();
     }
+    Contributors? contributors;
+    if (mi.extras?['contributors'] != null && mi.extras?['contributors'] != 'null') {
+      contributors = Contributors.fromJson(
+        jsonDecode(mi.extras?['contributors']),
+      );
+    }
+
     Track fallback = Track(id: mi.extras?['fallbackId']);
     List<String>? playbackDetailsFallback;
     if (mi.extras?['playbackDetailsFallback'] != null) {
@@ -130,6 +140,7 @@ class Track {
       lyrics: LyricsFull.fromJson(
         jsonDecode(((mi.extras ?? {})['lyrics']) ?? '{}'),
       ),
+      contributors: contributors,
       fallback: fallback,
       playbackDetailsFallback: playbackDetailsFallback,
       variation: variation,
@@ -165,6 +176,9 @@ class Track {
       diskNumber: int.parse(json['DISK_NUMBER'] ?? '1'),
       explicit: (json['EXPLICIT_LYRICS'].toString() == '1') ? true : false,
       addedDate: json['DATE_ADD'],
+        contributors: (json['SNG_CONTRIBUTORS'] != null)
+          ? Contributors.fromPrivateJson(json['SNG_CONTRIBUTORS'])
+          : null,
       fallback: (json['FALLBACK'] != null)
           ? Track.fromPrivateJson(json['FALLBACK'])
           : null,
@@ -176,6 +190,7 @@ class Track {
             ]
           : null,
       variation: json['VARIATION'],
+
     );
   }
   Map<String, dynamic> toSQL({bool off = false}) => {
@@ -191,6 +206,7 @@ class Track {
     'favorite': (favorite ?? false) ? 1 : 0,
     'diskNumber': diskNumber,
     'explicit': (explicit ?? false) ? 1 : 0,
+    'contributors': jsonEncode(contributors?.toJson()),
     'fallback': fallback?.id,
     //'favoriteDate': favoriteDate
   };
@@ -210,6 +226,11 @@ class Track {
     favorite: (data['favorite'] == 1) ? true : false,
     diskNumber: data['diskNumber'],
     explicit: (data['explicit'] == 1) ? true : false,
+    contributors: (data['contributors'] != null)
+        ? Contributors.fromJson(
+            jsonDecode(data['contributors']),
+          )
+        : null,
     fallback: data['fallback'] != null
         ? Track(id: data['fallback'].toString())
         : null,
@@ -218,6 +239,36 @@ class Track {
 
   factory Track.fromJson(Map<String, dynamic> json) => _$TrackFromJson(json);
   Map<String, dynamic> toJson() => _$TrackToJson(this);
+}
+
+@JsonSerializable()
+class Contributors {
+  List<String>? composers;
+  List<String>? engineers;
+  List<String>? mixers;
+  List<String>? producers;
+  List<String>? authors;
+  List<String>? writers;
+  
+
+
+  Contributors({this.composers, this.engineers, this.mixers, this.producers, this.authors, this.writers});
+
+  factory Contributors.fromPrivateJson(Map<dynamic, dynamic> json) {
+
+    return Contributors(
+      composers: json['composer'] != null ? List<String>.from(json['composer']) : null,
+      engineers: json['engineer'] != null ? List<String>.from(json['engineer']) : null,
+      mixers: json['mixer'] != null ? List<String>.from(json['mixer']) : null,
+      producers: json['producer'] != null ? List<String>.from(json['producer']) : null,
+      authors: json['author'] != null ? List<String>.from(json['author']) : null,
+      writers: json['writer'] != null ? List<String>.from(json['writer']) : null,
+    );
+  }
+
+  factory Contributors.fromJson(Map<String, dynamic> json) =>
+      _$ContributorsFromJson(json);
+  Map<String, dynamic> toJson() => _$ContributorsToJson(this);
 }
 
 enum AlbumType { ALBUM, SINGLE, FEATURED }
@@ -567,7 +618,7 @@ class LocalPlaylist {
 
   Duration get duration => Duration.zero;
 
-  String get durationString => "0:00:00";
+  String get durationString => '0:00:00';
 
   Map<String, dynamic> toExportJson() => {
     'title': title,

@@ -234,11 +234,6 @@ class Settings {
     return ['Deezer', ...GoogleFonts.asMap().keys];
   }
 
-  //JSON to forward into download service
-  Map getServiceSettings() {
-    return {'json': jsonEncode(toJson())};
-  }
-
   void updateUseArtColor(bool v) {
     useArtColor = v;
     if (v) {

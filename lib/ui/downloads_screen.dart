@@ -21,6 +21,8 @@ class DownloadsScreen extends StatefulWidget {
 class _DownloadsScreenState extends State<DownloadsScreen> {
   List<Download> downloads = [];
   StreamSubscription? _stateSubscription;
+  Timer? _reloadDebouncer;
+  bool _needsReload = false;
 
   //Sublists
   List<Download> get downloading => downloads
@@ -57,11 +59,16 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     //Subscribe to state update
     _stateSubscription = downloadManager.serviceEvents.stream.listen((e) {
       //State change = update
-      if (e['action'] == 'onStateChange') {
-        setState(() => downloadManager.running = downloadManager.running);
+      if (e['type'] == 'stateChange') {
+        setState(() {
+          // The downloadManager.running is already updated by the download manager itself
+          // We just need to trigger a rebuild
+        });
       }
       //Progress change
-      if (e['action'] == 'onProgress') {
+      if (e['type'] == 'progress') {
+        // Progress is already throttled at service level (500ms)
+        // Just update data and UI together
         setState(() {
           for (Map su in e['data']) {
             downloads
@@ -71,14 +78,19 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         });
       }
       //Download completed - reload to show in "Done" section
-      if (e['action'] == 'onDownloadComplete' ||
-          e['action'] == 'onDownloadError') {
-        _load();
+      if (e['type'] == 'downloadComplete' ||
+          e['type'] == 'downloadError') {
+        _debouncedReload();
       }
 
       //Downloads added - reload to show new downloads
-      if (e['action'] == 'onDownloadsAdded') {
-        _load();
+      if (e['type'] == 'downloadsAdded') {
+        _debouncedReload();
+      }
+
+      //Downloads list updated - reload to show current state
+      if (e['type'] == 'downloadsList') {
+        _debouncedReload();
       }
     });
 
@@ -89,7 +101,19 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   void dispose() {
     _stateSubscription?.cancel();
     _stateSubscription = null;
+    _reloadDebouncer?.cancel();
     super.dispose();
+  }
+
+  void _debouncedReload() {
+    _needsReload = true;
+    _reloadDebouncer?.cancel();
+    _reloadDebouncer = Timer(const Duration(milliseconds: 500), () {
+      if (_needsReload && mounted) {
+        _needsReload = false;
+        _load();
+      }
+    });
   }
 
   @override
@@ -115,14 +139,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   ? 'Stop'.i18n
                   : 'Start'.i18n,
             ),
-            onPressed: () {
-              setState(() {
-                if (downloadManager.running) {
-                  downloadManager.stop();
-                } else {
-                  downloadManager.start();
-                }
-              });
+            onPressed: () async {
+              if (downloadManager.running) {
+                await downloadManager.stop();
+              } else {
+                await downloadManager.start();
+              }
+              setState(() {});
             },
           ),
         ],

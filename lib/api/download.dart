@@ -23,6 +23,7 @@ import '../settings.dart';
 import '../translations.i18n.dart';
 import '../utils/file_utils.dart';
 import '../api/download_service_dart.dart';
+import '../api/download_isolate.dart';
 
 DownloadManager downloadManager = DownloadManager();
 
@@ -124,8 +125,16 @@ class DownloadManager {
       title TEXT,
       image TEXT,
       trackToken TEXT,
-      streamTrackId TEXT
+      streamTrackId TEXT,
+      downloaded INTEGER DEFAULT 0
     )''');
+
+    // Migrate existing Downloads table to add downloaded column if missing
+    try {
+      await db!.execute('ALTER TABLE Downloads ADD COLUMN downloaded INTEGER DEFAULT 0');
+    } catch (e) {
+      // Column already exists, ignore error
+    }
 
     // Initialize download service (this will try to load downloads from DB)
     await _downloadService.init(db!);
@@ -136,8 +145,9 @@ class DownloadManager {
 
     //Listen to state change event from Dart service
     _downloadService.serviceEvents.listen((e) {
-      if (e['action'] == 'onStateChange') {
-        running = e['running'];
+      if (e['type'] == 'stateChange') {
+        // Sync running state from service (which updates immediately)
+        running = _downloadService.running;
         queueSize = e['queueSize'];
       }
 
@@ -928,9 +938,9 @@ class DownloadManager {
 
   //Send settings to download service
   Future updateServiceSettings() async {
-    final settingsMap = settings.getServiceSettings();
+    final settingsMap = settings.toJson();
     await _downloadService.updateSettings(
-      Map<String, dynamic>.from(settingsMap),
+      settingsMap
     );
   }
 

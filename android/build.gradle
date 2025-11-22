@@ -10,10 +10,6 @@ rootProject.buildDir = '../build'
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 
-    // This will make sure all the sub projects have an android namespace,
-    // if not it will read it from AndroidManifest.xml
-    // Also sets the compileSdk to 36 and the target javaVersion to 17 
-    // (needs to be changed manually to the latest in the future)
     afterEvaluate {
         // check if android block is available
         if (it.hasProperty('android')) {
@@ -29,6 +25,9 @@ subprojects {
             android {
                 def androidApiVersion = 36
                 compileSdk androidApiVersion
+                
+                ndkVersion = "27.0.12077973" 
+
                 defaultConfig {
                     targetSdk androidApiVersion
                 }

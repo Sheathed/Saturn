@@ -12,7 +12,7 @@ subprojects {
 
     afterEvaluate {
         // check if android block is available
-        if (it.hasProperty('android')) {
+        if (it.hasProperty('android')) {  
 
             if (it.android.namespace == null) {
                 def manifest = groovy.util.XmlSlurper.parse(file(it.android.sourceSets.main.manifest.srcFile))

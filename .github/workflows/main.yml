@@ -217,7 +217,7 @@ jobs:
       
       - name: Build signed Android APKs
         run: |
-          flutter build apk --release --split-per-abi --no-daemon
+          flutter build apk --release --split-per-abi
           echo "Built APKs:"
           ls -la build/app/outputs/flutter-apk/
       

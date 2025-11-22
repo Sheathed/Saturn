@@ -67,6 +67,7 @@ void main() async {
     // or during notification initialization
   } catch (e) {
     // Silently fail if permission handler doesn't support this platform
+    // probably log this one
     if (kDebugMode) {
       print('Notification permission request error: $e');
     }

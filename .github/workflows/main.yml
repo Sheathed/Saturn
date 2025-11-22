@@ -214,6 +214,13 @@ jobs:
             echo "✗ Keystore missing"
             exit 1
           fi
+
+      - name: Disable Gradle file watchers (fix CI bug)
+        run: |
+          echo "org.gradle.vfs.watch=false" >> android/gradle.properties
+          echo "android.useAndroidX=true" >> android/gradle.properties
+          echo "android.enableJetifier=true" >> android/gradle.properties
+          cat android/gradle.properties
       
       - name: Build signed Android APKs
         run: |

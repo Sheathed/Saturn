@@ -144,19 +144,20 @@ class DownloadIsolateManager {
   Stream<IsolateResponse> get responses => _responseController.stream;
 
   /// Start the coordinator isolate
-  Future<void> start(String arl, String dbPath, Map<String, dynamic> settings) async {
+  Future<void> start(
+    String arl,
+    String dbPath,
+    Map<String, dynamic> settings,
+  ) async {
     if (_isolate != null) return;
 
-    _isolate = await Isolate.spawn(
-      _coordinatorEntryPoint,
-      {
-        'sendPort': _receivePort.sendPort,
-        'arl': arl,
-        'dbPath': dbPath,
-        'rootIsolateToken': RootIsolateToken.instance!,
-        'settings': settings,
-      },
-    );
+    _isolate = await Isolate.spawn(_coordinatorEntryPoint, {
+      'sendPort': _receivePort.sendPort,
+      'arl': arl,
+      'dbPath': dbPath,
+      'rootIsolateToken': RootIsolateToken.instance!,
+      'settings': settings,
+    });
 
     _receivePort.listen((msg) {
       if (_isolateSendPort == null && msg is SendPort) {
@@ -254,12 +255,10 @@ class _DownloadCoordinator {
     required this.settings,
   });
 
-
-
   Future<void> init() async {
     // Initialize BackgroundIsolateBinaryMessenger for Flutter plugins in isolate
     BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
-    
+
     // Initialize database factory for desktop platforms
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       sqfliteFfiInit();
@@ -289,7 +288,7 @@ class _DownloadCoordinator {
 
   Future<void> dispose() async {
     _progressTimer?.cancel();
-    
+
     await _logger?.close();
     await _db?.close();
 
@@ -317,10 +316,10 @@ class _DownloadCoordinator {
         for (var worker in _activeWorkers.values) {
           // Kill the isolate
           worker.isolate.kill(priority: Isolate.immediate);
-          
+
           // Close the receive port to clean up
           worker.receivePort.close();
-          
+
           // Reset download state to NONE so it can be resumed
           worker.download.state = DownloadStateDart.NONE;
           await _db!.update(
@@ -334,10 +333,10 @@ class _DownloadCoordinator {
           );
         }
         _activeWorkers.clear();
-        
+
         // Reload queue to ensure consistency
         await _loadQueue();
-        
+
         _sendStateUpdate();
         _sendDownloadsList();
         break;
@@ -378,7 +377,7 @@ class _DownloadCoordinator {
 
     for (var row in results) {
       final task = DownloadTask.fromSQL(row);
-      
+
       // Reset orphaned DOWNLOADING state to NONE
       // (downloads that were downloading when app was closed)
       if (task.state == DownloadStateDart.DOWNLOADING) {
@@ -391,7 +390,7 @@ class _DownloadCoordinator {
           whereArgs: [task.id],
         );
       }
-      
+
       _queue.add(task);
     }
 
@@ -406,9 +405,9 @@ class _DownloadCoordinator {
       // Check if exists using trackId and path (not id, which is auto-generated)
       final trackId = downloadData['trackId'];
       final path = downloadData['path'];
-      
+
       if (trackId == null || path == null) continue; // Skip invalid downloads
-      
+
       final existing = await _db!.query(
         'Downloads',
         where: 'trackId = ? AND path = ?',
@@ -448,10 +447,9 @@ class _DownloadCoordinator {
     }
 
     await _loadQueue();
-    _sendResponse(IsolateResponse(
-      type: 'downloadsAdded',
-      data: {'count': added},
-    ));
+    _sendResponse(
+      IsolateResponse(type: 'downloadsAdded', data: {'count': added}),
+    );
     _sendStateUpdate();
     _sendDownloadsList();
 
@@ -561,11 +559,14 @@ class _DownloadCoordinator {
 
     // Start new downloads
     if (_running && _activeWorkers.length < settings['downloadThreads']) {
-      final availableSlots = settings['downloadThreads'] - _activeWorkers.length;
+      final availableSlots =
+          settings['downloadThreads'] - _activeWorkers.length;
 
       for (var i = 0; i < availableSlots; i++) {
         final nextDownload = _queue.firstWhere(
-          (d) => d.state == DownloadStateDart.NONE,
+          (d) =>
+              d.state == DownloadStateDart.NONE &&
+              !_activeWorkers.containsKey(d.id),
           orElse: () => DownloadTask(
             id: -1,
             path: '',
@@ -594,8 +595,16 @@ class _DownloadCoordinator {
   }
 
   Future<void> _startWorker(DownloadTask download) async {
+    // Guard: Don't start a worker if one is already running for this download
+    if (_activeWorkers.containsKey(download.id)) {
+      _logger?.log(
+        'Worker already exists for download ${download.id}, skipping',
+      );
+      return;
+    }
+
     download.state = DownloadStateDart.DOWNLOADING;
-    
+
     // Update database with new state
     await _db!.update(
       'Downloads',
@@ -605,16 +614,13 @@ class _DownloadCoordinator {
     );
 
     final workerReceivePort = ReceivePort();
-    final isolate = await Isolate.spawn(
-      _workerEntryPoint,
-      {
-        'sendPort': workerReceivePort.sendPort,
-        'download': download.toSQL(),
-        'arl': arl,
-        'settings': settings,
-        'rootIsolateToken': rootIsolateToken,
-      },
-    );
+    final isolate = await Isolate.spawn(_workerEntryPoint, {
+      'sendPort': workerReceivePort.sendPort,
+      'download': download.toSQL(),
+      'arl': arl,
+      'settings': settings,
+      'rootIsolateToken': rootIsolateToken,
+    });
 
     final worker = _WorkerHandle(
       isolate: isolate,
@@ -631,7 +637,9 @@ class _DownloadCoordinator {
       }
     });
 
-    _logger?.log('Started worker for download ${download.id}: ${download.title}');
+    _logger?.log(
+      'Started worker for download ${download.id}: ${download.title}',
+    );
   }
 
   void _handleWorkerMessage(int downloadId, Map<String, dynamic> msg) {
@@ -650,32 +658,39 @@ class _DownloadCoordinator {
         download.state = DownloadStateDart.values[msg['state'] as int];
 
         // Send completion/error events to UI
-        if (download.state == DownloadStateDart.DONE && oldState != DownloadStateDart.DONE) {
+        if (download.state == DownloadStateDart.DONE &&
+            oldState != DownloadStateDart.DONE) {
           _logger?.log('Download completed: ${download.title}');
-          
-          _sendResponse(IsolateResponse(
-            type: 'downloadComplete',
-            data: {
-              'id': download.id,
-              'trackId': download.trackId,
-              'title': download.title,
-            },
-          ));
-        } else if ((download.state == DownloadStateDart.ERROR || download.state == DownloadStateDart.DEEZER_ERROR) &&
-            oldState != DownloadStateDart.ERROR && oldState != DownloadStateDart.DEEZER_ERROR) {
+
+          _sendResponse(
+            IsolateResponse(
+              type: 'downloadComplete',
+              data: {
+                'id': download.id,
+                'trackId': download.trackId,
+                'title': download.title,
+              },
+            ),
+          );
+        } else if ((download.state == DownloadStateDart.ERROR ||
+                download.state == DownloadStateDart.DEEZER_ERROR) &&
+            oldState != DownloadStateDart.ERROR &&
+            oldState != DownloadStateDart.DEEZER_ERROR) {
           _logger?.error('Download failed: ${download.title}');
-          
+
           // Update notification for error
           _updateNotification(download);
-          
-          _sendResponse(IsolateResponse(
-            type: 'downloadError',
-            data: {
-              'id': download.id,
-              'trackId': download.trackId,
-              'state': download.state.index,
-            },
-          ));
+
+          _sendResponse(
+            IsolateResponse(
+              type: 'downloadError',
+              data: {
+                'id': download.id,
+                'trackId': download.trackId,
+                'state': download.state.index,
+              },
+            ),
+          );
         }
 
         if (download.state == DownloadStateDart.DONE ||
@@ -705,11 +720,10 @@ class _DownloadCoordinator {
         .map((w) => w.download.toMap())
         .toList();
 
-    _sendResponse(IsolateResponse(
-      type: 'progress',
-      data: {'downloads': downloads},
-    ));
-    
+    _sendResponse(
+      IsolateResponse(type: 'progress', data: {'downloads': downloads}),
+    );
+
     // Update notifications for active downloads
     for (var worker in _activeWorkers.values) {
       _updateNotification(worker.download);
@@ -717,23 +731,29 @@ class _DownloadCoordinator {
   }
 
   void _sendStateUpdate() {
-    final queueSize = _queue.where((d) => d.state == DownloadStateDart.NONE).length;
+    final queueSize = _queue
+        .where((d) => d.state == DownloadStateDart.NONE)
+        .length;
 
-    _sendResponse(IsolateResponse(
-      type: 'stateChange',
-      data: {
-        'running': _running,
-        'queueSize': queueSize,
-        'activeDownloads': _activeWorkers.length,
-      },
-    ));
+    _sendResponse(
+      IsolateResponse(
+        type: 'stateChange',
+        data: {
+          'running': _running,
+          'queueSize': queueSize,
+          'activeDownloads': _activeWorkers.length,
+        },
+      ),
+    );
   }
 
   void _sendDownloadsList() {
-    _sendResponse(IsolateResponse(
-      type: 'downloadsList',
-      data: {'downloads': _queue.map((d) => d.toMap()).toList()},
-    ));
+    _sendResponse(
+      IsolateResponse(
+        type: 'downloadsList',
+        data: {'downloads': _queue.map((d) => d.toMap()).toList()},
+      ),
+    );
   }
 
   void _sendResponse(IsolateResponse response) {
@@ -794,10 +814,8 @@ class _MinimalSettings extends settings_module.Settings {
   // ignore: overridden_fields
   final String deezerCountry;
 
-  _MinimalSettings({
-    required this.deezerLanguage,
-    required this.deezerCountry,
-  }) : super(arl: null, downloadPath: null);
+  _MinimalSettings({required this.deezerLanguage, required this.deezerCountry})
+    : super(arl: null, downloadPath: null);
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
@@ -829,7 +847,7 @@ class _DownloadWorker {
   void _error(String message) {
     sendPort.send({'type': 'error', 'message': message});
   }
-  
+
   String _safeSubstring(String str, int maxLength) {
     if (str.length <= maxLength) return str;
     return str.substring(0, maxLength);
@@ -856,40 +874,47 @@ class _DownloadWorker {
       Album? album;
       Map<dynamic, dynamic>? publicTrack;
       Map<dynamic, dynamic>? publicAlbum;
+      Lyrics? lyrics;
 
       if (!download.private) {
         try {
           _log('Fetching track metadata for ID: ${download.trackId}');
-          
+
           try {
             track = await _deezer!.track(download.trackId);
           } catch (trackError) {
-            _error('Track API call failed for ID ${download.trackId}: $trackError');
+            _error(
+              'Track API call failed for ID ${download.trackId}: $trackError',
+            );
             _updateState(DownloadStateDart.DEEZER_ERROR);
             return;
           }
-          
+
           if (track.album?.id == null) {
             _error('Track has no album ID: ${download.trackId}');
             _updateState(DownloadStateDart.DEEZER_ERROR);
             return;
           }
-          
+
           _log('Fetching album metadata for ID: ${track.album!.id}');
-          
+
           try {
             album = await _deezer!.album(track.album!.id!);
           } catch (albumError) {
-            _error('Album API call failed for ID ${track.album!.id}: $albumError');
+            _error(
+              'Album API call failed for ID ${track.album!.id}: $albumError',
+            );
             _updateState(DownloadStateDart.DEEZER_ERROR);
             return;
           }
 
           _log('Fetching public track API for ID: ${download.trackId}');
-          
+
           try {
-            final trackData = await _deezer!.callPublicApi('track/${download.trackId}');
-            
+            final trackData = await _deezer!.callPublicApi(
+              'track/${download.trackId}',
+            );
+
             publicTrack = trackData;
             _log('Public track data received: ${trackData.keys.join(", ")}');
           } catch (publicTrackError) {
@@ -898,12 +923,26 @@ class _DownloadWorker {
             return;
           }
 
-          _log('Fetching public album API for ID: ${track.album!.id}');
-          
+          _log('Fetching lyrics for ID: ${download.trackId}');
+
           try {
-            final albumData = await _deezer!.callPublicApi('album/${track.album!.id}');
-            
-            
+            final lyricsData = await _deezer!.lyrics(download.trackId);
+
+            lyrics = lyricsData;
+            _log('Lyrics data received: ${lyrics..toString()}');
+          } catch (lyricsError) {
+            _error('Lyrics API call failed: $lyricsError');
+            _updateState(DownloadStateDart.DEEZER_ERROR);
+            return;
+          }
+
+          _log('Fetching public album API for ID: ${track.album!.id}');
+
+          try {
+            final albumData = await _deezer!.callPublicApi(
+              'album/${track.album!.id}',
+            );
+
             publicAlbum = albumData;
             _log('Public album data received: ${albumData.keys.join(", ")}');
           } catch (publicAlbumError) {
@@ -930,11 +969,13 @@ class _DownloadWorker {
       );
 
       if (url == null) {
-        _error('Failed to get track URL for streamTrackId: ${download.streamTrackId}');
+        _error(
+          'Failed to get track URL for streamTrackId: ${download.streamTrackId}',
+        );
         _updateState(DownloadStateDart.DEEZER_ERROR);
         return;
       }
-      
+
       _log('Track URL obtained: ${_safeSubstring(url, 50)}...');
 
       // Generate proper filename
@@ -977,7 +1018,9 @@ class _DownloadWorker {
         return;
       }
 
-      final tmpFile = File(p.join(directory.path, 'cache', '${download.id}.mp3'));
+      final tmpFile = File(
+        p.join(directory.path, 'cache', '${download.id}.mp3'),
+      );
       await tmpFile.parent.create(recursive: true);
 
       // Download file with streaming decryption
@@ -1004,28 +1047,32 @@ class _DownloadWorker {
         try {
           // Download cover art bytes once and store in memory
           Uint8List? coverArtBytes;
-          
+
           final resolution = settings['albumArtResolution'] as int;
           _log('Album art resolution setting: $resolution');
-          
+
           // Get image hash from album (prioritize album art over track art)
           String? imageHash = track.albumArt?.imageHash;
-          
+
           _log('Final image hash: $imageHash');
-          
+
           if (imageHash != null && imageHash.isNotEmpty) {
             final coverUrl =
                 'http://e-cdn-images.deezer.com/images/cover/$imageHash/${resolution}x$resolution-000000-80-0-0.jpg';
             _log('Attempting to download cover art from: $coverUrl');
-            
+
             try {
               final response = await http.get(Uri.parse(coverUrl));
               _log('Cover art HTTP response: ${response.statusCode}');
               if (response.statusCode == 200) {
                 coverArtBytes = response.bodyBytes;
-                _log('Successfully downloaded cover art to memory (${coverArtBytes.length} bytes)');
+                _log(
+                  'Successfully downloaded cover art to memory (${coverArtBytes.length} bytes)',
+                );
               } else {
-                _error('Failed to download cover art: HTTP ${response.statusCode}');
+                _error(
+                  'Failed to download cover art: HTTP ${response.statusCode}',
+                );
               }
             } catch (e) {
               _error('Error downloading cover art: $e');
@@ -1033,7 +1080,7 @@ class _DownloadWorker {
           } else {
             _log('No image hash available, skipping cover art download');
           }
-          
+
           // Save track cover art as separate file if setting enabled
           final trackCoverEnabled = settings['trackCover'] as bool? ?? false;
           _log('Track cover setting enabled: $trackCoverEnabled');
@@ -1049,16 +1096,23 @@ class _DownloadWorker {
           // Save album cover if setting enabled
           final albumCoverEnabled = settings['albumCover'] as bool? ?? false;
           if (albumCoverEnabled) {
-              await _downloadAlbumCover(outFile, album!);
+            await _downloadAlbumCover(outFile, album!);
           }
 
           // Tag file (pass cover art bytes for tagging)
-          await _tagFile(outFile, track, publicAlbum!, publicTrack!, coverArtBytes);
+          await _tagFile(
+            outFile,
+            track,
+            publicAlbum!,
+            publicTrack!,
+            lyrics,
+            coverArtBytes,
+          );
 
           // Download LRC if enabled
           final lyricsEnabled = settings['downloadLyrics'] as bool? ?? false;
           _log('Download lyrics setting enabled: $lyricsEnabled');
-          if (lyricsEnabled) {
+          if (lyricsEnabled && lyrics?.isSynced() == true) {
             _log('Calling _downloadLrcLyrics');
             await _downloadLrcLyrics(outFile, track);
           }
@@ -1080,7 +1134,7 @@ class _DownloadWorker {
     try {
       // Check if partial file exists and get resume position
       int startByte = 0;
-      
+
       if (await outputFile.exists()) {
         // Temp file exists, we can resume from where it left off
         startByte = await outputFile.length();
@@ -1089,7 +1143,9 @@ class _DownloadWorker {
         // Temp file was deleted but we had progress
         // For encrypted content, we can't resume without the file, so start over
         if (url.contains('dzcdn.net')) {
-          _log('Temp file missing and content is encrypted, starting from beginning');
+          _log(
+            'Temp file missing and content is encrypted, starting from beginning',
+          );
           startByte = 0;
           download.downloaded = 0; // Reset the download counter
         } else {
@@ -1100,23 +1156,23 @@ class _DownloadWorker {
           download.downloaded = 0;
         }
       }
-      
+
       if (startByte > 0) {
         _log('Resuming download from byte $startByte');
       }
 
       final client = HttpClient();
       final request = await client.getUrl(Uri.parse(url));
-      
+
       // Add Range header for resume support
       if (startByte > 0) {
         request.headers.set('Range', 'bytes=$startByte-');
       }
-      
+
       final response = await request.close();
 
       // Accept both 200 (full) and 206 (partial) responses
-      if (response.statusCode != HttpStatus.ok && 
+      if (response.statusCode != HttpStatus.ok &&
           response.statusCode != HttpStatus.partialContent) {
         _error('HTTP ${response.statusCode} from server');
         return false;
@@ -1128,14 +1184,18 @@ class _DownloadWorker {
       int totalFileSize;
       if (response.statusCode == HttpStatus.partialContent) {
         // For partial response, total = start + remaining
-        totalFileSize = startByte + (response.contentLength > 0 ? response.contentLength : 0);
+        totalFileSize =
+            startByte +
+            (response.contentLength > 0 ? response.contentLength : 0);
       } else {
         // For full response, contentLength is already the total
         totalFileSize = response.contentLength > 0 ? response.contentLength : 0;
       }
-      
+
       int received = startByte;
-      final sink = outputFile.openWrite(mode: startByte > 0 ? FileMode.append : FileMode.write);
+      final sink = outputFile.openWrite(
+        mode: startByte > 0 ? FileMode.append : FileMode.write,
+      );
 
       // Check if URL is from Deezer CDN (needs decryption)
       if (url.contains('dzcdn.net')) {
@@ -1199,17 +1259,21 @@ class _DownloadWorker {
     int quality,
   ) async {
     try {
-      _log('Attempting to get track URL - trackId: $trackId, quality: $quality');
-      _log('Has licenseToken: ${_deezer?.licenseToken != null && _deezer!.licenseToken!.isNotEmpty}');
-      
+      _log(
+        'Attempting to get track URL - trackId: $trackId, quality: $quality',
+      );
+      _log(
+        'Has licenseToken: ${_deezer?.licenseToken != null && _deezer!.licenseToken!.isNotEmpty}',
+      );
+
       if (_deezer?.licenseToken != null && _deezer!.licenseToken!.isNotEmpty) {
         _log('Trying API method with trackToken');
         var url = await _getTrackUrlFromAPI(trackId, trackToken, quality);
-        
+
         if (url == null) {
           _log('First API attempt returned null, fetching fresh token');
           final freshToken = await _getFreshTrackToken(trackId);
-          
+
           if (freshToken != null && freshToken.isNotEmpty) {
             _log('Got fresh token, retrying API');
             url = await _getTrackUrlFromAPI(trackId, freshToken, quality);
@@ -1241,19 +1305,23 @@ class _DownloadWorker {
       _log('Fetching fresh track token for: $trackId');
       Map<dynamic, dynamic> data = await _deezer!.callGwApi(
         'song.getListData',
-        params: {'sng_ids': [trackId]},
+        params: {
+          'sng_ids': [trackId],
+        },
       );
 
       _log('Token fetch response keys: ${data.keys.join(", ")}');
-      
+
       if (data['results']?['data'] != null &&
           (data['results']['data'] as List).isNotEmpty) {
         final trackData = data['results']['data'][0];
         final token = trackData['TRACK_TOKEN'];
-        _log('Fresh token obtained: ${token != null ? _safeSubstring(token, 20) : "null"}...');
+        _log(
+          'Fresh token obtained: ${token != null ? _safeSubstring(token, 20) : "null"}...',
+        );
         return token;
       }
-      
+
       _log('Token fetch: no results/data in response');
       return null;
     } catch (e, stackTrace) {
@@ -1275,7 +1343,9 @@ class _DownloadWorker {
       if (quality == 1) format = 'MP3_128';
       if (trackId.startsWith('-')) format = 'MP3_MISC';
 
-      _log('API call - format: $format, trackToken: ${_safeSubstring(trackToken, 20)}...');
+      _log(
+        'API call - format: $format, trackToken: ${_safeSubstring(trackToken, 20)}...',
+      );
 
       final payload = {
         'license_token': _deezer!.licenseToken,
@@ -1303,15 +1373,15 @@ class _DownloadWorker {
       );
 
       _log('API response status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
         _log('Response body keys: ${body.keys.join(", ")}');
-        
+
         if (body['data'] != null) {
           final data = body['data'] as List;
           _log('Data array length: ${data.length}');
-          
+
           for (var item in data) {
             if (item['media'] != null && (item['media'] as List).isNotEmpty) {
               final media = item['media'][0];
@@ -1331,7 +1401,9 @@ class _DownloadWorker {
           _log('No data in response body');
         }
       } else {
-        _log('API returned status ${response.statusCode}: ${_safeSubstring(response.body, 200)}');
+        _log(
+          'API returned status ${response.statusCode}: ${_safeSubstring(response.body, 200)}',
+        );
       }
     } catch (e, stackTrace) {
       _error('Error getting track URL from API: $e');
@@ -1344,17 +1416,14 @@ class _DownloadWorker {
   Future<void> _saveCoverArt(File audioFile, Uint8List coverBytes) async {
     try {
       _log('_saveCoverArt called with audio file: ${audioFile.path}');
-      final coverPath = audioFile.path.substring(
-            0,
-            audioFile.path.lastIndexOf('.'),
-          ) +
-          '.jpg';
+      final coverPath =
+          audioFile.path.substring(0, audioFile.path.lastIndexOf('.')) + '.jpg';
       _log('Calculated cover path: $coverPath');
       final coverFile = File(coverPath);
       _log('Writing ${coverBytes.length} bytes to cover file');
       await coverFile.writeAsBytes(coverBytes);
       _log('Successfully saved track cover art: ${coverFile.path}');
-      
+
       // Verify file was created
       final exists = await coverFile.exists();
       final size = exists ? await coverFile.length() : 0;
@@ -1366,10 +1435,7 @@ class _DownloadWorker {
   }
 
   /// Download album cover
-  Future<void> _downloadAlbumCover(
-    File audioFile,
-    Album album,
-  ) async {
+  Future<void> _downloadAlbumCover(File audioFile, Album album) async {
     try {
       final parentDir = audioFile.parent;
       final coverFile = File(p.join(parentDir.path, 'cover.jpg'));
@@ -1391,10 +1457,10 @@ class _DownloadWorker {
         await coverFile.writeAsBytes(response.bodyBytes);
         _log('Downloaded album cover: ${coverFile.path}');
 
-      if (settings['nomediaFiles'] as bool? ?? false) {
-        final nomediaFile = File(p.join(parentDir.path, '.nomedia'));
-        if (!await nomediaFile.exists()) {
-          await nomediaFile.create();
+        if (settings['nomediaFiles'] as bool? ?? false) {
+          final nomediaFile = File(p.join(parentDir.path, '.nomedia'));
+          if (!await nomediaFile.exists()) {
+            await nomediaFile.create();
           }
         }
       } else {
@@ -1405,7 +1471,7 @@ class _DownloadWorker {
     }
   }
 
- /// Download LRC lyrics
+  /// Download LRC lyrics
   Future<void> _downloadLrcLyrics(File audioFile, Track track) async {
     try {
       _log('_downloadLrcLyrics called with audio file: ${audioFile.path}');
@@ -1415,24 +1481,21 @@ class _DownloadWorker {
         _log('Lyrics not loaded, fetching from API for track ID: ${track.id}');
         lyrics = await _deezer!.lyrics(track.id ?? '');
       }
-      
+
       if (!lyrics.isLoaded()) {
         _log('No lyrics available for track - lyrics is not loaded.');
         return;
       }
 
-      final lrcPath = audioFile.path.substring(
-            0,
-            audioFile.path.lastIndexOf('.'),
-          ) +
-          '.lrc';
+      final lrcPath =
+          audioFile.path.substring(0, audioFile.path.lastIndexOf('.')) + '.lrc';
       final lrcFile = File(lrcPath);
 
       _log('Calculated LRC path: ${lrcFile.path}');
 
       final lrcData = _generateLRC(track, lyrics);
       _log('Generated LRC data (${lrcData.length} characters)');
-      
+
       await lrcFile.writeAsString(lrcData);
       _log('Successfully wrote LRC file');
 
@@ -1474,12 +1537,13 @@ class _DownloadWorker {
     return output.toString();
   }
 
-    /// Tag file with metadata
+  /// Tag file with metadata
   Future<void> _tagFile(
     File audioFile,
     Track track,
     Map<dynamic, dynamic> publicAlbum,
     Map<dynamic, dynamic> publicTrack,
+    Lyrics? lyrics,
     Uint8List? coverArtBytes,
   ) async {
     try {
@@ -1568,7 +1632,7 @@ class _DownloadWorker {
         }
       }
 
-       // Contributors (Composer, Engineer, Mixer, Producer, Author, Writer)
+      // Contributors (Composer, Engineer, Mixer, Producer, Author, Writer)
       if (enabledTags.contains('contributors') && track.contributors != null) {
         final contrib = track.contributors!;
         final sep = settings['artistSeparator'];
@@ -1629,11 +1693,9 @@ class _DownloadWorker {
 
       // Lyrics
       if (enabledTags.contains('lyrics') &&
-          track.lyrics != null &&
-          track.lyrics!.unsyncedLyrics != null) {
-        tags.add(
-          MetadataTag.text(CommonTags.lyrics, track.lyrics!.unsyncedLyrics!),
-        );
+          lyrics != null &&
+          lyrics.unsyncedLyrics != null) {
+        tags.add(MetadataTag.text(CommonTags.lyrics, lyrics.unsyncedLyrics!));
       }
 
       // Cover art - use in-memory bytes if available
@@ -1700,7 +1762,7 @@ class _DownloadWorker {
     // Clean up any double slashes or dots in the path
     result = result.replaceAll(RegExp(r'/\.+'), '/');
     result = result.replaceAll(RegExp(r'\\\.+'), '\\');
-    
+
     // Ensure the path has the correct extension based on quality
     // Only add extension if the path doesn't already have one
     if (!result.endsWith('.mp3') && !result.endsWith('.flac')) {
@@ -1710,7 +1772,7 @@ class _DownloadWorker {
         result = '$result.mp3';
       }
     }
-    
+
     return result;
   }
 

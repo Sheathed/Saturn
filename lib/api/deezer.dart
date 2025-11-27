@@ -23,10 +23,12 @@ class DeezerAPI {
   Map<String, dynamic>? settingsMap;
 
   Future? _authorizing;
-  
+
   // Helper to get settings value, fallback to global settings if settingsMap not provided
-  String get _deezerLanguage => settingsMap?['deezerLanguage'] ?? settings.deezerLanguage;
-  String get _deezerCountry => settingsMap?['deezerCountry'] ?? settings.deezerCountry;
+  String get _deezerLanguage =>
+      settingsMap?['deezerLanguage'] ?? settings.deezerLanguage;
+  String get _deezerCountry =>
+      settingsMap?['deezerCountry'] ?? settings.deezerCountry;
 
   //Get headers
   Map<String, String> get headers => {
@@ -223,7 +225,6 @@ class DeezerAPI {
         'sng_ids': [id],
       },
     );
-    print(data);
     return Track.fromPrivateJson(data['results']['data'][0]);
   }
 
@@ -233,10 +234,16 @@ class DeezerAPI {
       'deezer.pageAlbum',
       params: {'alb_id': id, 'header': true, 'lang': _deezerLanguage},
     );
-    if (data['error'] != null && data['payload'] != null && data['payload']['FALLBACK']['ALB_ID'] != null) {
+    if (data['error'] != null &&
+        data['payload'] != null &&
+        data['payload']['FALLBACK']['ALB_ID'] != null) {
       Map<dynamic, dynamic> fbdata = await callGwApi(
         'deezer.pageAlbum',
-        params: {'alb_id': data['payload']['FALLBACK']['ALB_ID'], 'header': true, 'lang': _deezerLanguage},
+        params: {
+          'alb_id': data['payload']['FALLBACK']['ALB_ID'],
+          'header': true,
+          'lang': _deezerLanguage,
+        },
       );
       data = fbdata;
     }

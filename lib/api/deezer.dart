@@ -211,7 +211,7 @@ class DeezerAPI {
 
   //Search
   Future<SearchResults> search(String query) async {
-    Map<dynamic, dynamic> data = await callGwApi(
+    Map<String, dynamic> data = await callGwApi(
       'deezer.pageSearch',
       params: {'nb': 128, 'query': query, 'start': 0},
     );
@@ -226,6 +226,16 @@ class DeezerAPI {
       },
     );
     return Track.fromPrivateJson(data['results']['data'][0]);
+  }
+
+  Future<List<Track>> tracks(List<String> ids) async {
+    Map<dynamic, dynamic> data = await callGwApi(
+      'song.getListData',
+      params: {'sng_ids': ids},
+    );
+    return data['results']['data']
+        .map<Track>((json) => Track.fromPrivateJson(json))
+        .toList();
   }
 
   //Get album details, tracks

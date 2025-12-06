@@ -19,12 +19,14 @@ class TrackTile extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onHold;
   final Widget? trailing;
+  final bool? trailingBypass;
 
   const TrackTile(
     this.track, {
     this.onTap,
     this.onHold,
     this.trailing,
+    this.trailingBypass,
     super.key,
   });
 
@@ -139,7 +141,8 @@ class _TrackTileState extends State<TrackTile> {
                 ),
               ),
               widget.trailing ?? const SizedBox(width: 0, height: 0),
-              if (widget.trailing == null && isWideScreen) ...[
+              if (widget.trailing == null && isWideScreen ||
+                  widget.trailingBypass == true && isWideScreen) ...[
                 IconButton(
                   icon: cache.checkTrackFavorite(widget.track)
                       ? const Icon(Icons.favorite)

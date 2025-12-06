@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:saturn/ui/menu.dart';
+import 'package:saturn/ui/tiles.dart';
 
 import '../api/definitions.dart';
 import '../api/download.dart';
@@ -34,7 +36,8 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
   Future<void> _loadPlaylists() async {
     try {
       Logger.root.info('Loading playlists...');
-      final loaded = await downloadManager.localPlaylistManager.getAllPlaylists();
+      final loaded = await downloadManager.localPlaylistManager
+          .getAllPlaylists();
       Logger.root.info('Loaded ${loaded.length} playlists');
       if (mounted) {
         setState(() {
@@ -93,7 +96,7 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
   Future<void> _importPlaylist() async {
     try {
       Logger.root.info('Opening file picker for import');
-      
+
       // Use file dialog to select JSON file
       final result = await _pickJsonFile();
       if (result == null) {
@@ -102,9 +105,10 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
       }
 
       Logger.root.info('Importing playlist from: $result');
-      
-      final imported = await downloadManager.localPlaylistManager.importPlaylist(result);
-      
+
+      final imported = await downloadManager.localPlaylistManager
+          .importPlaylist(result);
+
       // Create new playlist with imported data
       await downloadManager.localPlaylistManager.createPlaylist(
         title: imported.title,
@@ -193,10 +197,7 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
           padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
           child: Text(
             'Local Playlists'.i18n,
-            style: const TextStyle(
-              fontSize: 18.0,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.bold),
           ),
         ),
         ...playlists.map((playlist) {
@@ -306,15 +307,19 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
   Future<void> _exportPlaylist(LocalPlaylist playlist) async {
     try {
       Logger.root.info('Exporting playlist: ${playlist.title}');
-      
+
       final dir = await getApplicationDocumentsDirectory();
-      final fileName = '${playlist.title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${DateTime.now().millisecondsSinceEpoch}.json';
+      final fileName =
+          '${playlist.title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${DateTime.now().millisecondsSinceEpoch}.json';
       final filePath = '${dir.path}/$fileName';
-      
-      await downloadManager.localPlaylistManager.exportPlaylist(playlist, filePath);
-      
+
+      await downloadManager.localPlaylistManager.exportPlaylist(
+        playlist,
+        filePath,
+      );
+
       Logger.root.info('Playlist exported to: $filePath');
-      
+
       if (mounted) {
         showDialog(
           context: context,
@@ -388,20 +393,13 @@ class _LocalPlaylistTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
-  const _LocalPlaylistTile(
-    this.playlist, {
-    this.onTap,
-    this.onLongPress,
-  });
+  const _LocalPlaylistTile(this.playlist, {this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       title: Text(playlist.title, maxLines: 1),
-      subtitle: Text(
-        '${playlist.trackCount} ' + 'Tracks'.i18n,
-        maxLines: 1,
-      ),
+      subtitle: Text('${playlist.trackCount} ' + 'Tracks'.i18n, maxLines: 1),
       leading: const Icon(Icons.playlist_play),
       onTap: onTap,
       onLongPress: onLongPress,
@@ -413,18 +411,15 @@ class LocalPlaylistDetailsScreen extends StatefulWidget {
   final LocalPlaylist playlist;
   final Function? onChanged;
 
-  const LocalPlaylistDetailsScreen(
-    this.playlist, {
-    this.onChanged,
-    super.key,
-  });
+  const LocalPlaylistDetailsScreen(this.playlist, {this.onChanged, super.key});
 
   @override
   State<LocalPlaylistDetailsScreen> createState() =>
       _LocalPlaylistDetailsScreenState();
 }
 
-class _LocalPlaylistDetailsScreenState extends State<LocalPlaylistDetailsScreen> {
+class _LocalPlaylistDetailsScreenState
+    extends State<LocalPlaylistDetailsScreen> {
   late LocalPlaylist playlist;
   List<Track> tracks = [];
   bool loading = true;
@@ -438,20 +433,17 @@ class _LocalPlaylistDetailsScreenState extends State<LocalPlaylistDetailsScreen>
 
   Future<void> _loadTracks() async {
     try {
-      Logger.root.info('Loading ${playlist.trackIds.length} tracks for playlist');
+      Logger.root.info(
+        'Loading ${playlist.trackIds.length} tracks for playlist',
+      );
       List<Track> loadedTracks = [];
-      
-      for (String trackId in playlist.trackIds) {
-        try {
-          final track = await deezerAPI.track(trackId);
-          loadedTracks.add(track);
-        } catch (e) {
-          Logger.root.warning('Failed to load track $trackId: $e');
-          // Add placeholder track if fetch fails
-          loadedTracks.add(Track(id: trackId, title: 'Unknown Track'));
-        }
+
+      try {
+        loadedTracks = await deezerAPI.tracks(playlist.trackIds);
+      } catch (e) {
+        Logger.root.warning('Failed to load tracks: $e');
       }
-      
+
       if (mounted) {
         setState(() {
           tracks = loadedTracks;
@@ -466,39 +458,18 @@ class _LocalPlaylistDetailsScreenState extends State<LocalPlaylistDetailsScreen>
     }
   }
 
-  Future<void> _playTrack(Track track, int index) async {
-    try {
-      final audioHandler = GetIt.I<AudioPlayerHandler>();
-      
-      // Stop current playback
-      await audioHandler.stop();
-      
-      // Build new queue with all tracks from this playlist
-      final newQueue = tracks.map((t) => t.toMediaItem()).toList();
-      
-      // Set the new queue starting at the selected index
-      await audioHandler.updateQueue(newQueue);
-      await audioHandler.skipToQueueItem(index);
-      
-      // Play
-      await audioHandler.play();
-      Logger.root.info('Playing track at index $index from local playlist');
-    } catch (e) {
-      Logger.root.severe('Error playing track: $e');
-    }
-  }
-
   Future<void> _removeTrack(String trackId) async {
     try {
-      await downloadManager.localPlaylistManager.removeTrackFromPlaylist(playlist.id, trackId);
+      await downloadManager.localPlaylistManager.removeTrackFromPlaylist(
+        playlist.id,
+        trackId,
+      );
       setState(() {
         playlist = LocalPlaylist(
           id: playlist.id,
           title: playlist.title,
           description: playlist.description,
-          trackIds: playlist.trackIds
-              .where((id) => id != trackId)
-              .toList(),
+          trackIds: playlist.trackIds.where((id) => id != trackId).toList(),
           createdAt: playlist.createdAt,
           updatedAt: DateTime.now(),
         );
@@ -513,9 +484,7 @@ class _LocalPlaylistDetailsScreenState extends State<LocalPlaylistDetailsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(playlist.title),
-      ),
+      appBar: AppBar(title: Text(playlist.title)),
       body: loading
           ? Center(
               child: CircularProgressIndicator(
@@ -545,24 +514,27 @@ class _LocalPlaylistDetailsScreenState extends State<LocalPlaylistDetailsScreen>
                 ),
                 ...List.generate(tracks.length, (index) {
                   final track = tracks[index];
-                  return ListTile(
-                    title: Text(track.title ?? 'Unknown'),
-                    subtitle: Text(track.artistString ?? ''),
-                    leading: track.albumArt?.thumb != null
-                        ? Image.network(
-                            track.albumArt!.thumb!,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                const Icon(Icons.music_note),
-                          )
-                        : const Icon(Icons.music_note),
-                    onTap: () => _playTrack(track, index),
+                  return TrackTile(
+                    track,
+                    onTap: () {
+                      GetIt.I<AudioPlayerHandler>().playFromTrackList(
+                        tracks,
+                        track.id ?? '',
+                        QueueSource(
+                          text: playlist.title,
+                          source: 'localplaylist',
+                        ),
+                      );
+                    },
+                    onHold: () {
+                      MenuSheet m = MenuSheet();
+                      m.defaultTrackMenu(track, context: context);
+                    },
                     trailing: IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => _removeTrack(track.id!),
                     ),
+                    trailingBypass: true,
                   );
                 }),
               ],
@@ -587,7 +559,8 @@ class _CreateLocalPlaylistDialog extends StatefulWidget {
       _CreateLocalPlaylistDialogState();
 }
 
-class _CreateLocalPlaylistDialogState extends State<_CreateLocalPlaylistDialog> {
+class _CreateLocalPlaylistDialogState
+    extends State<_CreateLocalPlaylistDialog> {
   late TextEditingController titleController;
   late TextEditingController descriptionController;
 
@@ -595,8 +568,9 @@ class _CreateLocalPlaylistDialogState extends State<_CreateLocalPlaylistDialog> 
   void initState() {
     super.initState();
     titleController = TextEditingController(text: widget.initialTitle ?? '');
-    descriptionController =
-        TextEditingController(text: widget.initialDescription ?? '');
+    descriptionController = TextEditingController(
+      text: widget.initialDescription ?? '',
+    );
   }
 
   @override
@@ -712,15 +686,15 @@ class _FilePickerDialogState extends State<_FilePickerDialog> {
               );
               return;
             }
-            
+
             final file = File(path);
             if (!file.existsSync()) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('File not found'.i18n)),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('File not found'.i18n)));
               return;
             }
-            
+
             Navigator.pop(context, path);
           },
           child: Text('Import'.i18n),

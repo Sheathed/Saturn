@@ -4,12 +4,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// Background service wrapper for downloads
 /// Only used on mobile platforms (iOS/Android)
 @pragma('vm:entry-point')
 class DownloadBackgroundService {
-  static final DownloadBackgroundService _instance = DownloadBackgroundService._internal();
+  static final DownloadBackgroundService _instance =
+      DownloadBackgroundService._internal();
   factory DownloadBackgroundService() => _instance;
   DownloadBackgroundService._internal();
 
@@ -24,9 +26,9 @@ class DownloadBackgroundService {
   static const int _maxBatchSize = 20;
 
   // Callbacks for progress updates
-  final StreamController<Map<String, dynamic>> _eventsController = 
+  final StreamController<Map<String, dynamic>> _eventsController =
       StreamController<Map<String, dynamic>>.broadcast();
-  
+
   Stream<Map<String, dynamic>> get events => _eventsController.stream;
 
   /// Check if background service should be used (mobile only)
@@ -44,6 +46,26 @@ class DownloadBackgroundService {
     if (_isInitialized) return;
 
     try {
+      // Create notification channel BEFORE configuring service
+      // This is critical - the channel must exist before startForeground is called
+      if (Platform.isAndroid) {
+        final FlutterLocalNotificationsPlugin notificationsPlugin =
+            FlutterLocalNotificationsPlugin();
+
+        const channel = AndroidNotificationChannel(
+          'saturn_downloads',
+          'Downloads',
+          description: 'Download progress notifications',
+          importance: Importance.low,
+        );
+
+        await notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.createNotificationChannel(channel);
+      }
+
       await _service.configure(
         iosConfiguration: IosConfiguration(
           autoStart: false,
@@ -82,6 +104,25 @@ class DownloadBackgroundService {
     if (!shouldUseBackgroundService || !_isInitialized) return false;
 
     try {
+      // On Android 13+ (API 33+), notification permission must be granted
+      // before starting a foreground service, otherwise it will crash
+      if (Platform.isAndroid) {
+        final status = await Permission.notification.status;
+        if (!status.isGranted) {
+          debugPrint(
+            'Notification permission not granted, cannot start foreground service',
+          );
+          // Try to request permission
+          final result = await Permission.notification.request();
+          if (!result.isGranted) {
+            debugPrint(
+              'User denied notification permission, skipping foreground service',
+            );
+            return false;
+          }
+        }
+      }
+
       final isRunning = await _service.isRunning();
       if (isRunning) {
         _isRunning = true;
@@ -104,7 +145,7 @@ class DownloadBackgroundService {
     try {
       _batchTimer?.cancel();
       _batchTimer = null;
-      
+
       final isRunning = await _service.isRunning();
       if (isRunning) {
         _service.invoke('stop');
@@ -151,7 +192,7 @@ class DownloadBackgroundService {
   /// Check if service is running
   Future<bool> isServiceRunning() async {
     if (!shouldUseBackgroundService) return false;
-    
+
     try {
       return await _service.isRunning();
     } catch (e) {
@@ -175,7 +216,7 @@ class DownloadBackgroundService {
     if (Platform.isAndroid) {
       final FlutterLocalNotificationsPlugin notificationsPlugin =
           FlutterLocalNotificationsPlugin();
-      
+
       const channel = AndroidNotificationChannel(
         'saturn_downloads',
         'Downloads',
@@ -183,9 +224,11 @@ class DownloadBackgroundService {
         importance: Importance.low,
       );
 
-      final androidPlugin = notificationsPlugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      
+      final androidPlugin = notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+
       await androidPlugin?.createNotificationChannel(channel);
     }
 
@@ -197,13 +240,13 @@ class DownloadBackgroundService {
     // Handle batch messages
     service.on('batch').listen((event) {
       if (event == null) return;
-      
+
       try {
         final messages = event['messages'] as List;
         for (var message in messages) {
           final type = message['type'] as String;
           final data = message['data'] as Map<String, dynamic>?;
-          
+
           // Process message
           _handleMessage(service, type, data);
         }

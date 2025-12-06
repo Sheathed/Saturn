@@ -106,7 +106,8 @@ class Track {
           .toList();
     }
     Contributors? contributors;
-    if (mi.extras?['contributors'] != null && mi.extras?['contributors'] != 'null') {
+    if (mi.extras?['contributors'] != null &&
+        mi.extras?['contributors'] != 'null') {
       contributors = Contributors.fromJson(
         jsonDecode(mi.extras?['contributors']),
       );
@@ -176,7 +177,8 @@ class Track {
       diskNumber: int.parse(json['DISK_NUMBER'] ?? '1'),
       explicit: (json['EXPLICIT_LYRICS'].toString() == '1') ? true : false,
       addedDate: json['DATE_ADD'],
-        contributors: (json['SNG_CONTRIBUTORS'] != null)
+      contributors:
+          (json['SNG_CONTRIBUTORS'] != null && json['SNG_CONTRIBUTORS'] is Map)
           ? Contributors.fromPrivateJson(json['SNG_CONTRIBUTORS'])
           : null,
       fallback: (json['FALLBACK'] != null)
@@ -190,7 +192,6 @@ class Track {
             ]
           : null,
       variation: json['VARIATION'],
-
     );
   }
   Map<String, dynamic> toSQL({bool off = false}) => {
@@ -227,9 +228,7 @@ class Track {
     diskNumber: data['diskNumber'],
     explicit: (data['explicit'] == 1) ? true : false,
     contributors: (data['contributors'] != null)
-        ? Contributors.fromJson(
-            jsonDecode(data['contributors']),
-          )
+        ? Contributors.fromJson(jsonDecode(data['contributors']))
         : null,
     fallback: data['fallback'] != null
         ? Track(id: data['fallback'].toString())
@@ -249,20 +248,34 @@ class Contributors {
   List<String>? producers;
   List<String>? authors;
   List<String>? writers;
-  
 
-
-  Contributors({this.composers, this.engineers, this.mixers, this.producers, this.authors, this.writers});
+  Contributors({
+    this.composers,
+    this.engineers,
+    this.mixers,
+    this.producers,
+    this.authors,
+    this.writers,
+  });
 
   factory Contributors.fromPrivateJson(Map<dynamic, dynamic> json) {
-
     return Contributors(
-      composers: json['composer'] != null ? List<String>.from(json['composer']) : null,
-      engineers: json['engineer'] != null ? List<String>.from(json['engineer']) : null,
+      composers: json['composer'] != null
+          ? List<String>.from(json['composer'])
+          : null,
+      engineers: json['engineer'] != null
+          ? List<String>.from(json['engineer'])
+          : null,
       mixers: json['mixer'] != null ? List<String>.from(json['mixer']) : null,
-      producers: json['producer'] != null ? List<String>.from(json['producer']) : null,
-      authors: json['author'] != null ? List<String>.from(json['author']) : null,
-      writers: json['writer'] != null ? List<String>.from(json['writer']) : null,
+      producers: json['producer'] != null
+          ? List<String>.from(json['producer'])
+          : null,
+      authors: json['author'] != null
+          ? List<String>.from(json['author'])
+          : null,
+      writers: json['writer'] != null
+          ? List<String>.from(json['writer'])
+          : null,
     );
   }
 
@@ -634,8 +647,12 @@ class LocalPlaylist {
         title: json['title'] ?? 'Imported Playlist',
         description: json['description'],
         trackIds: List<String>.from(json['trackIds'] ?? []),
-        createdAt: DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
-        updatedAt: DateTime.parse(json['updatedAt'] ?? DateTime.now().toIso8601String()),
+        createdAt: DateTime.parse(
+          json['createdAt'] ?? DateTime.now().toIso8601String(),
+        ),
+        updatedAt: DateTime.parse(
+          json['updatedAt'] ?? DateTime.now().toIso8601String(),
+        ),
       );
 
   Map<String, dynamic> toSQL() => {
@@ -651,7 +668,12 @@ class LocalPlaylist {
     id: data['id'],
     title: data['title'],
     description: data['description'],
-    trackIds: (data['trackIds'] as String?)?.split(',').where((id) => id.isNotEmpty).toList() ?? [],
+    trackIds:
+        (data['trackIds'] as String?)
+            ?.split(',')
+            .where((id) => id.isNotEmpty)
+            .toList() ??
+        [],
     createdAt: DateTime.parse(data['createdAt']),
     updatedAt: DateTime.parse(data['updatedAt']),
   );
@@ -833,29 +855,29 @@ class SearchResults {
         (episodes == null || episodes!.isEmpty));
   }
 
-  factory SearchResults.fromPrivateJson(Map<dynamic, dynamic> json) =>
-      SearchResults(
-        tracks: json['TRACK']['data']
-            .map<Track>((dynamic data) => Track.fromPrivateJson(data))
-            .toList(),
-        albums: json['ALBUM']['data']
-            .map<Album>((dynamic data) => Album.fromPrivateJson(data))
-            .toList(),
-        artists: json['ARTIST']['data']
-            .map<Artist>((dynamic data) => Artist.fromPrivateJson(data))
-            .toList(),
-        playlists: json['PLAYLIST']['data']
-            .map<Playlist>((dynamic data) => Playlist.fromPrivateJson(data))
-            .toList(),
-        shows: json['SHOW']['data']
-            .map<Show>((dynamic data) => Show.fromPrivateJson(data))
-            .toList(),
-        episodes: json['EPISODE']['data']
-            .map<ShowEpisode>(
-              (dynamic data) => ShowEpisode.fromPrivateJson(data),
-            )
-            .toList(),
-      );
+  factory SearchResults.fromPrivateJson(Map<dynamic, dynamic> json) {
+    final result = SearchResults(
+      tracks: json['TRACK']['data']
+          .map<Track>((dynamic data) => Track.fromPrivateJson(data))
+          .toList(),
+      albums: json['ALBUM']['data']
+          .map<Album>((dynamic data) => Album.fromPrivateJson(data))
+          .toList(),
+      artists: json['ARTIST']['data']
+          .map<Artist>((dynamic data) => Artist.fromPrivateJson(data))
+          .toList(),
+      playlists: json['PLAYLIST']['data']
+          .map<Playlist>((dynamic data) => Playlist.fromPrivateJson(data))
+          .toList(),
+      shows: json['SHOW']['data']
+          .map<Show>((dynamic data) => Show.fromPrivateJson(data))
+          .toList(),
+      episodes: json['EPISODE']['data']
+          .map<ShowEpisode>((dynamic data) => ShowEpisode.fromPrivateJson(data))
+          .toList(),
+    );
+    return result;
+  }
 }
 
 class Lyrics {

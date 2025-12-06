@@ -24,8 +24,12 @@ import '../translations.i18n.dart';
 import '../utils/file_utils.dart';
 import '../api/download_service_dart.dart';
 import '../api/download_isolate.dart';
+import '../api/download_log.dart';
 
 DownloadManager downloadManager = DownloadManager();
+
+// Shared download log instance for the download chain
+DownloadLog? _downloadLog;
 
 class DownloadManager {
   //Platform channels
@@ -40,7 +44,7 @@ class DownloadManager {
 
   // Dart download service
   final DownloadServiceDart _downloadService = DownloadServiceDart();
-  
+
   // Local playlist manager
   late LocalPlaylistManager localPlaylistManager;
 
@@ -56,7 +60,18 @@ class DownloadManager {
   }
 
   Future init() async {
+    // Initialize download log early
+    _downloadLog = DownloadLog();
+    await _downloadLog!.open();
+    _downloadLog!.log('[DownloadManager] Initializing download manager...');
+    _downloadLog!.log(
+      '[DownloadManager] Platform: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+    );
+
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      _downloadLog!.log(
+        '[DownloadManager] Initializing FFI database for desktop',
+      );
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
@@ -131,17 +146,26 @@ class DownloadManager {
 
     // Migrate existing Downloads table to add downloaded column if missing
     try {
-      await db!.execute('ALTER TABLE Downloads ADD COLUMN downloaded INTEGER DEFAULT 0');
+      await db!.execute(
+        'ALTER TABLE Downloads ADD COLUMN downloaded INTEGER DEFAULT 0',
+      );
     } catch (e) {
       // Column already exists, ignore error
     }
 
     // Initialize download service (this will try to load downloads from DB)
+    _downloadLog!.log('[DownloadManager] Initializing download service...');
     await _downloadService.init(db!);
+    _downloadLog!.log('[DownloadManager] Download service initialized');
 
     // Initialize local playlist manager
+    _downloadLog!.log(
+      '[DownloadManager] Initializing local playlist manager...',
+    );
     localPlaylistManager = LocalPlaylistManager();
     await localPlaylistManager.init(db!);
+    _downloadLog!.log('[DownloadManager] Local playlist manager initialized');
+    _downloadLog!.log('[DownloadManager] Download manager fully initialized');
 
     //Listen to state change event from Dart service
     _downloadService.serviceEvents.listen((e) {
@@ -380,8 +404,17 @@ class DownloadManager {
     private = true,
     isSingleton = false,
   }) async {
+    _downloadLog?.log(
+      '[DownloadManager] addOfflineTrack called - trackId: ${track.id}, title: ${track.title}, private: $private, isSingleton: $isSingleton',
+    );
+
     //Permission
-    if (!private && !(await checkPermission())) return false;
+    if (!private && !(await checkPermission())) {
+      _downloadLog?.warn(
+        '[DownloadManager] addOfflineTrack - Permission denied for public download',
+      );
+      return false;
+    }
 
     //Ask for quality
     AudioQuality? quality;
@@ -392,7 +425,13 @@ class DownloadManager {
 
     //Fetch track if missing meta
     if (track.artists == null || track.artists!.isEmpty) {
+      _downloadLog?.log(
+        '[DownloadManager] addOfflineTrack - Fetching full track metadata for ${track.id}',
+      );
       track = await deezerAPI.track(track.id!);
+      _downloadLog?.log(
+        '[DownloadManager] addOfflineTrack - Track metadata fetched: ${track.title}',
+      );
     }
 
     //Add to DB
@@ -408,20 +447,46 @@ class DownloadManager {
 
     //Get path
     String path = _generatePath(track, private, isSingleton: isSingleton);
+    _downloadLog?.log(
+      '[DownloadManager] addOfflineTrack - Generated path: $path',
+    );
+
     final trackJson = await Download.jsonFromTrack(
       track,
       path,
       private: private,
       quality: quality,
     );
+    _downloadLog?.log(
+      '[DownloadManager] addOfflineTrack - Created download JSON: trackId=${trackJson['trackId']}, streamTrackId=${trackJson['streamTrackId']}, quality=${trackJson['quality']}',
+    );
+    _downloadLog?.log(
+      '[DownloadManager] addOfflineTrack - md5origin: ${trackJson['md5origin']}, mediaVersion: ${trackJson['mediaVersion']}',
+    );
+
     await _downloadService.addDownloads([Map<String, dynamic>.from(trackJson)]);
+    _downloadLog?.log(
+      '[DownloadManager] addOfflineTrack - Download added to service, starting...',
+    );
     await start();
+    _downloadLog?.log(
+      '[DownloadManager] addOfflineTrack - Complete for track ${track.id}',
+    );
     return true;
   }
 
   Future addOfflineAlbum(Album album, {private = true}) async {
+    _downloadLog?.log(
+      '[DownloadManager] addOfflineAlbum called - albumId: ${album.id}, title: ${album.title}, private: $private',
+    );
+
     //Permission
-    if (!private && !(await checkPermission())) return;
+    if (!private && !(await checkPermission())) {
+      _downloadLog?.warn(
+        '[DownloadManager] addOfflineAlbum - Permission denied for public download',
+      );
+      return;
+    }
 
     //Ask for quality
     AudioQuality? quality;
@@ -432,7 +497,13 @@ class DownloadManager {
 
     //Get from API if no tracks
     if (album.tracks == null || album.tracks!.isEmpty) {
+      _downloadLog?.log(
+        '[DownloadManager] addOfflineAlbum - Fetching album tracks from API for ${album.id}',
+      );
       album = await deezerAPI.album(album.id ?? '');
+      _downloadLog?.log(
+        '[DownloadManager] addOfflineAlbum - Fetched ${album.tracks?.length ?? 0} tracks',
+      );
     }
 
     //Add to DB
@@ -474,8 +545,17 @@ class DownloadManager {
     private = true,
     AudioQuality? quality,
   }) async {
+    _downloadLog?.log(
+      '[DownloadManager] addOfflinePlaylist called - playlistId: ${playlist.id}, title: ${playlist.title}, private: $private, trackCount: ${playlist.trackCount}',
+    );
+
     //Permission
-    if (!private && !(await checkPermission())) return;
+    if (!private && !(await checkPermission())) {
+      _downloadLog?.warn(
+        '[DownloadManager] addOfflinePlaylist - Permission denied for public download',
+      );
+      return;
+    }
 
     //Ask for quality
     if (!private &&
@@ -488,7 +568,13 @@ class DownloadManager {
     //Get tracks if missing
     if ((playlist.tracks == null) ||
         (playlist.tracks?.length ?? 0) < (playlist.trackCount ?? 0)) {
+      _downloadLog?.log(
+        '[DownloadManager] addOfflinePlaylist - Fetching full playlist from API for ${playlist.id}',
+      );
       playlist = await deezerAPI.fullPlaylist(playlist.id ?? '');
+      _downloadLog?.log(
+        '[DownloadManager] addOfflinePlaylist - Fetched ${playlist.tracks?.length ?? 0} tracks',
+      );
     }
 
     //Add to DB
@@ -939,9 +1025,7 @@ class DownloadManager {
   //Send settings to download service
   Future updateServiceSettings() async {
     final settingsMap = settings.toJson();
-    await _downloadService.updateSettings(
-      settingsMap
-    );
+    await _downloadService.updateSettings(settingsMap);
   }
 
   //Check storage permission
@@ -1051,9 +1135,19 @@ class Download {
     private = true,
     AudioQuality? quality,
   }) async {
+    _downloadLog?.log(
+      '[Download] jsonFromTrack called - trackId: ${t.id}, title: ${t.title}, private: $private',
+    );
+
     //Get download info
     if (t.playbackDetails?.isEmpty ?? true) {
+      _downloadLog?.log(
+        '[Download] jsonFromTrack - playbackDetails empty, fetching track from API',
+      );
       t = await deezerAPI.track(t.id ?? '');
+      _downloadLog?.log(
+        '[Download] jsonFromTrack - Track fetched, playbackDetails: ${t.playbackDetails?.length ?? 0} items',
+      );
     }
 
     // Select playbackDetails for audio stream
@@ -1061,6 +1155,29 @@ class Download {
         t.playbackDetailsFallback?.isNotEmpty == true
         ? t.playbackDetailsFallback
         : t.playbackDetails;
+
+    _downloadLog?.log(
+      '[Download] jsonFromTrack - Using ${t.playbackDetailsFallback?.isNotEmpty == true ? "fallback" : "primary"} playbackDetails',
+    );
+    _downloadLog?.log(
+      '[Download] jsonFromTrack - md5origin: ${playbackDetails?[0]}, mediaVersion: ${playbackDetails?[1]}, trackToken length: ${(playbackDetails?[2] as String?)?.length ?? 0}',
+    );
+
+    if (playbackDetails == null || playbackDetails.isEmpty) {
+      _downloadLog?.error(
+        '[Download] jsonFromTrack - ERROR: playbackDetails is null or empty for track ${t.id}',
+      );
+    }
+    if (playbackDetails?[0] == null) {
+      _downloadLog?.error(
+        '[Download] jsonFromTrack - ERROR: md5origin is null for track ${t.id}',
+      );
+    }
+    if (playbackDetails?[2] == null) {
+      _downloadLog?.error(
+        '[Download] jsonFromTrack - ERROR: trackToken is null for track ${t.id}',
+      );
+    }
 
     return {
       'private': private,

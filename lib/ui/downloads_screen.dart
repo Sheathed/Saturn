@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:filesize/filesize.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -10,6 +12,8 @@ import '../api/download.dart';
 import '../translations.i18n.dart';
 import 'elements.dart';
 import 'cached_image.dart';
+
+final _log = Logger('DownloadsScreen');
 
 class DownloadsScreen extends StatefulWidget {
   const DownloadsScreen({super.key});
@@ -45,8 +49,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       downloads.where((d) => d.state == DownloadState.DONE).toList();
 
   Future _load() async {
+    _log.info('[DownloadsScreen] _load() called');
     //Load downloads
     List<Download> d = await downloadManager.getDownloads();
+    _log.info(
+      '[DownloadsScreen] Loaded ${d.length} downloads - downloading: ${d.where((x) => x.state == DownloadState.DOWNLOADING).length}, queued: ${d.where((x) => x.state == DownloadState.NONE).length}, failed: ${d.where((x) => x.state == DownloadState.ERROR || x.state == DownloadState.DEEZER_ERROR).length}, done: ${d.where((x) => x.state == DownloadState.DONE).length}',
+    );
     setState(() {
       downloads = d;
     });
@@ -54,12 +62,18 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
   @override
   void initState() {
+    _log.info('[DownloadsScreen] initState() called');
     _load();
 
     //Subscribe to state update
     _stateSubscription = downloadManager.serviceEvents.stream.listen((e) {
+      _log.fine('[DownloadsScreen] Service event received: ${e['type']}');
+
       //State change = update
       if (e['type'] == 'stateChange') {
+        _log.info(
+          '[DownloadsScreen] State change event - running: ${downloadManager.running}, queueSize: ${e['queueSize']}',
+        );
         setState(() {
           // The downloadManager.running is already updated by the download manager itself
           // We just need to trigger a rebuild
@@ -78,8 +92,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         });
       }
       //Download completed - reload to show in "Done" section
-      if (e['type'] == 'downloadComplete' ||
-          e['type'] == 'downloadError') {
+      if (e['type'] == 'downloadComplete' || e['type'] == 'downloadError') {
         _debouncedReload();
       }
 
@@ -140,11 +153,19 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   : 'Start'.i18n,
             ),
             onPressed: () async {
+              _log.info(
+                '[DownloadsScreen] Start/Stop button pressed - current running: ${downloadManager.running}',
+              );
               if (downloadManager.running) {
+                _log.info('[DownloadsScreen] Stopping downloads...');
                 await downloadManager.stop();
               } else {
+                _log.info('[DownloadsScreen] Starting downloads...');
                 await downloadManager.start();
               }
+              _log.info(
+                '[DownloadsScreen] Start/Stop complete - new running: ${downloadManager.running}',
+              );
               setState(() {});
             },
           ),
@@ -448,10 +469,76 @@ class _DownloadLogViewerState extends State<DownloadLogViewer> {
     super.initState();
   }
 
+  Future<void> _clearLog() async {
+    Directory? directory = await getApplicationSupportDirectory();
+    String path = p.join(directory.path, 'download.log');
+    File file = File(path);
+    if (await file.exists()) {
+      await file.writeAsString('');
+      setState(() {
+        data = [];
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: FreezerAppBar('Download Log'.i18n),
+      appBar: FreezerAppBar(
+        'Download Log'.i18n,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Clear log'.i18n,
+            onPressed: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Clear Log'.i18n),
+                  content: Text(
+                    'Are you sure you want to clear the download log?'.i18n,
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text('Cancel'.i18n),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: Text('Clear'.i18n),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await _clearLog();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Log cleared'.i18n),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy),
+            tooltip: 'Copy to clipboard'.i18n,
+            onPressed: () {
+              final logText = data.join('\n');
+              Clipboard.setData(ClipboardData(text: logText));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Log copied to clipboard'.i18n),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: ListView.builder(
         itemCount: data.length,
         itemBuilder: (context, i) {

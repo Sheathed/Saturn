@@ -1232,7 +1232,7 @@ class _QueueScreenState extends State<QueueScreen> with WidgetsBindingObserver {
           : ReorderableListView.builder(
               scrollController: _scrollController,
               itemCount: queueState.queue.length,
-              onReorder: (int oldIndex, int newIndex) async {
+              onReorderItem: (int oldIndex, int newIndex) async {
                 // Circumvent bug in ReorderableListView that won't be fixed: https://github.com/flutter/flutter/pull/93146#issuecomment-1032082749
                 if (newIndex > oldIndex) newIndex -= 1;
                 if (oldIndex == newIndex) return;

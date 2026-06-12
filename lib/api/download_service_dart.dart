@@ -125,7 +125,9 @@ class DownloadServiceDart {
         windows: windowsSettings,
       );
 
-      final initialized = await _notificationsPlugin.initialize(initSettings);
+      final initialized = await _notificationsPlugin.initialize(
+        settings: initSettings,
+      );
 
       if (initialized == false) {
         _logger?.log('Notification initialization returned false');
@@ -455,10 +457,10 @@ class DownloadServiceDart {
 
     if (Platform.isAndroid) {
       _notificationsPlugin.show(
-        notificationId,
-        title,
-        '${_formatFilesize(received)} / ${_formatFilesize(filesize)}',
-        NotificationDetails(
+        id: notificationId,
+        title: title,
+        body: '${_formatFilesize(received)} / ${_formatFilesize(filesize)}',
+        notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             _channelName,
@@ -478,10 +480,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isIOS) {
       _notificationsPlugin.show(
-        notificationId,
-        title,
-        '${_formatFilesize(received)} / ${_formatFilesize(filesize)}',
-        const NotificationDetails(
+        id: notificationId,
+        title: title,
+        body: '${_formatFilesize(received)} / ${_formatFilesize(filesize)}',
+        notificationDetails: const NotificationDetails(
           iOS: DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: false,
@@ -506,10 +508,10 @@ class DownloadServiceDart {
 
     if (Platform.isAndroid) {
       await _notificationsPlugin.show(
-        notificationId,
-        'Download Complete',
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: 'Download Complete',
+        body: title,
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             _channelName,
@@ -524,10 +526,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isIOS) {
       await _notificationsPlugin.show(
-        notificationId,
-        'Download Complete',
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: 'Download Complete',
+        body: title,
+        notificationDetails: const NotificationDetails(
           iOS: DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: false,
@@ -537,10 +539,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isMacOS) {
       await _notificationsPlugin.show(
-        notificationId,
-        'Download Complete',
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: 'Download Complete',
+        body: title,
+        notificationDetails: const NotificationDetails(
           macOS: DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: false,
@@ -550,10 +552,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isLinux) {
       await _notificationsPlugin.show(
-        notificationId,
-        'Download Complete',
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: 'Download Complete',
+        body: title,
+        notificationDetails: const NotificationDetails(
           linux: LinuxNotificationDetails(
             urgency: LinuxNotificationUrgency.low,
           ),
@@ -561,10 +563,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isWindows) {
       await _notificationsPlugin.show(
-        notificationId,
-        'Download Complete',
-        title,
-        null,
+        id: notificationId,
+        title: 'Download Complete',
+        body: title,
+        notificationDetails: null,
       );
     }
   }
@@ -588,10 +590,10 @@ class DownloadServiceDart {
 
     if (Platform.isAndroid) {
       await _notificationsPlugin.show(
-        notificationId,
-        errorMessage,
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: errorMessage,
+        body: title,
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             _channelName,
@@ -606,10 +608,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isIOS) {
       await _notificationsPlugin.show(
-        notificationId,
-        errorMessage,
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: errorMessage,
+        body: title,
+        notificationDetails: const NotificationDetails(
           iOS: DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: false,
@@ -619,10 +621,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isMacOS) {
       await _notificationsPlugin.show(
-        notificationId,
-        errorMessage,
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: errorMessage,
+        body: title,
+        notificationDetails: const NotificationDetails(
           macOS: DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: false,
@@ -632,10 +634,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isLinux) {
       await _notificationsPlugin.show(
-        notificationId,
-        errorMessage,
-        title,
-        const NotificationDetails(
+        id: notificationId,
+        title: errorMessage,
+        body: title,
+        notificationDetails: const NotificationDetails(
           linux: LinuxNotificationDetails(
             urgency: LinuxNotificationUrgency.normal,
           ),
@@ -643,10 +645,10 @@ class DownloadServiceDart {
       );
     } else if (Platform.isWindows) {
       await _notificationsPlugin.show(
-        notificationId,
-        errorMessage,
-        title,
-        null,
+        id: notificationId,
+        title: errorMessage,
+        body: title,
+        notificationDetails: null,
       );
     }
   }

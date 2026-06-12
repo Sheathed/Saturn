@@ -64,7 +64,7 @@ class DeezerAPI {
       'method': method,
       'cid': Random().nextInt(1000000000).toString(),
       //Used for homepage
-      if (gatewayInput != null) 'gateway_input': gatewayInput,
+      'gateway_input': ?gatewayInput,
     });
     //Post
     http.Response res = await http.post(

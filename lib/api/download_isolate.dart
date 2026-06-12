@@ -956,7 +956,9 @@ class _DownloadWorker {
 
           // Use embedded album object
           album = track.album;
-          _log('Using embedded album metadata from track response - album id: ${album?.id}');
+          _log(
+            'Using embedded album metadata from track response - album id: ${album?.id}',
+          );
 
           // Fetch the public track JSON (helpful for publicTrack fields)
           _log('Fetching public track API for ID: ${download.trackId}');
@@ -968,14 +970,18 @@ class _DownloadWorker {
             _log('Public track data received: ${trackData.keys.join(", ")}');
           } catch (publicTrackError) {
             // Don't fail hard if public track is unavailable, just log and continue.
-            _error('Public track API call failed (continuing with embedded data): $publicTrackError');
+            _error(
+              'Public track API call failed (continuing with embedded data): $publicTrackError',
+            );
             publicTrack = null;
           }
 
           // Derive publicAlbum: prefer publicTrack['album'] if present, otherwise build from embedded album
           if (publicTrack != null && publicTrack['album'] != null) {
             publicAlbum = publicTrack['album'] as Map<dynamic, dynamic>;
-            _log('Derived publicAlbum from public track data: ${publicAlbum.keys.join(", ")}');
+            _log(
+              'Derived publicAlbum from public track data: ${publicAlbum.keys.join(", ")}',
+            );
           } else {
             // Build a fallback publicAlbum map from the embedded album object
             String? md5;
@@ -986,10 +992,10 @@ class _DownloadWorker {
             }
             // try additional possible field names defensively
             try {
-              if (md5 == null) md5 = (album as dynamic).md5_image as String?;
+              md5 ??= (album as dynamic).md5_image as String?;
             } catch (_) {}
             try {
-              if (md5 == null) md5 = (album as dynamic).md5Image as String?;
+              md5 ??= (album as dynamic).md5Image as String?;
             } catch (_) {}
 
             publicAlbum = <String, dynamic>{
@@ -1000,7 +1006,9 @@ class _DownloadWorker {
               //'tracklist': album?.tracklist,
               // unknown / optional fields left null (nb_tracks, label, upc, genres)
             };
-            _log('Built fallback publicAlbum from embedded album: ${publicAlbum.keys.join(", ")}');
+            _log(
+              'Built fallback publicAlbum from embedded album: ${publicAlbum.keys.join(", ")}',
+            );
           }
 
           // Lyrics - attempt to fetch but continue if unavailable
@@ -1010,7 +1018,9 @@ class _DownloadWorker {
             lyrics = lyricsData;
             _log('Lyrics data received: ${lyrics..toString()}');
           } catch (lyricsError) {
-            _error('Lyrics API call failed (continuing without lyrics): $lyricsError');
+            _error(
+              'Lyrics API call failed (continuing without lyrics): $lyricsError',
+            );
             lyrics = null;
           }
         } catch (e, stackTrace) {

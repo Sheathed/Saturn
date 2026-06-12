@@ -596,7 +596,7 @@ class SearchBrowseCard extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (icon != null) icon!,
+                ?icon,
                 if (icon != null) Container(width: 8.0),
                 Text(
                   text,

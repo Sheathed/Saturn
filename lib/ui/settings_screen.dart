@@ -1,9 +1,9 @@
 import 'dart:io';
 
-import 'package:clipboard/clipboard.dart';
 import 'package:country_currency_pickers/country.dart';
 import 'package:country_currency_pickers/country_picker_dialog.dart';
 import 'package:country_currency_pickers/utils/utils.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:universal_disk_space/universal_disk_space.dart';
 import 'package:disk_space_plus/disk_space_plus.dart';
@@ -1464,7 +1464,8 @@ class _GeneralSettingsState extends State<GeneralSettings> {
             ),
             leading: const Icon(Icons.lock),
             onTap: () async {
-              await FlutterClipboard.copy(settings.arl ?? '');
+              String url = settings.arl ?? '';
+              await Clipboard.setData(ClipboardData(text: url));
               await Fluttertoast.showToast(msg: 'Copied'.i18n);
             },
           ),

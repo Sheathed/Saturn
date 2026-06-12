@@ -958,15 +958,6 @@ class AudioPlayerHandler extends BaseAudioHandler
     List<ShowEpisode> episodes, {
     int index = 0,
   }) async {
-    if (Platform.isLinux || Platform.isWindows) {
-      Fluttertoast.showToast(
-        msg: 'Podcast playback is unavailable on Linux & Windows.'.i18n,
-        gravity: ToastGravity.BOTTOM,
-        toastLength: Toast.LENGTH_SHORT,
-      );
-      return;
-    }
-
     QueueSource showQueueSource = QueueSource(
       id: show.id,
       text: show.name,

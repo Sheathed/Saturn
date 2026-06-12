@@ -26,20 +26,19 @@ dependencies:
 
   flutter_localizations:
     sdk: flutter
-  app_links: ^6.4.1
+  app_links: ^7.1.1
   animations: ^2.1.0
   async: ^2.13.0
   audio_service: ^0.18.18
   audio_session: ^0.2.2
   cached_network_image: ^3.4.1
-  clipboard: ^2.0.2
   collection: ^1.19.1
   connectivity_plus: ^7.0.0
   country_currency_pickers: ^3.0.0
   envied: ^1.3.1
 
   crypto: ^3.0.6
-  device_info_plus: ^12.2.0
+  device_info_plus: ^12.4.0
   disk_space_plus: ^0.2.6
   universal_disk_space: ^0.2.3
   draggable_scrollbar: ^0.1.0
@@ -50,11 +49,11 @@ dependencies:
   flutter_displaymode: ^0.7.0
   #flutter_file_dialog: ^3.0.1
   flutter_inappwebview: ^6.1.5
-  go_router: ^16.2.5
+  go_router: ^17.3.0
   flutter_material_color_picker: ^1.2.0
   flutter_screenutil: ^5.9.3
-  get_it: ^8.2.0
-  google_fonts: ^6.3.2
+  get_it: ^9.2.1
+  google_fonts: ^8.1.0
   html: ^0.15.6
   http: ^1.5.0
   i18n_extension: ^15.0.7
@@ -89,7 +88,7 @@ dependencies:
       ref: main 
   audio_service_win: ^0.0.2
   audio_service_mpris: ^0.2.0
-  metatagger: ^1.0.0
+  metatagger: ^2.0.1
   windows_single_instance: ^1.0.1 
   unix_single_instance: ^0.0.4         
   tray_manager: ^0.5.1                 
@@ -101,7 +100,7 @@ dependencies:
       url: https://github.com/KRTirtho/scrobblenaut.git
   external_path: ^2.2.0 
   flutter_discord_rpc: ^1.1.0
-  flutter_local_notifications: ^19.5.0
+  flutter_local_notifications: ^22.0.0
   flutter_background_service: ^5.1.0
 
 dev_dependencies:

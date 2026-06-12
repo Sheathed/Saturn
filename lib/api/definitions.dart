@@ -68,7 +68,7 @@ class Track {
   MediaItem toMediaItem() => MediaItem(
     title: title ?? '',
     album: album?.title ?? '',
-    artist: artists?[0].name,
+    artist: (artists?.isNotEmpty == true) ? artists![0].name : null,
     displayTitle: title,
     displaySubtitle: artistString,
     displayDescription: album?.title,

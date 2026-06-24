@@ -113,6 +113,10 @@ dev_dependencies:
   envied_generator: ^1.0.0
   flutter_launcher_icons: ^0.14.4
 
+dependency_overrides:
+  flutter_rust_bridge: 2.11.1
+
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

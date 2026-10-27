@@ -40,3 +40,10 @@ analyzer:
     # workaround for https://github.com/dart-lang/sdk/issues/42910
     - "Scrobblenaut/**"
     - "marquee/**"
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**

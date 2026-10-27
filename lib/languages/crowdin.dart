@@ -75,7 +75,7 @@ const crowdin = {
     'Login using browser': 'تسجيل الدخول باستخدام المتصفح',
     'Login using token': 'تسجيل الدخول باستخدام الرمز المميز',
     'Enter ARL': 'أدخل الرمز المميز (arl)',
-    'Token (ARL)': 'الرمز المميز (ARL)',
+    'Token': 'الرمز المميز (ARL)',
     'Save': 'حفظ',
     "If you don't have account, you can register on deezer.com for free.":
         'إذا لم يكن لديك حساب ، يمكنك التسجيل على deezer.com مجانًا.',
@@ -144,7 +144,7 @@ const crowdin = {
     'Content country': 'بلد المحتوى',
     'Country used in headers. Now': 'البلد المستخدم في العناوين. الآن',
     'Log tracks': 'تسجيل الاغاني',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'أرسال سجلات الاستماع  إلى ديزر ، قم بتمكينها لميزات مثل فلو لتعمل بشكل صحيح (ينصح تفعيلها)',
     'Offline mode': 'وضع عدم الاتصال',
     'Will be overwritten on start.': 'سيتم الكتابة فوقها في البداية.',
@@ -294,9 +294,6 @@ const crowdin = {
     'Enable equalizer': 'تمكين المعادل',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'قد تفعل بعض تطبيقات المعادل للعمل. يتطلب إعادة تشغيل فريزر',
-    'Visualizer': 'المؤثرات المرئية',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'إظهار المؤثرات المرئية على صفحة الكلمات. تحذير: يتطلب إذن الميكروفون!',
     'Tags': 'التاغات ( الوسوم)',
     'Album': 'الألبوم',
     'Track number': 'رقم الأغنية',
@@ -459,7 +456,7 @@ const crowdin = {
     'Login using browser': 'Aniciar sesión con un restolador',
     'Login using token': 'Aniciar sesión con un pase',
     'Enter ARL': "Introducción d'una ARL",
-    'Token (ARL)': 'Pase (ARL)',
+    'Token': 'Pase (ARL)',
     'Save': 'Guardar',
     "If you don't have account, you can register on deezer.com for free.":
         'Si nun tienes una cuenta, pues rexistrate de baldre en deezer.com.',
@@ -528,7 +525,7 @@ const crowdin = {
     'Content country': 'País del conteníu',
     'Country used in headers. Now': 'El país usáu nes testeres. Agora',
     'Log tracks': 'Rexistru de pistes',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         "Unvia los rexistros d'escucha a Deezer. Activa esti axuste pa que carauterístiques como Flow funcionen correutamente",
     'Offline mode': 'Mou ensin conexón',
     'Will be overwritten on start.': 'Va sobrescribise nel aniciu.',
@@ -683,9 +680,6 @@ const crowdin = {
     'Enable equalizer': "Activar l'ecualizador",
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         "Podría activar dalguna aplicación ecualizadora. Rique'l reaniciu de Freezer",
-    'Visualizer': 'Visualizador',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        "Amuesa los visualizadores na páxina de la lletra. ALVERTENCIA: ¡Rique'l permisu del micrófonu!",
     'Tags': 'Etiquetes',
     'Album': 'Álbum',
     'Track number': 'Númberu de la pista',
@@ -848,7 +842,7 @@ const crowdin = {
     'Login using browser': 'Login using browser',
     'Login using token': 'Login using token',
     'Enter ARL': 'Enter ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Save',
     "If you don't have account, you can register on deezer.com for free.":
         "If you don't have account, you can register on deezer.com for free.",
@@ -917,8 +911,8 @@ const crowdin = {
     'Content country': 'Content country',
     'Country used in headers. Now': 'Country used in headers. Now',
     'Log tracks': 'Log tracks',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
-        'Send track listen logs to Deezer, enable it for features like Flow to work properly',
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
+        'Send track listen logs to platforms, enable it for features like Flow to work properly',
     'Offline mode': 'Offline mode',
     'Will be overwritten on start.': 'Will be overwritten on start.',
     'Error logging in, check your internet connections.':
@@ -1069,9 +1063,6 @@ const crowdin = {
     'Enable equalizer': 'Включване на еквалайзер',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Може да включи някои приложения за еквалайзер, за да сработи. Необходимо е да рестартирате Freezer',
-    'Visualizer': 'Визуализатор',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Покажи визуализатора на страницата с текстове на песните. ВНИМАНИЕ: Изисква разрешение за микрофон!',
     'Tags': 'Тагове',
     'Album': 'Албум',
     'Track number': 'Песен №',
@@ -1226,7 +1217,7 @@ const crowdin = {
     'Login using browser': '使用浏览器登录',
     'Login using token': '使用 Token 登录',
     'Enter ARL': '输入 ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': '保存',
     "If you don't have account, you can register on deezer.com for free.":
         '如果您没有帐户，您可以在 deezer.com 上免费注册',
@@ -1294,7 +1285,7 @@ const crowdin = {
     'Content country': '国家',
     'Country used in headers. Now': '在请求头使用的国家，现在为',
     'Log tracks': '记录播放历史',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         '发送播放历史到 Deezer，可用于 Flow 等服务正常工作',
     'Offline mode': '离线模式',
     'Will be overwritten on start.': '重启后将恢复',
@@ -1437,9 +1428,6 @@ const crowdin = {
     'Enable equalizer': '启用均衡器',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         '可以调用某些均衡器软件，需要重启生效',
-    'Visualizer': '音乐可视化',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        '在歌词界面显示可视化效果。警告: 需要麦克风权限！',
     'Tags': '标签',
     'Album': '专辑',
     'Track number': '歌曲编号',
@@ -1601,7 +1589,7 @@ const crowdin = {
     'Login using browser': 'Prijava pomoću preglednika',
     'Login using token': 'Prijava pomoću tokena',
     'Enter ARL': 'Unesite ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Spremi',
     "If you don't have account, you can register on deezer.com for free.":
         'Ako nemate račun, možete se besplatno registrirati na deezer.com.',
@@ -1670,7 +1658,7 @@ const crowdin = {
     'Content country': 'Zemlja sadržaja',
     'Country used in headers. Now': 'Zemlja korištena u zaglavljima. Sada',
     'Log tracks': 'Zapis traka',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Šalji zapisnike slušanja pjesama Deezeru, omogućite za mogućnosti kao Flow da rade ispravno',
     'Offline mode': 'Izvanmrežni način',
     'Will be overwritten on start.': 'Biti će prepisano na početku.',
@@ -1824,9 +1812,6 @@ const crowdin = {
     'Enable equalizer': 'Omogući ekvilajzer',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Moglo bi omogućiti nekim ekvilajzer aplikacijama da ispravno rade. Zahtijeva restart Freezera',
-    'Visualizer': 'Vizualizator',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Pokaži vizualizacije na stranici s tekstovima pjesme. UPOZORENJE: Zahtijeva dopuštenje mikrofona!',
     'Tags': 'Oznake',
     'Album': 'Album',
     'Track number': 'Broj pjesme',
@@ -1990,7 +1975,7 @@ const crowdin = {
     'Login using browser': 'Přihlásit se pomocí prohlížeče',
     'Login using token': 'Přihlásit se pomocí tokenu',
     'Enter ARL': 'Zadejte ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Uložit',
     "If you don't have account, you can register on deezer.com for free.":
         'Pokud nemáte účet, můžete se zdarma zaregistrovat na deezer.com.',
@@ -2059,7 +2044,7 @@ const crowdin = {
     'Content country': 'Content country',
     'Country used in headers. Now': 'Země použita v záhlaví. Nyní',
     'Log tracks': 'Logovat skladby',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Odesílat záznamy o poslouchání do Deezeru, povolte aby funkce, jako je Flow fungovaly správně',
     'Offline mode': 'Offline režim',
     'Will be overwritten on start.': 'Při spuštění bude přepsáno.',
@@ -2211,9 +2196,6 @@ const crowdin = {
     'Enable equalizer': 'Enable equalizer',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Might enable some equalizer apps to work. Requires restart of Freezer',
-    'Visualizer': 'Visualizer',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Show visualizers on lyrics page. WARNING: Requires microphone permission!',
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Track number',
@@ -2373,7 +2355,7 @@ const crowdin = {
     'Login using browser': 'Aanmelden met browser',
     'Login using token': 'Aanmelden met token',
     'Enter ARL': 'Voer ARL in',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Opslaan',
     "If you don't have account, you can register on deezer.com for free.":
         'Als je nog geen account hebt, kun je gratis op deezer.com registreren.',
@@ -2443,7 +2425,7 @@ const crowdin = {
     'Content country': 'Land van inhoud',
     'Country used in headers. Now': 'Land gebruikt in headers. Nu',
     'Log tracks': 'Log nummers',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Stuur logs van geluisterde nummers naar Deezer, schakel het in voor functies zoals Flow om het correct te laten werken',
     'Offline mode': 'Offlinemodus',
     'Will be overwritten on start.': 'Wordt bij het opstarten overschreven.',
@@ -2598,9 +2580,6 @@ const crowdin = {
     'Enable equalizer': 'Equalizer inschakelen',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Kan wellicht sommige equalizer apps laten werken. Vereist het herstarten van Freezer',
-    'Visualizer': 'Visualizer',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Toon visualizers op de songtekstpagina. WAARSCHUWING: Vereist toegang tot microfoon!',
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Liednummer',
@@ -2763,7 +2742,7 @@ const crowdin = {
     'Login using browser': 'Mag-login gamit ng browser',
     'Login using token': 'Mag-login gamit ng token',
     'Enter ARL': 'Pakilagay ang ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'I-save',
     "If you don't have account, you can register on deezer.com for free.":
         'Kung wala kang account, pumunta sa deezer.com para sa libreng pag-register.',
@@ -2832,7 +2811,7 @@ const crowdin = {
     'Content country': 'Bansa ng nilalaman',
     'Country used in headers. Now': 'Gagamitin ang bansa sa mga header. Ngayon',
     'Log tracks': 'Log ng mga track',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Ipadala ang log ng mga napakinggang track sa Deezer, I-enable mo para gumana nang maayos sa mga feature kagaya ng Flow',
     'Offline mode': 'Naka Offline mode',
     'Will be overwritten on start.': 'Papatungan sa simula pa lang.',
@@ -2987,9 +2966,6 @@ const crowdin = {
     'Enable equalizer': 'Enable equalizer',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Might enable some equalizer apps to work. Requires restart of Freezer',
-    'Visualizer': 'Visualizer',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Show visualizers on lyrics page. WARNING: Requires microphone permission!',
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Track number',
@@ -3151,7 +3127,7 @@ const crowdin = {
     'Login using browser': 'Connexion via navigateur',
     'Login using token': 'Connexion via token',
     'Enter ARL': 'Saisir ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Sauvegarder',
     "If you don't have account, you can register on deezer.com for free.":
         "Si vous n'avez pas de compte, vous pouvez vous inscrire gratuitement sur deezer.com.",
@@ -3222,7 +3198,7 @@ const crowdin = {
     'Country used in headers. Now':
         'Pays utilisé pour les bannières. Actuellement',
     'Log tracks': "Journal d'écoute",
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         "Envoie les journaux d'écoute à Deezer, activez-le pour que les fonctionnalités comme Flow fonctionnent correctement",
     'Offline mode': 'Mode hors connexion',
     'Will be overwritten on start.': 'Sera écrasé au démarrage.',
@@ -3379,9 +3355,6 @@ const crowdin = {
     'Enable equalizer': "Activer l'égaliseur",
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         "Peut permettre le support de certaines applications d'égalisation sonore. Nécessite un redémarrage de Freezer",
-    'Visualizer': 'Visualisation',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        "Afficher les visualisations sur la page des paroles. ATTENTION : Nécessite l'autorisation d'accès au microphone !",
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Numéro de piste',
@@ -3545,7 +3518,7 @@ const crowdin = {
     'Login using browser': 'Anmeldung über Browser',
     'Login using token': 'Anmeldung per Token',
     'Enter ARL': 'ARL eingeben',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Speichern',
     "If you don't have account, you can register on deezer.com for free.":
         'Wenn Du noch kein Konto hast, kannst Du Dich kostenlos auf deezer.com registrieren.',
@@ -3613,7 +3586,7 @@ const crowdin = {
     'Content country': 'Land des Inhalts',
     'Country used in headers. Now': 'Aktuell',
     'Log tracks': 'Protokolliere Titel',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Gehörte Titel-Protokolle an Deezer senden, damit Flow richtig funktioniert',
     'Offline mode': 'Offline-Modus',
     'Will be overwritten on start.': 'Wird beim Start überschrieben.',
@@ -3767,9 +3740,6 @@ const crowdin = {
     'Enable equalizer': 'Equalizer aktivieren',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Könnte einige Equalizer-Apps aktivieren, um zu funktionieren. Benötigt einen Neustart der Freezer-App',
-    'Visualizer': 'Visualisierung',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Zeige Visualisierungen auf der Songtext-Seite. WARNUNG: Benötigt Mikrofon-Berechtigung!',
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Titelnummer',
@@ -3932,7 +3902,7 @@ const crowdin = {
     'Login using browser': 'Σύνδεση χρησιμοποιώντας το πρόγραμμα περιήγησης',
     'Login using token': 'Σύνδεση χρησιμοποιώντας token',
     'Enter ARL': 'Εισαγωγή ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Αποθήκευση',
     "If you don't have account, you can register on deezer.com for free.":
         'Εάν δεν έχετε λογαριασμό, μπορείτε να εγγραφείτε δωρεάν στο deezer.com.',
@@ -4004,7 +3974,7 @@ const crowdin = {
     'Country used in headers. Now':
         'Χώρα που χρησιμοποιείται στις κεφαλίδες. Τρέχουσα',
     'Log tracks': 'Αρχεία καταγραφής',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Αποστολή αρχείων καταγραφής ακρόασης στο Deezer, ενεργοποιήστε το για ορθή λειτουργία υπηρεσιών όπως το Flow',
     'Offline mode': 'Λειτουργία εκτός σύνδεσης',
     'Will be overwritten on start.': 'Θα αντικατασταθεί κατά την εκκίνηση.',
@@ -4161,9 +4131,6 @@ const crowdin = {
     'Enable equalizer': 'Ενεργοποίηση ισοσταθμιστή',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Μπορεί να επιτρέψει σε κάποιες εφαρμογές ισοσταθμιστή να λειτουργήσουν. Απαιτεί επανεκκίνηση του Freezer',
-    'Visualizer': 'Οπτικοποιητής',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Εμφάνιση οπτικών εφέ στη σελίδα των στίχων. ΠΡΟΕΙΔΟΠΟΙΗΣΗ: Απαιτείται άδεια μικροφώνου!',
     'Tags': 'Ετικέτες',
     'Album': 'Άλμπουμ',
     'Track number': 'Αριθμός τραγουδιού',
@@ -4324,7 +4291,7 @@ const crowdin = {
     'Login using browser': 'התחבר/י דרך הדפדפן',
     'Login using token': 'התחבר/י על ידי טוקן',
     'Enter ARL': 'הכנס/י טוקן',
-    'Token (ARL)': 'טוקן (קישור אישי)',
+    'Token': 'טוקן (קישור אישי)',
     'Save': 'שמור',
     "If you don't have account, you can register on deezer.com for free.":
         'אם אין לך חשבון, אתה יכול להירשם ב-deezer.com בחינם.',
@@ -4393,7 +4360,7 @@ const crowdin = {
     'Content country': 'מדינת תוכן',
     'Country used in headers. Now': 'מדינה שמוצגת בכותרות. עכשיו',
     'Log tracks': 'לוג שמיעת שירים',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'שלח לוגים של השמעה לדיזר, הפעל מצב זה כדי שתכונות כמו flow יעבדו טוב',
     'Offline mode': 'מצב אופליין',
     'Will be overwritten on start.': 'יוחלף בהפעלה.',
@@ -4543,9 +4510,6 @@ const crowdin = {
     'Enable equalizer': 'הפעל אקולייזר',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'עשוי לאפשר לכמה אפליקציות אקולייזר לעבוד. מצריך הפעלה מחדש של Freezer',
-    'Visualizer': 'הנפשה',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'הצגת הנפשות על מסך המילים. אזהרה: מצריך גישה למיקרופון!',
     'Tags': 'תגיות',
     'Album': 'אלבום',
     'Track number': 'מספר רצועה',
@@ -4706,7 +4670,7 @@ const crowdin = {
     'Login using browser': 'ब्राउज़र का उपयोग करके लॉगिन करें',
     'Login using token': 'टोकन का उपयोग करके लॉगिन करें',
     'Enter ARL': 'एआरएल दर्ज करें',
-    'Token (ARL)': 'टोकन (एआरएल)',
+    'Token': 'टोकन (एआरएल)',
     'Save': 'सहेजें',
     "If you don't have account, you can register on deezer.com for free.":
         'यदि आपके पास खाता नहीं है, तो आप deezer.com पर निःशुल्क पंजीकरण कर सकते हैं।',
@@ -4775,7 +4739,7 @@ const crowdin = {
     'Content country': 'सामग्री देश',
     'Country used in headers. Now': 'हेडर में इस्तेमाल किया गया देश। अब क',
     'Log tracks': 'लॉग ट्रैक',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'डीज़र को ट्रैक सुनने के लॉग भेजें, फ़्लो जैसी सुविधाओं के लिए इसे ठीक से काम करने के लिए सक्षम करें',
     'Offline mode': 'ऑफ़लाइन मोड',
     'Will be overwritten on start.': 'प्रारंभ में अधिलेखित कर दिया जाएगा।',
@@ -4929,9 +4893,6 @@ const crowdin = {
     'Enable equalizer': 'तुल्यकारक सक्षम करें',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'काम करने के लिए कुछ इक्वलाइज़र ऐप्स को सक्षम कर सकते हैं। फ्रीजर के पुनरारंभ की आवश्यकता है',
-    'Visualizer': 'विजुआलाइज़र',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'गीत पृष्ठ पर विज़ुअलाइज़र दिखाएं। चेतावनी: माइक्रोफ़ोन अनुमति की आवश्यकता है!',
     'Tags': 'टैग्स',
     'Album': 'एल्बम',
     'Track number': 'ट्रैक संख्या',
@@ -5094,7 +5055,7 @@ const crowdin = {
     'Login using browser': 'Bejelentkezés böngészővel',
     'Login using token': 'Bejelentkezés ARL token-nel',
     'Enter ARL': 'ARL bevitele',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Mentés',
     "If you don't have account, you can register on deezer.com for free.":
         'Ha nincs fiókja, regisztrálhat ingyen a deezer.com weboldalon.',
@@ -5164,7 +5125,7 @@ const crowdin = {
     'Country used in headers. Now':
         'Ország a fejléceknél van használva. Jelenleg',
     'Log tracks': 'Dalok naplózása',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Elküldi a zenehallgatási naplókat a Deezer-nek, engedélyezze ezt, hogy megfelelően működjenek az olyan szolgáltatások, mint a Flow',
     'Offline mode': 'Offline mód',
     'Will be overwritten on start.': 'Induláskor felül lesz írva.',
@@ -5320,9 +5281,6 @@ const crowdin = {
     'Enable equalizer': 'Equalézer engedélyezése',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Külső equalézer appok támogatása. Újraindítás szükséges',
-    'Visualizer': 'Vizualizáló',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Vizualizáló mutatása a dalszöveg oldalon. VIGYÁZAT: mikrofon engedély szükséges!',
     'Tags': 'Címkék',
     'Album': 'Album',
     'Track number': 'Dal sorszáma',
@@ -5487,7 +5445,7 @@ const crowdin = {
     'Login using browser': 'Masuk menggunakan browser',
     'Login using token': 'Masuk menggunakan token',
     'Enter ARL': 'Masukkan ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Simpan',
     "If you don't have account, you can register on deezer.com for free.":
         'Jika Anda tidak memiliki akun, Anda dapat mendaftar di deezer.com secara gratis.',
@@ -5556,7 +5514,7 @@ const crowdin = {
     'Content country': 'Wilayah konten',
     'Country used in headers. Now': 'Negara digunakan di header. Digunakan',
     'Log tracks': 'Catatan lagu',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Kirim catatan mendengarkan lagu ke Deezer, aktifkan agar fitur seperti Flow berfungsi dengan benar',
     'Offline mode': 'Mode offline',
     'Will be overwritten on start.':
@@ -5710,9 +5668,6 @@ const crowdin = {
     'Enable equalizer': 'Aktifkan equalizer',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Mungkin mengaktifkan beberapa aplikasi equalizer untuk bekerja. Membutuhkan restart Freezer',
-    'Visualizer': 'Visualisasi',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Tampilkan visualisasi di halaman lirik. PERINGATAN: Dibutuhkan ijin microphone!',
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Nomor lagu',
@@ -5874,7 +5829,7 @@ const crowdin = {
     'Login using browser': 'Login utilizzando il browser',
     'Login using token': 'Login utilizzando il token',
     'Enter ARL': "Inserisci l'ARL",
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Salva',
     "If you don't have account, you can register on deezer.com for free.":
         'Se non possiedi un account, puoi registrarti sul sito deezer.com gratuitamente.',
@@ -5944,7 +5899,7 @@ const crowdin = {
     'Content country': 'Contenuto dal Paese',
     'Country used in headers. Now': 'Paese contenuto negli header. Ora',
     'Log tracks': 'Log delle tracce',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Invia i log delle canzioni ascoltate a Deezer, abilitalo affinché features come Flow funzionino correttamente',
     'Offline mode': 'Modalità Offline',
     'Will be overwritten on start.': "Sarà sovrascritto all'avvio.",
@@ -6099,9 +6054,6 @@ const crowdin = {
     'Enable equalizer': 'Abilita equalizzatore',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Potrebbe abilitare il funzionamento di alcune app di equalizzazione. Richiede il riavvio di Freezer',
-    'Visualizer': 'Visualizzatore',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        "Mostra i visualizzatori nella pagina dei testi. ATTENZIONE: Richiede l'autorizzazione del microfono!",
     'Tags': 'Tag',
     'Album': 'Album',
     'Track number': 'Numero traccia',
@@ -6258,7 +6210,7 @@ const crowdin = {
     'Login using browser': '브라우저를 사용하여 로그인',
     'Login using token': '토큰을 사용하여 로그인',
     'Enter ARL': 'ARL 입력',
-    'Token (ARL)': '토큰 (ARL)',
+    'Token': '토큰 (ARL)',
     'Save': '저장',
     "If you don't have account, you can register on deezer.com for free.":
         '계정이 없으시면 deezer.com에서 무료로 등록하실 수 있습니다.',
@@ -6326,7 +6278,7 @@ const crowdin = {
     'Content country': '콘텐츠 국가',
     'Country used in headers. Now': '헤더에 사용 된 국가. 현재',
     'Log tracks': '트랙 로그',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Deezer에 트랙로그를 전송. Flow와 같은 기능이 제대로 작동하려면 이 기능을 활성화하십시오.',
     'Offline mode': '오프라인 모드',
     'Will be overwritten on start.': '시작할 때 덮어 씁니다.',
@@ -6473,9 +6425,6 @@ const crowdin = {
     'Enable equalizer': 'Enable equalizer',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Might enable some equalizer apps to work. Requires restart of Freezer',
-    'Visualizer': 'Visualizer',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Show visualizers on lyrics page. WARNING: Requires microphone permission!',
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Track number',
@@ -6636,7 +6585,7 @@ const crowdin = {
     'Login using browser': 'وارد شدن توسط مرورگر',
     'Login using token': 'وارد شدن توسط توکن',
     'Enter ARL': 'ARL وارد کردن',
-    'Token (ARL)': 'توکِن (ARL)',
+    'Token': 'توکِن (ARL)',
     'Save': 'ذخیره',
     "If you don't have account, you can register on deezer.com for free.":
         'اگر حساب کاربری در دیزر ندارید، میتوانید به صورت رایگان در سایتش ثبت نام کنید.',
@@ -6705,7 +6654,7 @@ const crowdin = {
     'Content country': 'کشور محتوی',
     'Country used in headers. Now': 'کشور مورد استفاده در سرساز. فعلی ',
     'Log tracks': 'ثبت گوش داده ها',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'ارسال گوش داده های ثبت شده به دیزر امکاناتی مثل جریان پخش را فراهم می‌سازد ',
     'Offline mode': 'حالت آفلاین',
     'Will be overwritten on start.': 'هنگام شروع بر روی قبلی ذخیره خواهد شد',
@@ -6858,9 +6807,6 @@ const crowdin = {
     'Enable equalizer': 'روشن کردن اکولایزر',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'باعث فعال شدن برخی از برنامه های اکولایزر میشود. نیازمند ریستارت کردن است',
-    'Visualizer': 'جلوه های تصویری',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'نمایش جلوه های تصویری در صفحه ی اشعار. اخطار: نیازمند دسترسی به میکروفون!',
     'Tags': 'برچسب ها',
     'Album': 'آلبوم',
     'Track number': 'شماره قطعه',
@@ -7021,7 +6967,7 @@ const crowdin = {
     'Login using browser': 'Zaloguj się za pomocą przeglądarki',
     'Login using token': 'Logowanie przy użyciu tokenu',
     'Enter ARL': 'Wprowadź ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Zapisz',
     "If you don't have account, you can register on deezer.com for free.":
         'Jeśli nie masz konta, możesz zarejestrować się na deezer.com za darmo.',
@@ -7090,7 +7036,7 @@ const crowdin = {
     'Content country': 'Kraj zawartości',
     'Country used in headers. Now': 'Kraj używany w nagłówkach. Teraz',
     'Log tracks': 'Rejestr utworów',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Wyślij dzienniki słuchania ścieżek do Deezer, włącz aby funkcje takie jak Flow działały poprawnie',
     'Offline mode': 'Tryb offline',
     'Will be overwritten on start.': 'Zostanie nadpisany przy starcie.',
@@ -7242,9 +7188,6 @@ const crowdin = {
     'Enable equalizer': 'Włącz korektor dźwięku',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Może sprawić, że niektóre aplikacje do korekty dźwięku zaczną działać. Wymaga ponownego uruchomienia Freezera',
-    'Visualizer': 'Wizualizator',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Pokaż wizualizatorów na stronie tekstowej. UWAGA: Wymaga uprawnienia mikrofonu!',
     'Tags': 'Tagi',
     'Album': 'Album',
     'Track number': 'Numer utworu',
@@ -7406,7 +7349,7 @@ const crowdin = {
     'Login using browser': 'Login usando o navegador',
     'Login using token': 'Login usando o token',
     'Enter ARL': 'Introduzir ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Salvar',
     "If you don't have account, you can register on deezer.com for free.":
         'Se você não tem conta, você pode se registrar no deezer.com de graça.',
@@ -7475,7 +7418,7 @@ const crowdin = {
     'Content country': 'País do conteúdo',
     'Country used in headers. Now': 'País usado em cabeçalhos. Atualmente',
     'Log tracks': 'Log de faixas',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Envie registro de faixas ouvidas para o Deezer, habilite-o para que recursos como o Flow funcionem corretamente',
     'Offline mode': 'Modo offline',
     'Will be overwritten on start.': 'Será substituído no início.',
@@ -7628,9 +7571,6 @@ const crowdin = {
     'Enable equalizer': 'Ativar equalizador',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Pode ativar alguns apps de equalização para funcionar. Requer reinicialização do Freezer',
-    'Visualizer': 'Visualizador',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Mostrar visualizador na página da letra. AVISO: Requer permissão de microfone!',
     'Tags': 'Tags',
     'Album': 'Álbum',
     'Track number': 'Número da faixa',
@@ -7792,7 +7732,7 @@ const crowdin = {
     'Login using browser': 'Autentificare utilizând browserul',
     'Login using token': 'Autentificare folosind token-ul',
     'Enter ARL': 'Introduceți ARL-ul',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Salvează',
     "If you don't have account, you can register on deezer.com for free.":
         'Dacă nu ai un cont, te poți înregistra gratuit pe deezer.com.',
@@ -7862,7 +7802,7 @@ const crowdin = {
     'Country used in headers. Now':
         'Țara este utilizată în header-i (titluri). Acum',
     'Log tracks': 'Log-ul pieselor',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Trimiteți log-urile de ascultare a pieselor către Deezer, activați-l pentru funcții precum Flow să funcționeze corect',
     'Offline mode': 'Mod offline',
     'Will be overwritten on start.': 'Va fi suprascris la început.',
@@ -8017,9 +7957,6 @@ const crowdin = {
     'Enable equalizer': 'Activează egalizatorul',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Porniți niște aplicații de egalizare ca să funcționeze. Necesită repornirea aplicației',
-    'Visualizer': 'Vizualizator',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Arată vizuale pe pagina de versuri. ATENȚIE: Necesită permisiunea de acces la microfon!',
     'Tags': 'Etichete',
     'Album': 'Albumul',
     'Track number': 'Numărul piesei',
@@ -8181,7 +8118,7 @@ const crowdin = {
     'Login using browser': 'Войти через браузер',
     'Login using token': 'Войти с помощью токена',
     'Enter ARL': 'Введите ARL',
-    'Token (ARL)': 'Токен (ARL)',
+    'Token': 'Токен (ARL)',
     'Save': 'Сохранить',
     "If you don't have account, you can register on deezer.com for free.":
         'Вы можете создать аккаунт на deezer.com. Это бесплатно.',
@@ -8249,7 +8186,7 @@ const crowdin = {
     'Content country': 'Страна контента',
     'Country used in headers. Now': 'Также используется в тегах',
     'Log tracks': 'Отправлять статистику',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Отправлять статистику прослушивания. Необходимо для правильной работы рекомендаций',
     'Offline mode': 'Автономный режим',
     'Will be overwritten on start.':
@@ -8402,9 +8339,6 @@ const crowdin = {
     'Enable equalizer': 'Поддержка сторонних эквалайзеров',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Может помочь, если используется несистемный эквалайзер. Требуетсся перезапуск',
-    'Visualizer': 'Визуализация',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Отображать визуаализацию на на экране текста. Требуется разрешение \"Доступ к микрофону\"',
     'Tags': 'Какие теги сохранять',
     'Album': 'Альбом',
     'Track number': 'Номер трека',
@@ -8566,7 +8500,7 @@ const crowdin = {
     'Login using browser': 'Prihlásenie cez prehliadač',
     'Login using token': 'Prihlásenie cez token',
     'Enter ARL': 'Zadajte ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Uložiť',
     "If you don't have account, you can register on deezer.com for free.":
         'Ak nemáte účet, možete sa zaregistrovať na deezer.com zadarmo.',
@@ -8635,7 +8569,7 @@ const crowdin = {
     'Content country': 'Krajina obsahu',
     'Country used in headers. Now': 'Krajina použitá v hlavičkách. Teraz',
     'Log tracks': 'Záznam skladieb',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Odosielať históriu do Deezeru aby funkcie ako Flow fungovali správne',
     'Offline mode': 'Offline mód',
     'Will be overwritten on start.': 'Bude prepísané pri štarte.',
@@ -8787,9 +8721,6 @@ const crowdin = {
     'Enable equalizer': 'Zapnúť ekvalizér',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Možnosť fungovania niektorých aplikácií ekvalizéra. Vyžaduje sa reštart aplikácie',
-    'Visualizer': 'Vizualizér',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Zobraziť vizualizér na stránke textov. VAROVANIE: Vyžaduje povolenie mikrofónu!',
     'Tags': 'Štítky',
     'Album': 'Album',
     'Track number': 'Číslo skladby',
@@ -8951,7 +8882,7 @@ const crowdin = {
     'Login using browser': 'Prijava preko brskalnika',
     'Login using token': 'Prijava z žetonom',
     'Enter ARL': 'Vnesi ARL',
-    'Token (ARL)': 'Žeton (ARL)',
+    'Token': 'Žeton (ARL)',
     'Save': 'Shrani',
     "If you don't have account, you can register on deezer.com for free.":
         'Če še nimate računa, si ga lahko ustvarite na deezer.com zastonj.',
@@ -9021,7 +8952,7 @@ const crowdin = {
     'Country used in headers. Now':
         'Država uporabljena v glavah zahtevkov. Sedaj',
     'Log tracks': 'Beleži skladbe',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Pošiljanje zgodovine Deezer-ju, omogoča funkcije, kot so tok, da delujejo pravilno',
     'Offline mode': 'Način brez povezave',
     'Will be overwritten on start.': 'Bo povoženo na začetku.',
@@ -9175,9 +9106,6 @@ const crowdin = {
     'Enable equalizer': 'Omogoči izenačevalnik',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Morda omogoči podporo za nekatere izenačevalniške aplikacije. Zahteva ponovni zagon aplikacije Freezer',
-    'Visualizer': 'Vizualizator',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Prikaži zvočni prikazovalnik na strani z besedilom. POZOR: Zahteva dovoljenje za mikrofon!',
     'Tags': 'Oznake',
     'Album': 'Album',
     'Track number': 'Številka posnetka',
@@ -9343,7 +9271,7 @@ const crowdin = {
     'Login using browser': 'Ingresar usando el navegador',
     'Login using token': 'Ingresar usando token',
     'Enter ARL': 'Ingrese ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Guardar',
     "If you don't have account, you can register on deezer.com for free.":
         'Si no tienes una cuenta, puedes registrarte en deezer.com de forma gratuita.',
@@ -9414,7 +9342,7 @@ const crowdin = {
     'Content country': 'País del contenido',
     'Country used in headers. Now': 'País utilizado en los encabezados. Ahora',
     'Log tracks': 'Seguimiento de las canciones',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Envía los registros de escucha de las canciones a Deezer, habilítalo para que funciones como Flow funcionen correctamente',
     'Offline mode': 'Modo sin conexión',
     'Will be overwritten on start.': 'Se sobrescribirá al inicio.',
@@ -9571,9 +9499,6 @@ const crowdin = {
     'Enable equalizer': 'Activar ecualizador',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Podría habilitar algunas aplicaciones de ecualización para funcionar. Requiere reiniciar Freezer',
-    'Visualizer': 'Visualizador',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Mostrar visualizadores en la página de letras. ADVERTENCIA: ¡Requiere permiso del micrófono!',
     'Tags': 'Etiquetas',
     'Album': 'Álbum',
     'Track number': 'Número de pista',
@@ -9737,7 +9662,7 @@ const crowdin = {
     'Login using browser': 'Tarayıcı kullanarak giriş yapın',
     'Login using token': 'Token kullanarak giriş yap',
     'Enter ARL': 'ARL girin',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Kaydet',
     "If you don't have account, you can register on deezer.com for free.":
         "Hesabınız yoksa deezer.com'a ücretsiz kayıt olabilirsiniz.",
@@ -9806,7 +9731,7 @@ const crowdin = {
     'Content country': 'İçerik ülkesi',
     'Country used in headers. Now': 'Başlıklarda kullanılan ülke. Şuan',
     'Log tracks': 'Parça günlükleri',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         "Parça dinleme günlüklerini Deezer'a gönderin, Flow gibi özelliklerin düzgün çalışması için etkinleştirin",
     'Offline mode': 'Çevrimdışı modu',
     'Will be overwritten on start.': 'Başlangıçta üzerine yazılacak.',
@@ -9961,9 +9886,6 @@ const crowdin = {
     'Enable equalizer': 'Ekolayzırı etkinleştir',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         "Bazı ekolayzır uygulamalarının çalışmasını sağlayabilir. Freezer'ın yeniden başlatılmasını gerektirir",
-    'Visualizer': 'Görselleştirme',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Görselleştiricileri şarkı sözleri sayfasında gösterin. UYARI: Mikrofon izni gerektirir!',
     'Tags': 'Etiketler',
     'Album': 'Albüm',
     'Track number': 'Parça numarası',
@@ -10127,7 +10049,7 @@ const crowdin = {
     'Login using browser': 'Вхід через браузер',
     'Login using token': 'Вхід з використанням токена',
     'Enter ARL': 'Введіть ARL',
-    'Token (ARL)': 'Токен (ARL)',
+    'Token': 'Токен (ARL)',
     'Save': 'Зберегти',
     "If you don't have account, you can register on deezer.com for free.":
         'Якщо у вас немає облікового запису, ви можете зареєструватися на deezer.com безкоштовно.',
@@ -10198,7 +10120,7 @@ const crowdin = {
     'Country used in headers. Now':
         'Країна, яка використовується в заголовках. Зараз',
     'Log tracks': 'Журнал треків',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Надсилати журнали прослуховування треку в Deezer, увімкніть для коректної роботи таких функцій, як Flow',
     'Offline mode': 'Офлайн-режим',
     'Will be overwritten on start.': 'Буде перезаписано під час запуску.',
@@ -10351,9 +10273,6 @@ const crowdin = {
     'Enable equalizer': 'Увімкнути еквалайзер',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Може допомогти, якщо використовується не системний еквалайзер. потрібен перезапуск Freezer',
-    'Visualizer': 'Візуалізація',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Відображати візуалізацію на на екрані тексту. Потрібен дозвіл \"Доступ до мікрофона\"!',
     'Tags': 'Теги',
     'Album': 'Альбом',
     'Track number': 'Номер треку',
@@ -10514,7 +10433,7 @@ const crowdin = {
     'Login using browser': 'Login using browser',
     'Login using token': 'Login using token',
     'Enter ARL': 'Enter ARL',
-    'Token (ARL)': 'Token (ARL)',
+    'Token': 'Token',
     'Save': 'Save',
     "If you don't have account, you can register on deezer.com for free.":
         "If you don't have account, you can register on deezer.com for free.",
@@ -10583,8 +10502,8 @@ const crowdin = {
     'Content country': 'Content country',
     'Country used in headers. Now': 'Country used in headers. Now',
     'Log tracks': 'Log tracks',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
-        'Send track listen logs to Deezer, enable it for features like Flow to work properly',
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
+        'Send track listen logs to platforms, enable it for features like Flow to work properly',
     'Offline mode': 'Offline mode',
     'Will be overwritten on start.': 'Will be overwritten on start.',
     'Error logging in, check your internet connections.':
@@ -10734,9 +10653,6 @@ const crowdin = {
     'Enable equalizer': 'Enable equalizer',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Might enable some equalizer apps to work. Requires restart of Freezer',
-    'Visualizer': 'Visualizer',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Show visualizers on lyrics page. WARNING: Requires microphone permission!',
     'Tags': 'Tags',
     'Album': 'Album',
     'Track number': 'Track number',
@@ -10897,8 +10813,8 @@ const crowdin = {
         'Xin vui lòng đăng nhập bằng tài khoản Deezer của bạn.',
     'Login using browser': 'Đăng nhập bằng trình duyệt',
     'Login using token': 'Đăng nhập bằng mã token',
-    'Enter ARL': 'Nhập mã token (ARL)',
-    'Token (ARL)': 'Mã token (ARL)',
+    'Enter ARL': 'Nhập mã Token',
+    'Token': 'Mã Token',
     'Save': 'Lưu',
     "If you don't have account, you can register on deezer.com for free.":
         'Nếu bạn không có tài khoản, bạn có thể đăng kí miễn phí tại deezer.com',
@@ -10967,7 +10883,7 @@ const crowdin = {
     'Content country': 'Quốc gia của nội dung',
     'Country used in headers. Now': 'Quốc gia hiện tại',
     'Log tracks': 'Lưu ghi chép về lịch sử nghe',
-    'Send track listen logs to Deezer, enable it for features like Flow to work properly':
+    'Send track listen logs to platforms, enable it for features like Flow to work properly':
         'Gửi các ghi chép này tới Deezer, nên kích hoạt để tính năng phát nhạc thông minh hoạt động hiệu quả',
     'Offline mode': 'Chế độ ngoại tuyến',
     'Will be overwritten on start.': 'Sẽ bị ghi đè khi khởi động.',
@@ -11121,9 +11037,6 @@ const crowdin = {
     'Enable equalizer': 'Bật bộ chỉnh âm',
     'Might enable some equalizer apps to work. Requires restart of Freezer':
         'Có thể cho phép sử dụng ứng dụng chỉnh âm. Yêu cầu khởi động lại Freezer',
-    'Visualizer': 'Trình trực quan',
-    'Show visualizers on lyrics page. WARNING: Requires microphone permission!':
-        'Hiển thị trình trực quan trên trang lời bài hát. CẢNH BÁO: Yêu cầu quyền sử dụng micrô!',
     'Tags': 'Thẻ',
     'Album': 'Album',
     'Track number': 'Số thứ tự bài hát',

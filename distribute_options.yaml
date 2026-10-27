@@ -1,5 +1,6 @@
 output: dist/
 releases:
+  # Production builds keep the existing release names used by CI.
   - name: linux
     jobs:
       - name: release-release-linux-rpm
@@ -20,9 +21,84 @@ releases:
         package:
           platform: windows
           target: exe
-  - name: macos  
+  - name: macos
     jobs:
       - name: release-release-mac-dmg
         package:
           platform: macos
           target: dmg
+
+  - name: linux-dev
+    jobs:
+      - name: release-dev-linux-rpm
+        package:
+          platform: linux
+          target: rpm
+          build_args:
+            flavor: dev
+      - name: release-dev-linux-appimage
+        package:
+          platform: linux
+          target: appimage
+          build_args:
+            flavor: dev
+      - name: release-dev-linux-deb
+        package:
+          platform: linux
+          target: deb
+          build_args:
+            flavor: dev
+  - name: linux-canary
+    jobs:
+      - name: release-canary-linux-rpm
+        package:
+          platform: linux
+          target: rpm
+          build_args:
+            flavor: canary
+      - name: release-canary-linux-appimage
+        package:
+          platform: linux
+          target: appimage
+          build_args:
+            flavor: canary
+      - name: release-canary-linux-deb
+        package:
+          platform: linux
+          target: deb
+          build_args:
+            flavor: canary
+
+  - name: windows-dev
+    jobs:
+      - name: release-dev-windows-exe
+        package:
+          platform: windows
+          target: exe
+          build_args:
+            flavor: dev
+  - name: windows-canary
+    jobs:
+      - name: release-canary-windows-exe
+        package:
+          platform: windows
+          target: exe
+          build_args:
+            flavor: canary
+
+  - name: macos-dev
+    jobs:
+      - name: release-dev-mac-dmg
+        package:
+          platform: macos
+          target: dmg
+          build_args:
+            flavor: dev
+  - name: macos-canary
+    jobs:
+      - name: release-canary-mac-dmg
+        package:
+          platform: macos
+          target: dmg
+          build_args:
+            flavor: canary

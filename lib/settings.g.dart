@@ -36,6 +36,9 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       ..downloadThreads = (json['downloadThreads'] as num?)?.toInt() ?? 2
       ..playlistFolder = json['playlistFolder'] as bool? ?? false
       ..downloadLyrics = json['downloadLyrics'] as bool? ?? true
+      ..downloadEnhancedLrc = json['downloadEnhancedLrc'] as bool? ?? false
+      ..saveOfflineTrackLyrics =
+          json['saveOfflineTrackLyrics'] as bool? ?? false
       ..trackCover = json['trackCover'] as bool? ?? false
       ..albumCover = json['albumCover'] as bool? ?? true
       ..nomediaFiles = json['nomediaFiles'] as bool? ?? false
@@ -65,39 +68,50 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
             'art',
           ]
       ..theme =
-          $enumDecodeNullable(_$ThemesEnumMap, json['theme']) ?? Themes.Dark
+          $enumDecodeNullable(_$ThemesEnumMap, json['theme']) ??
+          Themes.MaterialYouPrimary
+      ..darkMode = json['darkMode'] as bool? ?? true
       ..useSystemTheme = json['useSystemTheme'] as bool? ?? false
       ..colorGradientBackground =
-          json['colorGradientBackground'] as bool? ?? true
-      ..blurPlayerBackground = json['blurPlayerBackground'] as bool? ?? false
-      ..themeAdditonalItems = json['themeAdditonalItems'] as bool? ?? false
+          json['colorGradientBackground'] as bool? ?? false
+      ..blurPlayerBackground = json['blurPlayerBackground'] as bool? ?? true
+      ..themeAdditonalItems = json['themeAdditonalItems'] as bool? ?? true
       ..font = json['font'] as String? ?? 'Deezer'
-      ..lyricsVisualizer = json['lyricsVisualizer'] as bool? ?? false
       ..keepSidebarOpen = json['keepSidebarOpen'] as bool? ?? false
       ..keepSidebarClosed = json['keepSidebarClosed'] as bool? ?? false
+      ..sidebarExpandedWidth =
+          (json['sidebarExpandedWidth'] as num?)?.toDouble() ?? 256.0
       ..displayMode = (json['displayMode'] as num?)?.toInt()
       ..primaryColor = Settings._colorFromJson(
         (json['primaryColor'] as num?)?.toInt(),
       )
-      ..useArtColor = json['useArtColor'] as bool? ?? false
+      ..useArtColor = json['useArtColor'] as bool? ?? true
       ..deezerLanguage = json['deezerLanguage'] as String? ?? 'en'
       ..deezerCountry = json['deezerCountry'] as String? ?? 'US'
-      ..logListen = json['logListen'] as bool? ?? false
+      ..logListen = json['logListen'] as bool? ?? true
       ..proxyAddress = json['proxyAddress'] as String?
+      ..proxyUsername = json['proxyUsername'] as String?
+      ..proxyPassword = json['proxyPassword'] as String?
       ..lastFMUsername = json['lastFMUsername'] as String?
       ..lastFMPassword = json['lastFMPassword'] as String?
       ..lastFMAPIKey = json['lastFMAPIKey'] as String?
       ..lastFMAPISecret = json['lastFMAPISecret'] as String?
       ..enableDiscordRPC = json['enableDiscordRPC'] as bool? ?? false
       ..noPremium = json['noPremium'] as bool? ?? false
-      ..tier = json['tier'] as String?;
+      ..tier = json['tier'] as String?
+      ..activePlatformId = json['activePlatformId'] as String? ?? 'deezer'
+      ..platformConfigs = json['platformConfigs'] as Map<String, dynamic>? ?? {}
+      ..lyricsChoices =
+          (json['lyricsChoices'] as Map<String, dynamic>?)?.map(
+            (k, e) => MapEntry(k, e as String),
+          ) ??
+          {};
 
 Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'language': instance.language,
   'ignoreInterruptions': instance.ignoreInterruptions,
   'enableEqualizer': instance.enableEqualizer,
   'eastereggsDisabled': instance.eastereggsDisabled,
-  'arl': instance.arl,
   'wifiQuality': _$AudioQualityEnumMap[instance.wifiQuality]!,
   'mobileQuality': _$AudioQualityEnumMap[instance.mobileQuality]!,
   'offlineQuality': _$AudioQualityEnumMap[instance.offlineQuality]!,
@@ -111,6 +125,8 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'downloadThreads': instance.downloadThreads,
   'playlistFolder': instance.playlistFolder,
   'downloadLyrics': instance.downloadLyrics,
+  'downloadEnhancedLrc': instance.downloadEnhancedLrc,
+  'saveOfflineTrackLyrics': instance.saveOfflineTrackLyrics,
   'trackCover': instance.trackCover,
   'albumCover': instance.albumCover,
   'nomediaFiles': instance.nomediaFiles,
@@ -119,14 +135,15 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'albumArtResolution': instance.albumArtResolution,
   'tags': instance.tags,
   'theme': _$ThemesEnumMap[instance.theme]!,
+  'darkMode': instance.darkMode,
   'useSystemTheme': instance.useSystemTheme,
   'colorGradientBackground': instance.colorGradientBackground,
   'blurPlayerBackground': instance.blurPlayerBackground,
   'themeAdditonalItems': instance.themeAdditonalItems,
   'font': instance.font,
-  'lyricsVisualizer': instance.lyricsVisualizer,
   'keepSidebarOpen': instance.keepSidebarOpen,
   'keepSidebarClosed': instance.keepSidebarClosed,
+  'sidebarExpandedWidth': instance.sidebarExpandedWidth,
   'displayMode': instance.displayMode,
   'primaryColor': Settings._colorToJson(instance.primaryColor),
   'useArtColor': instance.useArtColor,
@@ -134,6 +151,8 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'deezerCountry': instance.deezerCountry,
   'logListen': instance.logListen,
   'proxyAddress': instance.proxyAddress,
+  'proxyUsername': instance.proxyUsername,
+  'proxyPassword': instance.proxyPassword,
   'lastFMUsername': instance.lastFMUsername,
   'lastFMPassword': instance.lastFMPassword,
   'lastFMAPIKey': instance.lastFMAPIKey,
@@ -141,6 +160,9 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'enableDiscordRPC': instance.enableDiscordRPC,
   'noPremium': instance.noPremium,
   'tier': instance.tier,
+  'activePlatformId': instance.activePlatformId,
+  'platformConfigs': instance.platformConfigs,
+  'lyricsChoices': instance.lyricsChoices,
 };
 
 const _$AudioQualityEnumMap = {
@@ -155,4 +177,6 @@ const _$ThemesEnumMap = {
   Themes.Dark: 'Dark',
   Themes.Deezer: 'Deezer',
   Themes.Black: 'Black',
+  Themes.MaterialYou: 'MaterialYou',
+  Themes.MaterialYouPrimary: 'MaterialYouPrimary',
 };

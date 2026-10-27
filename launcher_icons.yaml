@@ -1,0 +1,228 @@
+# dart run launcher_icons
+# dart run launcher_icons --flavor canary
+# dart run launcher_icons --flavor dev
+# dart run launcher_icons --flavor stable
+
+launcher_icons:
+  image_path: "assets/icon.png"
+  android:
+    generate: true
+    adaptive_icon_background: "#232323"
+    adaptive_icon_foreground: "assets/icon.png"
+    adaptive_icon_foreground_inset: 25
+    adaptive_icon_monochrome: "assets/icon-taskbar-white.png"
+    adaptive_icon_monochrome_inset: 25
+  ios:
+    generate: true
+    remove_alpha: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  windows:
+    generate: true
+    image_path_unplated: "assets/icon-taskbar-white.png"
+  macos:
+    generate: true
+    padding: 10
+    rounded_corners: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  linux:
+    generate: true
+
+launcher_icons-stable:
+  image_path: "assets/icon.png"
+  android:
+    generate: true
+    adaptive_icon_background: "#232323"
+    adaptive_icon_foreground: "assets/icon.png"
+    adaptive_icon_foreground_inset: 25
+    adaptive_icon_monochrome: "assets/icon-taskbar-white.png"
+    adaptive_icon_monochrome_inset: 25
+  ios:
+    generate: true
+    remove_alpha: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  windows:
+    generate: true
+    image_path_unplated: "assets/icon-taskbar-white.png"
+  macos:
+    generate: true
+    padding: 10
+    rounded_corners: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  linux:
+    generate: true
+
+launcher_icons-canary:
+  image_path: "assets/icon-canary.png"
+  android:
+    generate: true
+    adaptive_icon_background: "#232323"
+    adaptive_icon_foreground: "assets/icon-canary.png"
+    adaptive_icon_foreground_inset: 25
+    adaptive_icon_monochrome: "assets/icon-taskbar-white.png"
+    adaptive_icon_monochrome_inset: 25
+  ios:
+    generate: true
+    remove_alpha: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon-canary.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  windows:
+    generate: true
+    image_path_unplated: "assets/icon-taskbar-white.png"
+  macos:
+    generate: true
+    padding: 10
+    rounded_corners: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon-canary.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  linux:
+    generate: true
+
+launcher_icons-dev:
+  image_path: "assets/icon-dev.png"
+  android:
+    generate: true
+    adaptive_icon_background: "#232323"
+    adaptive_icon_foreground: "assets/icon-dev.png"
+    adaptive_icon_foreground_inset: 25
+    adaptive_icon_monochrome: "assets/icon-taskbar-white.png"
+    adaptive_icon_monochrome_inset: 25
+  ios:
+    generate: true
+    remove_alpha: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon-dev.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  windows:
+    generate: true
+    image_path_unplated: "assets/icon-taskbar-white.png"
+  macos:
+    generate: true
+    padding: 10
+    rounded_corners: true
+    liquid_glass_gradient_from: "#2A2A2A"
+    liquid_glass_gradient_to: "#141414"
+    liquid_glass_translucency: 0.5
+    liquid_glass_specular: true
+    liquid_glass_shadow_kind: "Neutral"
+    liquid_glass_shadow_opacity: 0.5
+    liquid_glass_blur: 0.5
+    liquid_glass_lighting: "combined"
+    liquid_glass_refractivity_enabled: true
+    liquid_glass_refractivity_depth: 0.5
+    liquid_glass_refractivity_strength: 0.5
+    liquid_glass_specular_highlight_placement: "inside"
+    liquid_glass_layers:
+      - image_path: "assets/icon-dev.png"
+        glass: true
+        scale: 1.0
+        opacity: 1.0
+  linux:
+    generate: true

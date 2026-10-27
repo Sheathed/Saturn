@@ -1,48 +1,22 @@
 package s.s.saturn;
 
-import android.content.ComponentName;
-import android.content.ContentValues;
 import android.content.Intent;
-import android.content.ServiceConnection;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.Looper;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.Parcelable;
-import android.os.RemoteException;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+import androidx.webkit.ProxyConfig;
+import androidx.webkit.ProxyController;
+import androidx.webkit.WebViewFeature;
 
 import com.ryanheise.audioservice.AudioServiceActivity;
 
-import java.lang.ref.WeakReference;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.HashMap;
-
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-
 import io.flutter.embedding.engine.FlutterEngine;
-import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends AudioServiceActivity {
     private static final String CHANNEL = "s.s.saturn/native";
-
-    //Data if started from intent
-    String intentPreload;
+    private static final String WEBVIEW_PROXY_CHANNEL = "s.s.saturn/webview_proxy";
+    private String intentPreload;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -53,17 +27,44 @@ public class MainActivity extends AudioServiceActivity {
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
-        //Flutter method channel
-        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL).setMethodCallHandler(((call, result) -> {
-
-            //If app was started with preload info (Android Auto)
-            if (call.method.equals("getPreloadInfo")) {
-                result.success(intentPreload);
-                intentPreload = null;
-                return;
-            }
-
-            result.error("0", "Not implemented!", "Not implemented!");
-        }));
+        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), WEBVIEW_PROXY_CHANNEL)
+                .setMethodCallHandler((call, result) -> {
+                    if (!call.method.equals("configure")) {
+                        result.notImplemented();
+                        return;
+                    }
+                    String address = call.argument("address");
+                    if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                        if (address == null || address.isEmpty()) {
+                            result.success(null);
+                        } else {
+                            result.error("UNSUPPORTED", "Android WebView proxy override is unavailable", null);
+                        }
+                        return;
+                    }
+                    try {
+                        if (address == null || address.isEmpty()) {
+                            ProxyController.getInstance().clearProxyOverride(
+                                    getMainExecutor(), () -> result.success(null));
+                        } else {
+                            ProxyConfig config = new ProxyConfig.Builder()
+                                    .addProxyRule("http://" + address)
+                                    .build();
+                            ProxyController.getInstance().setProxyOverride(
+                                    config, getMainExecutor(), () -> result.success(null));
+                        }
+                    } catch (RuntimeException error) {
+                        result.error("PROXY_ERROR", error.getMessage(), null);
+                    }
+                });
+        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL)
+                .setMethodCallHandler((call, result) -> {
+                    if (call.method.equals("getPreloadInfo")) {
+                        result.success(intentPreload);
+                        intentPreload = null;
+                    } else {
+                        result.notImplemented();
+                    }
+                });
     }
 }

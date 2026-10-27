@@ -6,13 +6,33 @@ project(runner LANGUAGES CXX)
 # work.
 #
 # Any new source files that you add to the application should be added here.
+# Pick a matching executable icon and version-resource identity per flavor.
+set(RUNNER_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+set(INTERNAL_NAME "saturn")
+set(FILE_DESCRIPTION "${APP_DISPLAY_NAME}")
+set(PRODUCT_NAME "${APP_DISPLAY_NAME}")
+if(DEFINED FLUTTER_APP_FLAVOR)
+  if(FLUTTER_APP_FLAVOR STREQUAL "canary")
+    set(RUNNER_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon_canary.ico")
+    set(INTERNAL_NAME "saturn-canary")
+  elseif(FLUTTER_APP_FLAVOR STREQUAL "dev")
+    set(RUNNER_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon_dev.ico")
+    set(INTERNAL_NAME "saturn-dev")
+  endif()
+endif()
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/Runner.rc.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/Runner.rc"
+  @ONLY
+)
+
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
-  "Runner.rc"
+  "${CMAKE_CURRENT_BINARY_DIR}/Runner.rc"
   "runner.exe.manifest"
 )
 
@@ -26,6 +46,7 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MAJOR=${FLUTT
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MINOR=${FLUTTER_VERSION_MINOR}")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_PATCH=${FLUTTER_VERSION_PATCH}")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_BUILD=${FLUTTER_VERSION_BUILD}")
+target_compile_definitions(${BINARY_NAME} PRIVATE "WINDOW_TITLE=L\"${WINDOW_TITLE}\"")
 
 # Disable Windows macros that collide with C++ standard library functions.
 target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
@@ -34,7 +55,10 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
-target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+target_include_directories(${BINARY_NAME} PRIVATE
+  "${CMAKE_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}"
+)
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)

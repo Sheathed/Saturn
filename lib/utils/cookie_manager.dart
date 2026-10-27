@@ -32,7 +32,12 @@ class CookieManager {
       if (idx >= 0) {
         var key = rawCookie.substring(0, idx).trim();
         var value = rawCookie.substring(idx + 1).trim();
-        if (key == 'path' || key == 'expires' || key == 'domain' || key == 'sameSite') return;
+        if (key == 'path' ||
+            key == 'expires' ||
+            key == 'domain' ||
+            key == 'sameSite') {
+          return;
+        }
         cookies[key] = value;
       }
     }

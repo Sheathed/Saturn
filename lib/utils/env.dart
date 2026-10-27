@@ -1,4 +1,3 @@
-// lib/env/env.dart
 import 'package:envied/envied.dart';
 
 part 'env.g.dart';

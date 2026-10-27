@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 
 import '../languages/crowdin.dart';

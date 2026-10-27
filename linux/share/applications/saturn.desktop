@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=saturn
+Comment=saturn
+Exec=saturn
+Icon=saturn
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupWMClass=s.s.saturn

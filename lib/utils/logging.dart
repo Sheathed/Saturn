@@ -2,9 +2,34 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:developer';
 import 'dart:io';
-import 'package:path/path.dart' as p;
+
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+final Logger appLogger = () {
+  _ensureLoggingConfigured();
+  return Logger('Saturn');
+}();
+
+LogQueueManager? _globalLogQueueManager;
+bool _loggingConfigured = false;
+
+void _ensureLoggingConfigured() {
+  if (_loggingConfigured) return;
+  _loggingConfigured = true;
+  hierarchicalLoggingEnabled = true;
+  Logger.root.level = Level.ALL;
+
+  Logger.root.onRecord.listen((record) {
+    final logMessage = _formatLogMessage(record);
+    // ignore: avoid_print
+    print(logMessage.trimRight());
+    debugPrint(logMessage.trimRight());
+    _globalLogQueueManager?.enqueue(logMessage);
+  });
+}
 
 class LogQueueManager {
   final File logFile;
@@ -24,10 +49,11 @@ class LogQueueManager {
 
     while (_logQueue.isNotEmpty) {
       String logEntry = _logQueue.removeFirst();
-      log(logEntry);
+      log(logEntry.trimRight(), name: 'Saturn');
       try {
         await logFile.writeAsString(logEntry, mode: FileMode.append);
       } catch (e) {
+        debugPrint('Error writing to log file: $e');
         log('Error writing to log file: $e');
       }
     }
@@ -37,6 +63,8 @@ class LogQueueManager {
 }
 
 Future<void> initializeLogging() async {
+  _ensureLoggingConfigured();
+
   final String path = p.join(
     (await getApplicationSupportDirectory()).path,
     'saturn.log',
@@ -49,14 +77,8 @@ Future<void> initializeLogging() async {
 
   // Clear old session data
   await logFile.writeAsString('');
-  Logger.root.level = Level.ALL;
 
-  final logQueueManager = LogQueueManager(logFile);
-
-  Logger.root.onRecord.listen((record) {
-    final logMessage = _formatLogMessage(record);
-    logQueueManager.enqueue(logMessage);
-  });
+  _globalLogQueueManager = LogQueueManager(logFile);
 }
 
 String _formatLogMessage(LogRecord record) {

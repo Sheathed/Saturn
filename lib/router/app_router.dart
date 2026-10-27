@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:saturn/platform/platform_manager.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../api/definitions.dart';
@@ -55,9 +56,32 @@ class AppRoutes {
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'root',
 );
+final GlobalKey<NavigatorState> bodyOverlayNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'bodyOverlay');
+final ValueNotifier<bool> bodyOverlayActive = ValueNotifier(false);
 final GlobalKey<NavigatorState> _shellNavigatorKey = GlobalKey<NavigatorState>(
   debugLabel: 'shell',
 );
+
+bool isShellRouteContext(BuildContext context) =>
+    identical(Navigator.maybeOf(context), _shellNavigatorKey.currentState);
+
+class _PlatformScopedPage extends StatelessWidget {
+  final WidgetBuilder builder;
+
+  const _PlatformScopedPage({required this.builder});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: PlatformManager.instance,
+      builder: (context, _) => KeyedSubtree(
+        key: ValueKey(PlatformManager.instance.activePlatformId),
+        child: builder(context),
+      ),
+    );
+  }
+}
 
 // GoRouter configuration
 final GoRouter appRouter = GoRouter(
@@ -75,8 +99,10 @@ final GoRouter appRouter = GoRouter(
         // Home tab
         GoRoute(
           path: AppRoutes.home,
-          pageBuilder: (context, state) =>
-              NoTransitionPage(key: state.pageKey, child: const HomeScreen()),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(builder: (_) => const HomeScreen()),
+          ),
         ),
 
         // Browse tab
@@ -86,10 +112,9 @@ final GoRouter appRouter = GoRouter(
             key: state.pageKey,
             child: Scaffold(
               appBar: FreezerAppBar('Browse'.i18n),
-              body: SingleChildScrollView(
-                child: HomePageScreen(
-                  channel: DeezerChannel(target: 'channels/explore'),
-                ),
+              body: _PlatformScopedPage(
+                builder: (context) =>
+                    PlatformManager.instance.active.getExploreWidget(context),
               ),
             ),
           ),
@@ -98,16 +123,24 @@ final GoRouter appRouter = GoRouter(
         // Search tab
         GoRoute(
           path: AppRoutes.search,
-          pageBuilder: (context, state) =>
-              NoTransitionPage(key: state.pageKey, child: const SearchScreen()),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(builder: (_) => const SearchScreen()),
+          ),
           routes: [
             // Search results
             GoRoute(
               path: 'results',
-              builder: (context, state) {
+              pageBuilder: (context, state) {
                 final query = state.uri.queryParameters['q'] ?? '';
                 final offline = state.uri.queryParameters['offline'] == 'true';
-                return SearchResultsScreen(query, offline: offline);
+                return NoTransitionPage(
+                  key: state.pageKey,
+                  child: _PlatformScopedPage(
+                    builder: (_) =>
+                        SearchResultsScreen(query, offline: offline),
+                  ),
+                );
               },
             ),
           ],
@@ -118,34 +151,54 @@ final GoRouter appRouter = GoRouter(
           path: AppRoutes.library,
           pageBuilder: (context, state) => NoTransitionPage(
             key: state.pageKey,
-            child: const LibraryScreen(),
+            child: _PlatformScopedPage(builder: (_) => const LibraryScreen()),
           ),
         ),
 
         // Library sub-routes
         GoRoute(
           path: AppRoutes.libraryTracks,
-          builder: (context, state) => const LibraryTracks(),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(builder: (_) => const LibraryTracks()),
+          ),
         ),
         GoRoute(
           path: AppRoutes.libraryAlbums,
-          builder: (context, state) => const LibraryAlbums(),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(builder: (_) => const LibraryAlbums()),
+          ),
         ),
         GoRoute(
           path: AppRoutes.libraryArtists,
-          builder: (context, state) => const LibraryArtists(),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(builder: (_) => const LibraryArtists()),
+          ),
         ),
         GoRoute(
           path: AppRoutes.libraryPlaylists,
-          builder: (context, state) => const LibraryPlaylists(),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(
+              builder: (_) => const LibraryPlaylists(),
+            ),
+          ),
         ),
         GoRoute(
           path: AppRoutes.libraryPodcasts,
-          builder: (context, state) => const LibraryShows(),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(builder: (_) => const LibraryShows()),
+          ),
         ),
         GoRoute(
           path: AppRoutes.libraryHistory,
-          builder: (context, state) => const HistoryScreen(),
+          pageBuilder: (context, state) => NoTransitionPage(
+            key: state.pageKey,
+            child: _PlatformScopedPage(builder: (_) => const HistoryScreen()),
+          ),
         ),
 
         GoRoute(
@@ -160,10 +213,14 @@ final GoRouter appRouter = GoRouter(
 
         GoRoute(
           path: '/album/:id',
-          builder: (context, state){
+          builder: (context, state) {
             final album = state.extra as Album?;
             if (album != null) {
               return AlbumDetails(album);
+            }
+            final id = state.pathParameters['id'];
+            if (id != null && id.isNotEmpty) {
+              return AlbumDetails(Album(id: id));
             }
             return const ErrorScreen();
           },
@@ -176,6 +233,10 @@ final GoRouter appRouter = GoRouter(
             if (artist != null) {
               return ArtistDetails(artist);
             }
+            final id = state.pathParameters['id'];
+            if (id != null && id.isNotEmpty) {
+              return ArtistDetails(Artist(id: Uri.decodeComponent(id)));
+            }
             return const ErrorScreen();
           },
         ),
@@ -186,6 +247,10 @@ final GoRouter appRouter = GoRouter(
             final playlist = state.extra as Playlist?;
             if (playlist != null) {
               return PlaylistDetails(playlist);
+            }
+            final id = state.pathParameters['id'];
+            if (id != null && id.isNotEmpty) {
+              return PlaylistDetails(Playlist(id: id));
             }
             return const ErrorScreen();
           },
@@ -198,6 +263,30 @@ final GoRouter appRouter = GoRouter(
             if (show != null) {
               return ShowScreen(show);
             }
+            final id = state.pathParameters['id'];
+            if (id != null && id.isNotEmpty) {
+              return ShowScreen(Show(id: id));
+            }
+            return const ErrorScreen();
+          },
+        ),
+
+        GoRoute(
+          path: '/track/:id',
+          builder: (context, state) {
+            final track = state.extra as Track?;
+            if (track != null) {
+              return TrackDetails(track);
+            }
+            final id = state.pathParameters['id'];
+            if (id != null && id.isNotEmpty) {
+              final platformId =
+                  state.uri.queryParameters['platform'] ??
+                  PlatformManager.instance.activePlatformId;
+              return TrackDetails(
+                Track(id: Uri.decodeComponent(id), platformId: platformId),
+              );
+            }
             return const ErrorScreen();
           },
         ),
@@ -208,7 +297,18 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.player,
       parentNavigatorKey: rootNavigatorKey,
-      builder: (context, state) => const PlayerScreen(),
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        child: const PlayerScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+      ),
     ),
 
     GoRoute(
@@ -225,3 +325,9 @@ final GoRouter appRouter = GoRouter(
   ],
   errorBuilder: (context, state) => const ErrorScreen(),
 );
+
+void openPlayerScreen() {
+  final current = appRouter.routerDelegate.currentConfiguration;
+  if (current.isNotEmpty && current.last.route.path == AppRoutes.player) return;
+  appRouter.push<void>(AppRoutes.player);
+}

@@ -1,8 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:silky_scroll/silky_scroll.dart';
+import 'package:saturn/ui/smooth_scroll_config.dart';
 
 import '../translations.i18n.dart';
 import 'elements.dart';
@@ -47,7 +49,8 @@ class _ApplicationLogViewerState extends State<ApplicationLogViewer> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('Application Log'.i18n),
-      body: ListView.builder(
+      body: SilkyListView.builder(
+        silkyConfig: silkyScrollConfig,
         itemCount: data.length,
         itemBuilder: (context, i) {
           return Padding(

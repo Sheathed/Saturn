@@ -6,13 +6,14 @@ list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   audio_service_win
   connectivity_plus
-  flutter_inappwebview_windows
+  disk_space_2
+  dynamic_color
   media_kit_libs_windows_audio
   permission_handler_windows
   screen_retriever_windows
   share_plus
-  tray_manager
   url_launcher_windows
+  webview_all_windows
   window_manager
   windows_single_instance
   windows_taskbar
@@ -21,6 +22,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   flutter_discord_rpc
   flutter_local_notifications_windows
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

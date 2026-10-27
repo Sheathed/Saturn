@@ -50,6 +50,20 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+set(WINDOW_TITLE "Saturn")
+set(APP_DISPLAY_NAME "Saturn")
+
+# Set branding based on flavor if specified.
+if(DEFINED FLUTTER_APP_FLAVOR)
+  if(FLUTTER_APP_FLAVOR STREQUAL "canary")
+    set(WINDOW_TITLE "Saturn Canary")
+    set(APP_DISPLAY_NAME "Saturn Canary")
+  elseif(FLUTTER_APP_FLAVOR STREQUAL "dev")
+    set(WINDOW_TITLE "Saturn Dev")
+    set(APP_DISPLAY_NAME "Saturn Dev")
+  endif()
+endif()
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 

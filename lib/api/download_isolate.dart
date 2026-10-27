@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -7,16 +6,19 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:metatagger/metatagger.dart';
 import 'package:path/path.dart' as p;
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import '../api/deezer.dart';
-import '../api/definitions.dart';
-import '../api/download_log.dart';
-import '../api/deezer_decryptor.dart';
-import '../settings.dart' as settings_module;
+import '../platform/download_metadata.dart';
+import '../platform/download_platform_factory.dart';
+import '../platform/music_platform.dart';
+import '../platform/stream_proxy_server.dart';
+import '../lyrics/lyrics_registry.dart';
+import '../settings.dart';
+import '../utils/app_http_proxy.dart';
+import 'definitions.dart';
+import 'download_log.dart';
 
-/// Messages from main isolate to coordinator
 class CoordinatorMessage {
   final String type;
   final Map<String, dynamic>? data;
@@ -24,11 +26,14 @@ class CoordinatorMessage {
   CoordinatorMessage({required this.type, this.data});
 
   Map<String, dynamic> toJson() => {'type': type, 'data': data};
+
   factory CoordinatorMessage.fromJson(Map<String, dynamic> json) =>
-      CoordinatorMessage(type: json['type'], data: json['data']);
+      CoordinatorMessage(
+        type: json['type'] as String,
+        data: json['data'] as Map<String, dynamic>?,
+      );
 }
 
-/// Messages from coordinator/workers back to main
 class IsolateResponse {
   final String type;
   final Map<String, dynamic>? data;
@@ -36,102 +41,119 @@ class IsolateResponse {
   IsolateResponse({required this.type, this.data});
 
   Map<String, dynamic> toJson() => {'type': type, 'data': data};
+
   factory IsolateResponse.fromJson(Map<String, dynamic> json) =>
-      IsolateResponse(type: json['type'], data: json['data']);
+      IsolateResponse(
+        type: json['type'] as String,
+        data: json['data'] as Map<String, dynamic>?,
+      );
 }
 
-/// Download state enum
-enum DownloadStateDart { NONE, DOWNLOADING, POST, DONE, DEEZER_ERROR, ERROR }
+/// Index 4 intentionally remains the platform-specific failure state so rows
+/// written by releases that called it DEEZER_ERROR remain compatible.
+enum DownloadStateDart {
+  NONE,
+  DOWNLOADING,
+  POST,
+  DONE,
+  PLATFORM_ERROR,
+  ERROR,
+  UNAVAILABLE,
+}
 
-/// Download task model
 class DownloadTask {
   int id;
   String path;
   bool private;
   int quality;
+  String platformId;
   String trackId;
-  String streamTrackId;
-  String trackToken;
-  String md5origin;
-  String mediaVersion;
   DownloadStateDart state;
   String title;
   String image;
-
-  // Dynamic
-  int received = 0;
-  int filesize = 0;
-  int downloaded = 0; // Bytes already downloaded (for resume)
+  int received;
+  int filesize;
+  int downloaded;
+  String? resolvedFormat;
+  int? resolvedBitrate;
+  bool unavailable;
+  Map<String, dynamic>? lyrics;
 
   DownloadTask({
     required this.id,
     required this.path,
     required this.private,
     required this.quality,
-    required this.state,
+    required this.platformId,
     required this.trackId,
-    required this.md5origin,
-    required this.mediaVersion,
+    required this.state,
     required this.title,
     required this.image,
-    required this.trackToken,
-    required this.streamTrackId,
+    this.received = 0,
+    this.filesize = 0,
+    this.downloaded = 0,
+    this.resolvedFormat,
+    this.resolvedBitrate,
+    this.unavailable = false,
+    this.lyrics,
   });
 
   factory DownloadTask.fromSQL(Map<String, dynamic> row) {
+    final downloaded = row['downloaded'] as int? ?? 0;
     return DownloadTask(
-      id: row['id'],
-      path: row['path'],
+      id: row['id'] as int,
+      path: row['path'] as String,
       private: row['private'] == 1,
-      quality: row['quality'],
-      state: DownloadStateDart.values[row['state']],
-      trackId: row['trackId'],
-      md5origin: row['md5origin'],
-      mediaVersion: row['mediaVersion'],
-      title: row['title'],
-      image: row['image'],
-      trackToken: row['trackToken'],
-      streamTrackId: row['streamTrackId'],
-    )..downloaded = row['downloaded'] ?? 0;
+      quality: row['quality'] as int,
+      platformId: row['platformId'] as String? ?? 'deezer',
+      trackId: row['trackId'] as String,
+      state: DownloadStateDart.values[row['state'] as int],
+      title: row['title'] as String? ?? '',
+      image: row['image'] as String? ?? '',
+      received: downloaded,
+      filesize: downloaded,
+      downloaded: downloaded,
+      resolvedFormat: row['resolvedFormat'] as String?,
+      resolvedBitrate: row['resolvedBitrate'] as int?,
+      unavailable: row['unavailable'] == 1,
+    );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'path': path,
-      'private': private,
-      'quality': quality,
-      'trackId': trackId,
-      'state': state.index,
-      'title': title,
-      'image': image,
-      'received': received,
-      'filesize': filesize,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'path': path,
+    'private': private,
+    'quality': quality,
+    'platformId': platformId,
+    'trackId': trackId,
+    'state': state.index,
+    'title': title,
+    'image': image,
+    'received': received,
+    'filesize': filesize,
+    'resolvedFormat': resolvedFormat,
+    'resolvedBitrate': resolvedBitrate,
+    'unavailable': unavailable,
+    if (lyrics != null) 'lyrics': lyrics,
+  };
 
-  Map<String, dynamic> toSQL() {
-    return {
-      'id': id,
-      'path': path,
-      'private': private ? 1 : 0,
-      'quality': quality,
-      'trackId': trackId,
-      'state': state.index,
-      'title': title,
-      'image': image,
-      'md5origin': md5origin,
-      'mediaVersion': mediaVersion,
-      'trackToken': trackToken,
-      'streamTrackId': streamTrackId,
-      'downloaded': downloaded,
-    };
-  }
-
-  bool get isUserUploaded => trackId.startsWith('-');
+  Map<String, dynamic> toSQL() => {
+    'id': id,
+    'path': path,
+    'private': private ? 1 : 0,
+    'quality': quality,
+    'platformId': platformId,
+    'trackId': trackId,
+    'state': state.index,
+    'title': title,
+    'image': image,
+    'downloaded': downloaded,
+    'resolvedFormat': resolvedFormat,
+    'resolvedBitrate': resolvedBitrate,
+    'unavailable': unavailable ? 1 : 0,
+  };
 }
 
-/// Manager for download isolate coordinator
 class DownloadIsolateManager {
   Isolate? _isolate;
   SendPort? _isolateSendPort;
@@ -143,661 +165,583 @@ class DownloadIsolateManager {
   bool get isReady => _readyCompleter.isCompleted;
   Stream<IsolateResponse> get responses => _responseController.stream;
 
-  /// Start the coordinator isolate
   Future<void> start(
-    String arl,
     String dbPath,
-    Map<String, dynamic> settings,
-  ) async {
+    Map<String, dynamic> settings, {
+    required int streamProxyPort,
+  }) async {
     if (_isolate != null) return;
-
     _isolate = await Isolate.spawn(_coordinatorEntryPoint, {
       'sendPort': _receivePort.sendPort,
-      'arl': arl,
       'dbPath': dbPath,
       'rootIsolateToken': RootIsolateToken.instance!,
       'settings': settings,
+      'streamProxyPort': streamProxyPort,
     });
-
-    _receivePort.listen((msg) {
-      if (_isolateSendPort == null && msg is SendPort) {
-        _isolateSendPort = msg;
+    _receivePort.listen((message) {
+      if (_isolateSendPort == null && message is SendPort) {
+        _isolateSendPort = message;
         _readyCompleter.complete();
-        return;
-      }
-      if (msg is Map<String, dynamic>) {
-        final response = IsolateResponse.fromJson(msg);
-        _responseController.add(response);
+      } else if (message is Map<String, dynamic>) {
+        _responseController.add(IsolateResponse.fromJson(message));
       }
     });
-
     await _readyCompleter.future;
   }
 
-  /// Stop the isolate
   Future<void> stop() async {
     if (_isolate == null) return;
     sendMessage(CoordinatorMessage(type: 'shutdown'));
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
     _isolateSendPort = null;
-    _receivePort.close();
-    await _responseController.close();
   }
 
-  /// Send a message to the coordinator
   void sendMessage(CoordinatorMessage message) {
-    if (!isReady) return;
-    _isolateSendPort?.send(message.toJson());
+    if (isReady) _isolateSendPort?.send(message.toJson());
   }
 
-  /// Coordinator entry point - manages queue and spawns workers
-  static Future<void> _coordinatorEntryPoint(Map<String, dynamic> args) async {
-    final mainSendPort = args['sendPort'] as SendPort;
-    final arl = args['arl'] as String;
-    final dbPath = args['dbPath'] as String;
-    final rootIsolateToken = args['rootIsolateToken'] as RootIsolateToken;
-    final settings = args['settings'] as Map<String, dynamic>;
-
+  static Future<void> _coordinatorEntryPoint(
+    Map<String, dynamic> arguments,
+  ) async {
+    final mainSendPort = arguments['sendPort'] as SendPort;
     final receivePort = ReceivePort();
     mainSendPort.send(receivePort.sendPort);
 
-    // Initialize coordinator state
     final coordinator = _DownloadCoordinator(
       mainSendPort: mainSendPort,
-      arl: arl,
-      dbPath: dbPath,
-      rootIsolateToken: rootIsolateToken,
-      settings: settings,
+      dbPath: arguments['dbPath'] as String,
+      rootIsolateToken: arguments['rootIsolateToken'] as RootIsolateToken,
+      settings: arguments['settings'] as Map<String, dynamic>,
+      streamProxyPort: arguments['streamProxyPort'] as int,
     );
-
     await coordinator.init();
 
-    await for (var msg in receivePort) {
-      if (msg is Map<String, dynamic>) {
-        final message = CoordinatorMessage.fromJson(msg);
-        await coordinator.handleMessage(message);
-
-        // Only dispose and exit on explicit shutdown, not on pause/stop
-        if (message.type == 'shutdown') {
-          await coordinator.dispose();
-          receivePort.close();
-          return;
-        }
+    await for (final message in receivePort) {
+      if (message is! Map<String, dynamic>) continue;
+      final parsed = CoordinatorMessage.fromJson(message);
+      await coordinator.handleMessage(parsed);
+      if (parsed.type == 'shutdown') {
+        await coordinator.dispose();
+        receivePort.close();
+        return;
       }
     }
   }
 }
 
-/// Internal coordinator class that runs in the isolate
 class _DownloadCoordinator {
   final SendPort mainSendPort;
-  final String arl;
   final String dbPath;
   final RootIsolateToken rootIsolateToken;
+  final int streamProxyPort;
   Map<String, dynamic> settings;
 
   Database? _db;
-  DeezerAPI? _deezer;
   DownloadLog? _logger;
-
   final List<DownloadTask> _queue = [];
   final Map<int, _WorkerHandle> _activeWorkers = {};
   bool _running = false;
+  bool _queueUpdateInProgress = false;
+  bool _queueUpdateRequested = false;
   Timer? _progressTimer;
 
   _DownloadCoordinator({
     required this.mainSendPort,
-    required this.arl,
     required this.dbPath,
     required this.rootIsolateToken,
     required this.settings,
+    required this.streamProxyPort,
   });
 
   Future<void> init() async {
-    // Initialize BackgroundIsolateBinaryMessenger for Flutter plugins in isolate
     BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
-
-    // Initialize database factory for desktop platforms
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
-
     _logger = DownloadLog();
     await _logger!.open();
-
-    _deezer = DeezerAPI(arl: arl);
-    await _deezer!.authorize();
-
-    _db = await openDatabase(dbPath);
-
+    _db = await openDatabase(
+      dbPath,
+      onConfigure: (Database db) async {
+        await db.rawQuery('PRAGMA busy_timeout = 10000');
+        await db.rawQuery('PRAGMA journal_mode = WAL');
+      },
+    );
     await _loadQueue();
-
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      _sendProgressUpdate();
-    });
-
-    _logger!.log('Download coordinator initialized');
-  }
-
-  Future<void> _updateNotification(DownloadTask task) async {
-    // Notifications handled in main isolate
+    _progressTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _sendProgressUpdate(),
+    );
+    _logger!.log('Multiplatform download coordinator initialized');
   }
 
   Future<void> dispose() async {
     _progressTimer?.cancel();
-
-    await _logger?.close();
-    await _db?.close();
-
-    // Stop all active workers and clean up
-    for (var worker in _activeWorkers.values) {
+    for (final worker in _activeWorkers.values) {
       worker.isolate.kill(priority: Isolate.immediate);
       worker.receivePort.close();
+      worker.errorPort.close();
     }
     _activeWorkers.clear();
+    await _logger?.close();
+    await _db?.close();
   }
 
   Future<void> handleMessage(CoordinatorMessage message) async {
-    _logger?.log('[Coordinator] handleMessage received: ${message.type}');
-
     switch (message.type) {
       case 'start':
-        _logger?.log(
-          '[Coordinator] Starting downloads - current queue: ${_queue.length}, active workers: ${_activeWorkers.length}',
-        );
         _running = true;
-        await _loadQueue(); // Reload queue to get updated 'downloaded' values
-        _logger?.log(
-          '[Coordinator] Queue reloaded, ${_queue.where((d) => d.state == DownloadStateDart.NONE).length} downloads pending',
-        );
-        _sendDownloadsList(); // Send fresh list to UI
-        await _updateQueue();
-        _sendStateUpdate();
-        break;
-
-      case 'stop':
-        _running = false;
-        // Save partial download progress and reset state for resume
-        for (var worker in _activeWorkers.values) {
-          // Kill the isolate
-          worker.isolate.kill(priority: Isolate.immediate);
-
-          // Close the receive port to clean up
-          worker.receivePort.close();
-
-          // Reset download state to NONE so it can be resumed
-          worker.download.state = DownloadStateDart.NONE;
-          await _db!.update(
-            'Downloads',
-            {
-              'state': DownloadStateDart.NONE.index,
-              'downloaded': worker.download.received, // Save progress
-            },
-            where: 'id = ?',
-            whereArgs: [worker.download.id],
-          );
-        }
-        _activeWorkers.clear();
-
-        // Reload queue to ensure consistency
         await _loadQueue();
-
-        _sendStateUpdate();
-        _sendDownloadsList();
+        await _updateQueue();
         break;
-
+      case 'stop':
+        await _stopWorkers();
+        break;
       case 'addDownloads':
-        await _addDownloads(message.data!['downloads'] as List);
+        await _addDownloads(message.data!['downloads'] as List<dynamic>);
         break;
-
       case 'removeDownload':
         await _removeDownload(message.data!['id'] as int);
         break;
-
       case 'retryDownloads':
         await _retryDownloads();
         break;
-
       case 'removeByState':
         await _removeByState(
           DownloadStateDart.values[message.data!['state'] as int],
         );
         break;
-
       case 'getDownloads':
         _sendDownloadsList();
         break;
-
       case 'updateSettings':
         settings = message.data!;
+        break;
+      case 'shutdown':
+        _running = false;
         break;
     }
   }
 
   Future<void> _loadQueue() async {
-    if (_db == null) return;
-
-    final results = await _db!.query('Downloads');
+    final rows = await _db!.query('Downloads');
     _queue.clear();
-
-    for (var row in results) {
+    for (final row in rows) {
       final task = DownloadTask.fromSQL(row);
-
-      // Reset orphaned DOWNLOADING state to NONE
-      // (downloads that were downloading when app was closed)
-      if (task.state == DownloadStateDart.DOWNLOADING) {
+      if (task.state == DownloadStateDart.DOWNLOADING ||
+          task.state == DownloadStateDart.POST) {
         task.state = DownloadStateDart.NONE;
-        // Update in database
         await _db!.update(
           'Downloads',
-          {'state': DownloadStateDart.NONE.index},
+          {'state': task.state.index},
           where: 'id = ?',
           whereArgs: [task.id],
         );
       }
-
       _queue.add(task);
     }
+  }
 
-    _logger?.log('Loaded ${_queue.length} downloads from database');
+  Future<void> _stopWorkers() async {
+    _running = false;
+    for (final worker in _activeWorkers.values) {
+      worker.isolate.kill(priority: Isolate.immediate);
+      worker.receivePort.close();
+      worker.download.state = DownloadStateDart.NONE;
+      await _db!.update(
+        'Downloads',
+        {
+          'state': DownloadStateDart.NONE.index,
+          'downloaded': worker.download.received,
+        },
+        where: 'id = ?',
+        whereArgs: [worker.download.id],
+      );
+    }
+    _activeWorkers.clear();
+    await _loadQueue();
+    _sendStateUpdate();
+    _sendDownloadsList();
   }
 
   Future<void> _addDownloads(List<dynamic> downloads) async {
-    if (_db == null) {
-      _logger?.error('[Coordinator] _addDownloads - ERROR: Database is null!');
-      return;
-    }
-
-    _logger?.log(
-      '[Coordinator] _addDownloads called with ${downloads.length} downloads',
-    );
-
-    int added = 0;
-    for (var downloadData in downloads) {
-      // Check if exists using trackId and path (not id, which is auto-generated)
-      final trackId = downloadData['trackId'];
-      final path = downloadData['path'];
-
-      _logger?.log(
-        '[Coordinator] _addDownloads - Processing trackId: $trackId',
-      );
-      _logger?.log('[Coordinator] _addDownloads - Path: $path');
-      _logger?.log(
-        '[Coordinator] _addDownloads - md5origin: ${downloadData['md5origin']}, mediaVersion: ${downloadData['mediaVersion']}',
-      );
-
-      if (trackId == null || path == null) {
-        _logger?.warn(
-          '[Coordinator] _addDownloads - Skipping invalid download: trackId=$trackId, path=$path',
-        );
-        continue; // Skip invalid downloads
-      }
+    var added = 0;
+    for (final raw in downloads) {
+      final data = Map<String, dynamic>.from(raw as Map);
+      final trackId = data['trackId'] as String?;
+      final path = data['path'] as String?;
+      final unavailable = data['unavailable'] == true;
+      final platformId =
+          data['platformId'] as String? ??
+          (settings['activePlatformId'] as String?) ??
+          'general';
+      if (trackId == null || path == null) continue;
 
       final existing = await _db!.query(
         'Downloads',
-        where: 'trackId = ? AND path = ?',
-        whereArgs: [trackId, path],
+        where: 'platformId = ? AND trackId = ? AND path = ?',
+        whereArgs: [platformId, trackId, path],
       );
-
       if (existing.isEmpty) {
-        _logger?.log(
-          '[Coordinator] _addDownloads - Inserting new download for trackId: $trackId',
-        );
-        // Insert new download (id is auto-generated by database)
         await _db!.insert('Downloads', {
-          'path': downloadData['path'],
-          'private': downloadData['private'] == true ? 1 : 0,
-          'state': 0,
-          'trackId': downloadData['trackId'],
-          'md5origin': downloadData['md5origin'],
-          'mediaVersion': downloadData['mediaVersion'],
-          'title': downloadData['title'],
-          'image': downloadData['image'],
-          'quality': downloadData['quality'],
-          'trackToken': downloadData['trackToken'],
-          'streamTrackId': downloadData['streamTrackId'],
+          'path': path,
+          'private': data['private'] == true ? 1 : 0,
+          'quality': data['quality'] as int,
+          'platformId': platformId,
+          'state': unavailable
+              ? DownloadStateDart.UNAVAILABLE.index
+              : DownloadStateDart.NONE.index,
+          'trackId': trackId,
+          'title': data['title'] ?? '',
+          'image': data['image'] ?? '',
           'downloaded': 0,
+          'unavailable': unavailable ? 1 : 0,
         });
-        _logger?.log(
-          '[Coordinator] _addDownloads - Insert successful for trackId: $trackId',
+        added++;
+      } else if (unavailable) {
+        await _db!.update(
+          'Downloads',
+          {'state': DownloadStateDart.UNAVAILABLE.index, 'unavailable': 1},
+          where: 'id = ?',
+          whereArgs: [existing.first['id']],
         );
         added++;
-      } else {
-        _logger?.log(
-          '[Coordinator] _addDownloads - Download already exists for trackId: $trackId, state: ${existing[0]['state']}',
+      } else if ((existing.first['state'] as int) >=
+          DownloadStateDart.DONE.index) {
+        await _db!.update(
+          'Downloads',
+          {
+            'state': DownloadStateDart.NONE.index,
+            'downloaded': 0,
+            'unavailable': 0,
+          },
+          where: 'id = ?',
+          whereArgs: [existing.first['id']],
         );
-        // Update state to NONE if done or error (allow re-download)
-        final state = existing[0]['state'] as int;
-        if (state >= 3) {
-          _logger?.log(
-            '[Coordinator] _addDownloads - Resetting state to NONE for re-download',
-          );
-          await _db!.update(
-            'Downloads',
-            {'state': 0},
-            where: 'id = ?',
-            whereArgs: [existing[0]['id']],
-          );
-          added++;
-        }
+        added++;
       }
     }
-
-    _logger?.log(
-      '[Coordinator] _addDownloads - Added $added downloads, reloading queue',
-    );
     await _loadQueue();
     _sendResponse(
       IsolateResponse(type: 'downloadsAdded', data: {'count': added}),
     );
     _sendStateUpdate();
     _sendDownloadsList();
-    _logger?.log(
-      '[Coordinator] _addDownloads - Complete, queue size: ${_queue.length}',
-    );
-
-    if (_running) {
-      await _updateQueue();
-    }
+    if (_running) await _updateQueue();
   }
 
   Future<void> _removeDownload(int id) async {
-    if (_db == null) return;
-
-    _queue.removeWhere((d) => d.id == id);
+    final worker = _activeWorkers.remove(id);
+    worker?.isolate.kill(priority: Isolate.immediate);
+    worker?.receivePort.close();
+    worker?.errorPort.close();
     await _db!.delete('Downloads', where: 'id = ?', whereArgs: [id]);
-    await _loadQueue(); // Reload to ensure consistency
-
+    await _loadQueue();
     _sendStateUpdate();
     _sendDownloadsList();
   }
 
   Future<void> _retryDownloads() async {
-    for (var download in _queue) {
-      if (download.state == DownloadStateDart.DEEZER_ERROR ||
-          download.state == DownloadStateDart.ERROR) {
-        download.state = DownloadStateDart.NONE;
-        await _db!.update(
-          'Downloads',
-          {'state': download.state.index},
-          where: 'id = ?',
-          whereArgs: [download.id],
-        );
-      }
-    }
-
-    await _loadQueue(); // Reload to get fresh state
-    _sendStateUpdate();
+    await _db!.update(
+      'Downloads',
+      {'state': DownloadStateDart.NONE.index, 'downloaded': 0},
+      where: 'state IN (?, ?)',
+      whereArgs: [
+        DownloadStateDart.PLATFORM_ERROR.index,
+        DownloadStateDart.ERROR.index,
+      ],
+    );
+    await _loadQueue();
     _sendDownloadsList();
-
-    if (_running) {
-      await _updateQueue();
-    }
+    if (_running) await _updateQueue();
   }
 
   Future<void> _removeByState(DownloadStateDart state) async {
-    if (_db == null) return;
     if (state == DownloadStateDart.DOWNLOADING ||
         state == DownloadStateDart.POST) {
       return;
     }
-
-    _queue.removeWhere((d) => d.state == state);
     await _db!.delete(
       'Downloads',
       where: 'state = ?',
       whereArgs: [state.index],
     );
-    await _loadQueue(); // Reload to ensure consistency
-
+    await _loadQueue();
     _sendStateUpdate();
     _sendDownloadsList();
   }
 
   Future<void> _updateQueue() async {
-    // Remove completed workers
-    final completedIds = <int>[];
-    // Create a copy of entries to avoid concurrent modification
-    final workerEntries = _activeWorkers.entries.toList();
-    for (var entry in workerEntries) {
-      final download = _queue.firstWhere(
-        (d) => d.id == entry.key,
-        orElse: () => DownloadTask(
-          id: -1,
-          path: '',
-          private: false,
-          quality: 0,
-          state: DownloadStateDart.NONE,
-          trackId: '',
-          md5origin: '',
-          mediaVersion: '',
-          title: '',
-          image: '',
-          trackToken: '',
-          streamTrackId: '',
-        ),
+    if (_queueUpdateInProgress) {
+      _queueUpdateRequested = true;
+      return;
+    }
+    _queueUpdateInProgress = true;
+    try {
+      do {
+        _queueUpdateRequested = false;
+        await _updateQueueOnce();
+      } while (_queueUpdateRequested);
+    } finally {
+      _queueUpdateInProgress = false;
+    }
+  }
+
+  Future<void> _updateQueueOnce() async {
+    final finishedIds = _activeWorkers.entries
+        .where((entry) => _isTerminal(entry.value.download.state))
+        .map((entry) => entry.key)
+        .toList();
+    for (final id in finishedIds) {
+      final worker = _activeWorkers.remove(id)!;
+      _logger?.log(
+        'Persisting terminal state ${worker.download.state.name} '
+        'for download id $id',
       );
-
-      if (download.state == DownloadStateDart.DONE ||
-          download.state == DownloadStateDart.DEEZER_ERROR ||
-          download.state == DownloadStateDart.ERROR) {
-        // Kill isolate and close receive port
-        entry.value.isolate.kill(priority: Isolate.immediate);
-        entry.value.receivePort.close();
-        completedIds.add(entry.key);
-
-        // Update database
-        await _db!.update(
+      worker.isolate.kill(priority: Isolate.immediate);
+      worker.receivePort.close();
+      worker.errorPort.close();
+      try {
+        final updatedRows = await _db!.update(
           'Downloads',
-          download.toSQL(),
+          worker.download.toSQL(),
           where: 'id = ?',
-          whereArgs: [download.id],
+          whereArgs: [id],
+        );
+        _logger?.log(
+          'Persisted terminal state for download id $id '
+          '(updated rows: $updatedRows)',
+        );
+      } catch (error, stackTrace) {
+        _logger?.error(
+          'Could not persist terminal state for download id $id: '
+          '$error\n$stackTrace',
         );
       }
     }
 
-    for (var id in completedIds) {
-      _activeWorkers.remove(id);
-    }
-
-    // Start new downloads
-    if (_running && _activeWorkers.length < settings['downloadThreads']) {
-      final availableSlots =
-          settings['downloadThreads'] - _activeWorkers.length;
-
-      for (var i = 0; i < availableSlots; i++) {
-        final nextDownload = _queue.firstWhere(
-          (d) =>
-              d.state == DownloadStateDart.NONE &&
-              !_activeWorkers.containsKey(d.id),
-          orElse: () => DownloadTask(
-            id: -1,
-            path: '',
-            private: false,
-            quality: 0,
-            state: DownloadStateDart.NONE,
-            trackId: '',
-            md5origin: '',
-            mediaVersion: '',
-            title: '',
-            image: '',
-            trackToken: '',
-            streamTrackId: '',
-          ),
-        );
-
-        if (nextDownload.id == -1) break;
-
-        // Start worker
-        await _startWorker(nextDownload);
+    final maxThreads = settings['downloadThreads'] as int? ?? 2;
+    while (_running && _activeWorkers.length < maxThreads) {
+      DownloadTask? next;
+      for (final candidate in _queue) {
+        if (candidate.state == DownloadStateDart.NONE &&
+            !_activeWorkers.containsKey(candidate.id)) {
+          next = candidate;
+          break;
+        }
       }
+      if (next == null) break;
+      await _startWorker(next);
     }
-
     _sendStateUpdate();
-    _sendDownloadsList(); // Send updated list after starting workers
+    _sendDownloadsList();
   }
 
   Future<void> _startWorker(DownloadTask download) async {
-    // Guard: Don't start a worker if one is already running for this download
-    if (_activeWorkers.containsKey(download.id)) {
-      _logger?.log(
-        '[Coordinator] Worker already exists for download ${download.id}, skipping',
-      );
-      return;
-    }
-
-    _logger?.log(
-      '[Coordinator] _startWorker - Starting worker for download ${download.id}: ${download.title}',
-    );
-    _logger?.log(
-      '[Coordinator] _startWorker - trackId: ${download.trackId}, streamTrackId: ${download.streamTrackId}',
-    );
-    _logger?.log(
-      '[Coordinator] _startWorker - md5origin: ${download.md5origin}, quality: ${download.quality}',
-    );
-    _logger?.log('[Coordinator] _startWorker - path: ${download.path}');
-
     download.state = DownloadStateDart.DOWNLOADING;
-
-    // Update database with new state
     await _db!.update(
       'Downloads',
       {'state': download.state.index},
       where: 'id = ?',
       whereArgs: [download.id],
     );
-
-    final workerReceivePort = ReceivePort();
-    final isolate = await Isolate.spawn(_workerEntryPoint, {
-      'sendPort': workerReceivePort.sendPort,
-      'download': download.toSQL(),
-      'arl': arl,
-      'settings': settings,
-      'rootIsolateToken': rootIsolateToken,
-    });
-
-    final worker = _WorkerHandle(
+    final receivePort = ReceivePort();
+    final errorPort = ReceivePort();
+    late final Isolate isolate;
+    try {
+      isolate = await Isolate.spawn(
+        _workerEntryPoint,
+        {
+          'sendPort': receivePort.sendPort,
+          'download': download.toSQL(),
+          'settings': settings,
+          'rootIsolateToken': rootIsolateToken,
+          'streamProxyPort': streamProxyPort,
+        },
+        onError: errorPort.sendPort,
+        errorsAreFatal: true,
+      );
+    } catch (error, stackTrace) {
+      receivePort.close();
+      errorPort.close();
+      download.state = DownloadStateDart.ERROR;
+      await _db!.update(
+        'Downloads',
+        {'state': download.state.index},
+        where: 'id = ?',
+        whereArgs: [download.id],
+      );
+      _logger?.error(
+        'Could not start worker for ${download.platformId} '
+        '${download.trackId}: $error\n$stackTrace',
+      );
+      return;
+    }
+    _activeWorkers[download.id] = _WorkerHandle(
       isolate: isolate,
-      receivePort: workerReceivePort,
+      receivePort: receivePort,
+      errorPort: errorPort,
       download: download,
     );
-
-    _activeWorkers[download.id] = worker;
-
-    // Listen for updates from worker
-    workerReceivePort.listen((msg) {
-      if (msg is Map<String, dynamic>) {
-        _handleWorkerMessage(download.id, msg);
+    receivePort.listen((message) {
+      if (message is Map<String, dynamic>) {
+        unawaited(_handleWorkerMessage(download.id, message));
       }
     });
-
+    errorPort.listen((message) {
+      final details = message is List
+          ? message.map((part) => part.toString()).join('\n')
+          : message.toString();
+      _handleWorkerIsolateError(download.id, details);
+    });
     _logger?.log(
-      'Started worker for download ${download.id}: ${download.title}',
+      'Started ${download.platformId} worker for ${download.trackId}',
     );
   }
 
-  void _handleWorkerMessage(int downloadId, Map<String, dynamic> msg) {
-    final type = msg['type'] as String;
+  void _handleWorkerIsolateError(int downloadId, String details) {
+    final worker = _activeWorkers[downloadId];
+    if (worker == null || _isTerminal(worker.download.state)) return;
 
-    switch (type) {
+    final download = worker.download;
+    download.state = DownloadStateDart.ERROR;
+    _logger?.error(
+      'Worker isolate crashed for ${download.platformId} ${download.trackId}:\n'
+      '$details',
+    );
+    _sendResponse(
+      IsolateResponse(
+        type: 'downloadError',
+        data: {
+          'id': download.id,
+          'platformId': download.platformId,
+          'trackId': download.trackId,
+          'state': download.state.index,
+        },
+      ),
+    );
+    unawaited(_updateQueue());
+  }
+
+  Future<void> _handleWorkerMessage(
+    int downloadId,
+    Map<String, dynamic> message,
+  ) async {
+    final download = _queue.firstWhere((item) => item.id == downloadId);
+    switch (message['type']) {
       case 'progress':
-        final download = _queue.firstWhere((d) => d.id == downloadId);
-        download.received = msg['received'] as int;
-        download.filesize = msg['total'] as int;
+        download.received = message['received'] as int;
+        download.filesize = message['total'] as int;
+        download.downloaded = download.received;
+        download.resolvedFormat =
+            message['resolvedFormat'] as String? ?? download.resolvedFormat;
+        download.resolvedBitrate =
+            message['resolvedBitrate'] as int? ?? download.resolvedBitrate;
         break;
-
       case 'stateChange':
-        final download = _queue.firstWhere((d) => d.id == downloadId);
-        final oldState = download.state;
-        download.state = DownloadStateDart.values[msg['state'] as int];
-
-        // Send completion/error events to UI
+        final previous = download.state;
+        download.state = DownloadStateDart.values[message['state'] as int];
+        if (message['unavailable'] is bool) {
+          download.unavailable = message['unavailable'] as bool;
+        }
+        if (message['lyrics'] is Map) {
+          download.lyrics = Map<String, dynamic>.from(message['lyrics'] as Map);
+        }
+        _logger?.log(
+          'Worker state message for id $downloadId: '
+          '${previous.name} -> ${download.state.name}',
+        );
         if (download.state == DownloadStateDart.DONE &&
-            oldState != DownloadStateDart.DONE) {
-          _logger?.log('Download completed: ${download.title}');
-
+            previous != DownloadStateDart.DONE) {
+          _logger?.log(
+            'Forwarding downloadComplete for id $downloadId to the app',
+          );
           _sendResponse(
             IsolateResponse(
               type: 'downloadComplete',
               data: {
                 'id': download.id,
+                'platformId': download.platformId,
                 'trackId': download.trackId,
                 'title': download.title,
-              },
-            ),
-          );
-        } else if ((download.state == DownloadStateDart.ERROR ||
-                download.state == DownloadStateDart.DEEZER_ERROR) &&
-            oldState != DownloadStateDart.ERROR &&
-            oldState != DownloadStateDart.DEEZER_ERROR) {
-          _logger?.error('Download failed: ${download.title}');
-
-          // Update notification for error
-          _updateNotification(download);
-
-          _sendResponse(
-            IsolateResponse(
-              type: 'downloadError',
-              data: {
-                'id': download.id,
-                'trackId': download.trackId,
-                'state': download.state.index,
+                'download': download.toMap(),
               },
             ),
           );
         }
-
-        if (download.state == DownloadStateDart.DONE ||
-            download.state == DownloadStateDart.DEEZER_ERROR ||
-            download.state == DownloadStateDart.ERROR) {
-          // Worker finished, update queue
-          _updateQueue();
-          // Send updated downloads list to UI
-          _sendDownloadsList();
+        if (_isTerminal(download.state)) {
+          // Persist the terminal state before notifying the app. The app may
+          // immediately refresh offline playlists in response to this event.
+          await _updateQueue();
+          if (download.state != DownloadStateDart.DONE) {
+            _sendResponse(
+              IsolateResponse(
+                type: 'downloadError',
+                data: {
+                  'id': download.id,
+                  'platformId': download.platformId,
+                  'trackId': download.trackId,
+                  'state': download.state.index,
+                  'private': download.private,
+                },
+              ),
+            );
+          }
         }
         break;
-
       case 'log':
-        _logger?.log(msg['message'] as String);
+        _logger?.log(message['message'] as String);
         break;
-
       case 'error':
-        _logger?.error(msg['message'] as String);
+        _logger?.error(message['message'] as String);
+        break;
+      case 'youtubeJavaScriptRequest':
+        _sendResponse(
+          IsolateResponse(
+            type: 'youtubeJavaScriptRequest',
+            data: {
+              'requestId': message['requestId'],
+              'jsCode': message['jsCode'],
+              'replyPort': message['replyPort'],
+            },
+          ),
+        );
         break;
     }
   }
+
+  bool _isTerminal(DownloadStateDart state) =>
+      state == DownloadStateDart.DONE ||
+      state == DownloadStateDart.PLATFORM_ERROR ||
+      state == DownloadStateDart.ERROR ||
+      state == DownloadStateDart.UNAVAILABLE;
 
   void _sendProgressUpdate() {
     if (_activeWorkers.isEmpty) return;
-
-    final downloads = _activeWorkers.values
-        .map((w) => w.download.toMap())
-        .toList();
-
     _sendResponse(
-      IsolateResponse(type: 'progress', data: {'downloads': downloads}),
+      IsolateResponse(
+        type: 'progress',
+        data: {
+          'downloads': _activeWorkers.values
+              .map((worker) => worker.download.toMap())
+              .toList(),
+        },
+      ),
     );
-
-    // Update notifications for active downloads
-    for (var worker in _activeWorkers.values) {
-      _updateNotification(worker.download);
-    }
   }
 
   void _sendStateUpdate() {
-    final queueSize = _queue
-        .where((d) => d.state == DownloadStateDart.NONE)
-        .length;
-
     _sendResponse(
       IsolateResponse(
         type: 'stateChange',
         data: {
           'running': _running,
-          'queueSize': queueSize,
+          'queueSize': _queue
+              .where((item) => item.state == DownloadStateDart.NONE)
+              .length,
           'activeDownloads': _activeWorkers.length,
         },
       ),
@@ -808,7 +752,7 @@ class _DownloadCoordinator {
     _sendResponse(
       IsolateResponse(
         type: 'downloadsList',
-        data: {'downloads': _queue.map((d) => d.toMap()).toList()},
+        data: {'downloads': _queue.map((item) => item.toMap()).toList()},
       ),
     );
   }
@@ -818,1045 +762,847 @@ class _DownloadCoordinator {
   }
 }
 
-/// Handle for active worker isolate
 class _WorkerHandle {
   final Isolate isolate;
   final ReceivePort receivePort;
+  final ReceivePort errorPort;
   final DownloadTask download;
 
   _WorkerHandle({
     required this.isolate,
     required this.receivePort,
+    required this.errorPort,
     required this.download,
   });
 }
 
-/// Worker entry point - handles individual download
-Future<void> _workerEntryPoint(Map<String, dynamic> args) async {
-  final mainSendPort = args['sendPort'] as SendPort;
-  final downloadData = args['download'] as Map<String, dynamic>;
-  final arl = args['arl'] as String;
-  final settingsData = args['settings'] as Map<String, dynamic>;
-  final rootIsolateToken = args['rootIsolateToken'] as RootIsolateToken;
-
-  // Initialize BackgroundIsolateBinaryMessenger for Flutter plugins in worker isolate
-  BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
-
-  // Initialize a minimal settings stub for DeezerAPI
-  // DeezerAPI accesses global settings.deezerLanguage and settings.deezerCountry
-  // Use noSuchMethod to create a dynamic proxy that handles any property access
-  settings_module.settings = _MinimalSettings(
-    deezerLanguage: settingsData['deezerLanguage'] as String? ?? 'en',
-    deezerCountry: settingsData['deezerCountry'] as String? ?? 'US',
+Future<void> _workerEntryPoint(Map<String, dynamic> arguments) async {
+  final rootToken = arguments['rootIsolateToken'] as RootIsolateToken;
+  BackgroundIsolateBinaryMessenger.ensureInitialized(rootToken);
+  final workerSettings = arguments['settings'] as Map<String, dynamic>;
+  StreamProxyServer.instance.configureRemotePort(
+    arguments['streamProxyPort'] as int,
   );
-
-  final download = DownloadTask.fromSQL(downloadData);
-  final worker = _DownloadWorker(
-    sendPort: mainSendPort,
-    download: download,
-    arl: arl,
-    settings: settingsData,
+  final javascriptBridge = _RootIsolateJavaScriptBridge(
+    arguments['sendPort'] as SendPort,
   );
-
-  await worker.execute();
-}
-
-/// Minimal settings stub for worker isolate - mimics Settings class for DeezerAPI
-@pragma('vm:entry-point')
-class _MinimalSettings extends settings_module.Settings {
-  @override
-  // ignore: overridden_fields
-  final String deezerLanguage;
-  @override
-  // ignore: overridden_fields
-  final String deezerCountry;
-
-  _MinimalSettings({required this.deezerLanguage, required this.deezerCountry})
-    : super(arl: null, downloadPath: null);
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) {
-    // Return safe defaults for any undefined property
-    return null;
+  AppHttpProxy.configure(
+    workerSettings['proxyAddress'] as String?,
+    username: workerSettings['proxyUsername'] as String?,
+    password: workerSettings['proxyPassword'] as String?,
+  );
+  try {
+    final platformId =
+        (arguments['download'] as Map<String, dynamic>)['platformId'] as String;
+    final platform = await createDownloadPlatform(
+      platformId,
+      workerSettings,
+      executeJavaScriptOnRootIsolate: javascriptBridge.execute,
+    );
+    final worker = _DownloadWorker(
+      sendPort: arguments['sendPort'] as SendPort,
+      download: DownloadTask.fromSQL(
+        arguments['download'] as Map<String, dynamic>,
+      ),
+      settings: workerSettings,
+      platform: platform,
+      executeJavaScriptOnRootIsolate: javascriptBridge.execute,
+    );
+    await worker.execute();
+  } finally {
+    javascriptBridge.close();
   }
 }
 
-/// Worker that executes the download
+/// Proxies YouTube's JavaScript signature challenges to the root isolate,
+/// where Flutter platform channels and the offscreen WebView are available.
+class _RootIsolateJavaScriptBridge {
+  _RootIsolateJavaScriptBridge(this._coordinatorSendPort) {
+    _responses.listen((message) {
+      if (message is! Map) return;
+      final id = message['requestId'];
+      if (id is! int) return;
+      final completer = _pending.remove(id);
+      if (completer == null) return;
+      final error = message['error'];
+      if (error is String) {
+        completer.completeError(StateError(error));
+      } else if (message['result'] is String) {
+        completer.complete(message['result'] as String);
+      } else {
+        completer.completeError(
+          StateError('Root isolate returned an invalid YouTube JS result'),
+        );
+      }
+    });
+  }
+
+  final SendPort _coordinatorSendPort;
+  final ReceivePort _responses = ReceivePort();
+  final Map<int, Completer<String>> _pending = {};
+  int _nextRequestId = 0;
+  bool _closed = false;
+
+  Future<String> execute(String jsCode) async {
+    if (_closed) throw StateError('YouTube JS bridge is closed');
+    final id = ++_nextRequestId;
+    final completer = Completer<String>();
+    _pending[id] = completer;
+    _coordinatorSendPort.send({
+      'type': 'youtubeJavaScriptRequest',
+      'requestId': id,
+      'jsCode': jsCode,
+      'replyPort': _responses.sendPort,
+    });
+    try {
+      return await completer.future.timeout(const Duration(seconds: 60));
+    } finally {
+      _pending.remove(id);
+    }
+  }
+
+  void close() {
+    _closed = true;
+    _responses.close();
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(StateError('YouTube JS bridge closed'));
+      }
+    }
+    _pending.clear();
+  }
+}
+
 class _DownloadWorker {
   final SendPort sendPort;
   final DownloadTask download;
-  final String arl;
   final Map<String, dynamic> settings;
-
-  DeezerAPI? _deezer;
+  final MusicPlatform platform;
+  final Future<String> Function(String jsCode)? executeJavaScriptOnRootIsolate;
 
   _DownloadWorker({
     required this.sendPort,
     required this.download,
-    required this.arl,
     required this.settings,
+    required this.platform,
+    this.executeJavaScriptOnRootIsolate,
   });
 
-  void _log(String message) {
-    sendPort.send({'type': 'log', 'message': message});
-  }
+  void _log(String message) => sendPort.send({
+    'type': 'log',
+    'message': '[${download.platformId} id:${download.id}] $message',
+  });
 
-  void _error(String message) {
-    sendPort.send({'type': 'error', 'message': message});
-  }
+  void _error(String message) => sendPort.send({
+    'type': 'error',
+    'message': '[${download.platformId} id:${download.id}] $message',
+  });
 
-  String _safeSubstring(String str, int maxLength) {
-    if (str.length <= maxLength) return str;
-    return str.substring(0, maxLength);
-  }
-
-  void _updateState(DownloadStateDart state) {
+  void _updateState(
+    DownloadStateDart state, {
+    bool? unavailable,
+    Map<String, dynamic>? lyrics,
+  }) {
     download.state = state;
-    sendPort.send({'type': 'stateChange', 'state': state.index});
+    if (unavailable != null) download.unavailable = unavailable;
+    _log('Reporting worker state ${state.name}');
+    sendPort.send({
+      'type': 'stateChange',
+      'state': state.index,
+      'unavailable': ?unavailable,
+      'lyrics': ?lyrics,
+    });
   }
 
-  void _updateProgress(int received, int total) {
-    sendPort.send({'type': 'progress', 'received': received, 'total': total});
+  void _updateProgress(
+    int received,
+    int total, {
+    String? resolvedFormat,
+    int? resolvedBitrate,
+  }) {
+    download.received = received;
+    download.filesize = total;
+    download.downloaded = received;
+    if (resolvedFormat != null) download.resolvedFormat = resolvedFormat;
+    if (resolvedBitrate != null) download.resolvedBitrate = resolvedBitrate;
+    sendPort.send({
+      'type': 'progress',
+      'received': received,
+      'total': total,
+      'resolvedFormat': download.resolvedFormat,
+      'resolvedBitrate': download.resolvedBitrate,
+    });
   }
 
   Future<void> execute() async {
+    PlatformDownloadMetadata metadata;
     try {
-      _deezer = DeezerAPI(arl: arl);
-      await _deezer!.authorize();
+      _log('Resolving track metadata');
+      if (!platform.capabilities.supportsDownload) {
+        throw UnsupportedError(
+          '${platform.platformName} does not support downloads',
+        );
+      }
+      metadata = await platform
+          .getDownloadMetadata(download.trackId)
+          .timeout(
+            const Duration(seconds: 45),
+            onTimeout: () => throw TimeoutException(
+              'Timed out resolving ${platform.platformName} track metadata',
+            ),
+          );
+      _log('Track metadata resolved');
+    } catch (error, stackTrace) {
+      _error('Platform setup or metadata failed: $error\n$stackTrace');
+      _updateState(DownloadStateDart.PLATFORM_ERROR);
+      return;
+    }
 
-      _log('Starting download: ${download.title}');
+    try {
+      final quality = _qualityFromIndex(download.quality);
+      _log('Registering track with shared stream proxy');
+      await StreamProxyServer.instance.registerTrackWithProxy(
+        metadata.track.toMediaItem(),
+      );
+      _log('Resolving download stream');
+      final stream = await platform
+          .getStreamProvider()
+          .getStream(metadata.track, quality)
+          .timeout(
+            const Duration(seconds: 45),
+            onTimeout: () => throw TimeoutException(
+              'Timed out resolving ${platform.platformName} download stream',
+            ),
+          );
+      // The generic downloader writes a standalone audio file. A Widevine
+      // stream needs a persistent DRM license and DRM-aware offline storage,
+      // neither of which this worker currently provides. Keep this failure
+      // scoped to the download task so normal online playback remains allowed.
+      if (stream.meta['drmLicenseUrl'] is String &&
+          (stream.meta['drmLicenseUrl'] as String).isNotEmpty) {
+        _log('Stream requires Widevine; offline DRM licenses are unsupported');
+        _updateState(DownloadStateDart.UNAVAILABLE, unavailable: true);
+        return;
+      }
+      if (stream.meta['downloadable'] == false) {
+        throw UnsupportedError(
+          'This track only exposes an adaptive stream and cannot be downloaded as a direct audio file.',
+        );
+      }
+      final resolvedFormat = stream.format ?? 'MP3';
+      var resolvedBitrate = stream.bitrate;
+      final extension = _extensionFor(metadata, resolvedFormat);
+      metadata = metadata.withStreamFormat(
+        format: resolvedFormat,
+        fileExtension: extension,
+      );
+      _updateProgress(
+        download.received,
+        download.filesize,
+        resolvedFormat: resolvedFormat,
+        resolvedBitrate: resolvedBitrate,
+      );
 
-      // Fetch track and album metadata
-      Track? track;
-      Album? album;
-      Map<dynamic, dynamic>? publicTrack;
-      Map<dynamic, dynamic>? publicAlbum;
-      Lyrics? lyrics;
+      final outputPath = download.private
+          ? download.path
+          : _processPathTemplate(download.path, metadata, extension);
+      final outputFile = File(outputPath);
+      final overwrite =
+          settings['overwriteDownload'] as bool? ??
+          settings['overwriteFile'] as bool? ??
+          false;
+      if (await outputFile.exists() && !overwrite) {
+        _log('File already exists, skipping ${outputFile.path}');
+        final outputSize = await outputFile.length();
+        resolvedBitrate ??= _estimateBitrateKbps(
+          outputSize,
+          metadata.track.duration,
+        );
+        _updateProgress(
+          outputSize,
+          outputSize,
+          resolvedFormat: resolvedFormat,
+          resolvedBitrate: resolvedBitrate,
+        );
+        final lyrics = download.private
+            ? await _resolveOfflineLyrics(platform, metadata)
+            : null;
+        _updateState(
+          DownloadStateDart.DONE,
+          lyrics: lyrics == null ? null : _lyricsToJson(lyrics),
+        );
+        return;
+      }
+
+      final tempRoot = await _temporaryRoot();
+      final tempFile = File(
+        p.join(
+          tempRoot.path,
+          'cache',
+          '${download.platformId}_${download.id}.$extension.part',
+        ),
+      );
+      await tempFile.parent.create(recursive: true);
+      _log('Requesting audio bytes');
+      final downloaded = await _download(
+        stream.url,
+        tempFile,
+        requestHeaders: stream.requestHeaders,
+      );
+      if (downloaded == null) {
+        _updateState(DownloadStateDart.ERROR);
+        return;
+      }
+      resolvedBitrate ??= _estimateBitrateKbps(
+        downloaded,
+        metadata.track.duration,
+      );
+      _updateProgress(
+        downloaded,
+        downloaded,
+        resolvedFormat: resolvedFormat,
+        resolvedBitrate: resolvedBitrate,
+      );
+
+      _updateState(DownloadStateDart.POST);
+      await outputFile.parent.create(recursive: true);
+      if (await outputFile.exists()) await outputFile.delete();
+      await tempFile.copy(outputFile.path);
+      await tempFile.delete();
 
       if (!download.private) {
-        try {
-          _log('Fetching track metadata for ID: ${download.trackId}');
-
-          try {
-            track = await _deezer!.track(download.trackId);
-          } catch (trackError) {
-            _error(
-              'Track API call failed for ID ${download.trackId}: $trackError',
-            );
-            _updateState(DownloadStateDart.DEEZER_ERROR);
-            return;
-          }
-
-          // Ensure embedded album data is present
-          if (track.album == null) {
-            _error('Track has no embedded album data: ${download.trackId}');
-            _updateState(DownloadStateDart.DEEZER_ERROR);
-            return;
-          }
-
-          // Use embedded album object
-          album = track.album;
-          _log(
-            'Using embedded album metadata from track response - album id: ${album?.id}',
-          );
-
-          // Fetch the public track JSON (helpful for publicTrack fields)
-          _log('Fetching public track API for ID: ${download.trackId}');
-          try {
-            final trackData = await _deezer!.callPublicApi(
-              'track/${download.trackId}',
-            );
-            publicTrack = trackData;
-            _log('Public track data received: ${trackData.keys.join(", ")}');
-          } catch (publicTrackError) {
-            // Don't fail hard if public track is unavailable, just log and continue.
-            _error(
-              'Public track API call failed (continuing with embedded data): $publicTrackError',
-            );
-            publicTrack = null;
-          }
-
-          // Derive publicAlbum: prefer publicTrack['album'] if present, otherwise build from embedded album
-          if (publicTrack != null && publicTrack['album'] != null) {
-            publicAlbum = publicTrack['album'] as Map<dynamic, dynamic>;
-            _log(
-              'Derived publicAlbum from public track data: ${publicAlbum.keys.join(", ")}',
-            );
-          } else {
-            // Build a fallback publicAlbum map from the embedded album object
-            String? md5;
-            try {
-              md5 = album?.art?.imageHash;
-            } catch (e) {
-              md5 = null;
-            }
-            // try additional possible field names defensively
-            try {
-              md5 ??= (album as dynamic).md5_image as String?;
-            } catch (_) {}
-            try {
-              md5 ??= (album as dynamic).md5Image as String?;
-            } catch (_) {}
-
-            publicAlbum = <String, dynamic>{
-              'id': album?.id,
-              'title': album?.title,
-              'md5_image': md5,
-              'release_date': album?.releaseDate,
-              //'tracklist': album?.tracklist,
-              // unknown / optional fields left null (nb_tracks, label, upc, genres)
-            };
-            _log(
-              'Built fallback publicAlbum from embedded album: ${publicAlbum.keys.join(", ")}',
-            );
-          }
-
-          // Lyrics - attempt to fetch but continue if unavailable
-          _log('Fetching lyrics for ID: ${download.trackId}');
-          try {
-            final lyricsData = await _deezer!.lyrics(download.trackId);
-            lyrics = lyricsData;
-            _log('Lyrics data received: ${lyrics..toString()}');
-          } catch (lyricsError) {
-            _error(
-              'Lyrics API call failed (continuing without lyrics): $lyricsError',
-            );
-            lyrics = null;
-          }
-        } catch (e, stackTrace) {
-          _error('Failed to fetch metadata: $e');
-          _error('Stack trace: ${_safeSubstring(stackTrace.toString(), 500)}');
-          _updateState(DownloadStateDart.DEEZER_ERROR);
-          return;
-        }
+        _log('Audio file saved; applying optional tags and artwork');
+        await _postProcess(outputFile, platform, metadata);
       }
-
-      // Get track URL
-      _log('Fetching track URL for streamTrackId: ${download.streamTrackId}');
-      final url = await _getTrackUrl(
-        download.streamTrackId,
-        download.trackToken,
-        download.md5origin,
-        download.mediaVersion,
-        download.quality,
+      final offlineLyrics = download.private
+          ? await _resolveOfflineLyrics(platform, metadata)
+          : null;
+      final outputSize = await outputFile.length();
+      _updateProgress(outputSize, outputSize);
+      _updateState(
+        DownloadStateDart.DONE,
+        lyrics: offlineLyrics == null ? null : _lyricsToJson(offlineLyrics),
       );
-
-      if (url == null) {
-        _error(
-          'Failed to get track URL for streamTrackId: ${download.streamTrackId}',
-        );
-        _updateState(DownloadStateDart.DEEZER_ERROR);
-        return;
-      }
-
-      _log('Track URL obtained: ${_safeSubstring(url, 50)}...');
-
-      // Generate proper filename
-      File outFile;
-      if (!download.private && track != null) {
-        // download.path already contains the full path template from download.dart
-        // Process the entire path to replace all placeholders
-        final fullPath = _processPathTemplate(
-          download.path,
-          track,
-          album,
-          download.quality,
-        );
-        outFile = File(fullPath);
-      } else {
-        // Private downloads use the path as-is
-        outFile = File(download.path);
-      }
-
-      // Check if file exists
-      if (await outFile.exists()) {
-        if (!(settings['overwriteFile'] as bool? ?? false)) {
-          _log('File already exists, skipping: ${outFile.path}');
-          _updateState(DownloadStateDart.DONE);
-          return;
-        }
-      }
-
-      // Get cache directory
-      Directory? directory;
-      if (Platform.isAndroid || Platform.isIOS) {
-        directory = await getExternalStorageDirectory();
-      } else {
-        directory = await getApplicationSupportDirectory();
-      }
-
-      if (directory == null) {
-        _error('Failed to get cache directory');
-        _updateState(DownloadStateDart.ERROR);
-        return;
-      }
-
-      final tmpFile = File(
-        p.join(directory.path, 'cache', '${download.id}.mp3'),
-      );
-      await tmpFile.parent.create(recursive: true);
-
-      // Download file with streaming decryption
-      final success = await _downloadWithDecryption(url, tmpFile);
-      if (!success) {
-        _updateState(DownloadStateDart.ERROR);
-        return;
-      }
-
-      // Post processing
-      _updateState(DownloadStateDart.POST);
-
-      // Create output directory
-      await outFile.parent.create(recursive: true);
-
-      // Move to final location
-      await tmpFile.copy(outFile.path);
-      await tmpFile.delete();
-
-      _log('File saved to: ${outFile.path}');
-
-      // Cover & Tags for non-private downloads
-      if (!download.private && track != null) {
-        try {
-          // Download cover art bytes once and store in memory
-          Uint8List? coverArtBytes;
-
-          final resolution = settings['albumArtResolution'] as int;
-          _log('Album art resolution setting: $resolution');
-
-          // Get image hash from album (prioritize album art over track art)
-          String? imageHash = track.albumArt?.imageHash;
-
-          _log('Final image hash: $imageHash');
-
-          if (imageHash != null && imageHash.isNotEmpty) {
-            final coverUrl =
-                'http://e-cdn-images.deezer.com/images/cover/$imageHash/${resolution}x$resolution-000000-80-0-0.jpg';
-            _log('Attempting to download cover art from: $coverUrl');
-
-            try {
-              final response = await http.get(Uri.parse(coverUrl));
-              _log('Cover art HTTP response: ${response.statusCode}');
-              if (response.statusCode == 200) {
-                coverArtBytes = response.bodyBytes;
-                _log(
-                  'Successfully downloaded cover art to memory (${coverArtBytes.length} bytes)',
-                );
-              } else {
-                _error(
-                  'Failed to download cover art: HTTP ${response.statusCode}',
-                );
-              }
-            } catch (e) {
-              _error('Error downloading cover art: $e');
-            }
-          } else {
-            _log('No image hash available, skipping cover art download');
-          }
-
-          // Save track cover art as separate file if setting enabled
-          final trackCoverEnabled = settings['trackCover'] as bool? ?? false;
-          _log('Track cover setting enabled: $trackCoverEnabled');
-          if (trackCoverEnabled) {
-            if (coverArtBytes != null) {
-              _log('Calling _saveCoverArt with ${coverArtBytes.length} bytes');
-              await _saveCoverArt(outFile, coverArtBytes);
-            } else {
-              _log('Track cover enabled but coverArtBytes is null, skipping');
-            }
-          }
-
-          // Save album cover if setting enabled
-          final albumCoverEnabled = settings['albumCover'] as bool? ?? false;
-          if (albumCoverEnabled) {
-            await _downloadAlbumCover(outFile, album!);
-          }
-
-          // Ensure publicAlbum/publicTrack are non-null maps when tagging
-          final tagPublicAlbum = publicAlbum ?? <String, dynamic>{};
-          final tagPublicTrack = publicTrack ?? <String, dynamic>{};
-
-          // Tag file (pass cover art bytes for tagging)
-          await _tagFile(
-            outFile,
-            track,
-            tagPublicAlbum,
-            tagPublicTrack,
-            lyrics,
-            coverArtBytes,
-          );
-
-          // Download LRC if enabled
-          final lyricsEnabled = settings['downloadLyrics'] as bool? ?? false;
-          _log('Download lyrics setting enabled: $lyricsEnabled');
-          if (lyricsEnabled && lyrics?.isSynced() == true) {
-            _log('Calling _downloadLrcLyrics');
-            await _downloadLrcLyrics(outFile, track);
-          }
-        } catch (e) {
-          _error('Post-processing error: $e');
-        }
-      }
-
-      _updateState(DownloadStateDart.DONE);
-      _log('Download completed: ${download.title}');
-    } catch (e, stackTrace) {
-      _error('Download failed: $e\n$stackTrace');
+      _log('Download completed: ${outputFile.path}');
+    } catch (error, stackTrace) {
+      _error('Download failed: $error\n$stackTrace');
       _updateState(DownloadStateDart.ERROR);
     }
   }
 
-  /// Download file with streaming decryption (like stream_server_dart.dart)
-  Future<bool> _downloadWithDecryption(String url, File outputFile) async {
-    try {
-      // Check if partial file exists and get resume position
-      int startByte = 0;
+  Map<String, dynamic> _lyricsToJson(LyricsFull lyrics) => {
+    'id': lyrics.id,
+    'writers': lyrics.writers,
+    'syncedLyrics': lyrics.syncedLyrics
+        ?.map((line) => line.toJson())
+        .toList(),
+    'errorMessage': lyrics.errorMessage,
+    'unsyncedLyrics': lyrics.unsyncedLyrics,
+    'unsyncedTranslatedLyrics': lyrics.unsyncedTranslatedLyrics,
+    'unsyncedRomanizedLyrics': lyrics.unsyncedRomanizedLyrics,
+    'isExplicit': lyrics.isExplicit,
+    'copyright': lyrics.copyright,
+  };
 
-      if (await outputFile.exists()) {
-        // Temp file exists, we can resume from where it left off
-        startByte = await outputFile.length();
-        _log('Resuming download from byte $startByte (temp file exists)');
-      } else if (download.downloaded > 0) {
-        // Temp file was deleted but we had progress
-        // For encrypted content, we can't resume without the file, so start over
-        if (url.contains('dzcdn.net')) {
-          _log(
-            'Temp file missing and content is encrypted, starting from beginning',
-          );
-          startByte = 0;
-          download.downloaded = 0; // Reset the download counter
-        } else {
-          // For non-encrypted content, we could theoretically resume
-          // but it's safer to start over
-          _log('Temp file missing, starting from beginning');
-          startByte = 0;
-          download.downloaded = 0;
-        }
-      }
-
-      if (startByte > 0) {
-        _log('Resuming download from byte $startByte');
-      }
-
-      final client = HttpClient();
-      final request = await client.getUrl(Uri.parse(url));
-
-      // Add Range header for resume support
-      if (startByte > 0) {
-        request.headers.set('Range', 'bytes=$startByte-');
-      }
-
-      final response = await request.close();
-
-      // Accept both 200 (full) and 206 (partial) responses
-      if (response.statusCode != HttpStatus.ok &&
-          response.statusCode != HttpStatus.partialContent) {
-        _error('HTTP ${response.statusCode} from server');
-        return false;
-      }
-
-      // Calculate total file size correctly
-      // For 206 Partial Content, contentLength is just the remaining bytes
-      // For 200 OK, contentLength is the full file size
-      int totalFileSize;
-      if (response.statusCode == HttpStatus.partialContent) {
-        // For partial response, total = start + remaining
-        totalFileSize =
-            startByte +
-            (response.contentLength > 0 ? response.contentLength : 0);
-      } else {
-        // For full response, contentLength is already the total
-        totalFileSize = response.contentLength > 0 ? response.contentLength : 0;
-      }
-
-      int received = startByte;
-      final sink = outputFile.openWrite(
-        mode: startByte > 0 ? FileMode.append : FileMode.write,
-      );
-
-      // Check if URL is from Deezer CDN (needs decryption)
-      if (url.contains('dzcdn.net')) {
-        final key = DeezerDecryptor.getKey(download.streamTrackId);
-        // Calculate starting counter for resumed downloads
-        int counter = startByte ~/ 2048;
-        final inputBuffer = <int>[];
-
-        await for (var chunk in response) {
-          inputBuffer.addAll(chunk);
-
-          // Process complete 2048-byte blocks
-          while (inputBuffer.length >= 2048) {
-            final buffer = inputBuffer.sublist(0, 2048);
-            inputBuffer.removeRange(0, 2048);
-
-            List<int> decrypted;
-            if ((counter % 3) == 0) {
-              decrypted = DeezerDecryptor.decryptChunk(key, buffer);
-            } else {
-              decrypted = buffer;
-            }
-
-            sink.add(decrypted);
-            received += decrypted.length;
-            _updateProgress(received, totalFileSize);
-            counter++;
-          }
-        }
-
-        // Write any remaining bytes
-        if (inputBuffer.isNotEmpty) {
-          sink.add(inputBuffer);
-          received += inputBuffer.length;
-          _updateProgress(received, totalFileSize);
-        }
-      } else {
-        // Normal download (no decryption needed)
-        await for (var chunk in response) {
-          sink.add(chunk);
-          received += chunk.length;
-          _updateProgress(received, totalFileSize);
-        }
-      }
-
-      await sink.close();
-      _log('Downloaded $received bytes');
-      return true;
-    } catch (e) {
-      _error('Download failed: $e');
-      return false;
-    }
-  }
-
-  /// Get track URL from Deezer
-  Future<String?> _getTrackUrl(
-    String trackId,
-    String trackToken,
-    String md5origin,
-    String mediaVersion,
-    int quality,
+  Future<LyricsFull?> _resolveOfflineLyrics(
+    MusicPlatform nativePlatform,
+    PlatformDownloadMetadata metadata,
   ) async {
+    final track = metadata.track;
+    if (!(settings['saveOfflineTrackLyrics'] as bool? ?? false)) {
+      _log('Skipping offline lyrics: saveOfflineTrackLyrics is disabled');
+      return null;
+    }
+    final savedChoice = _savedLyricsChoice(track);
+    var resolvedSource = savedChoice ?? 'default';
     try {
-      _log(
-        'Attempting to get track URL - trackId: $trackId, quality: $quality',
-      );
-      _log(
-        'Has licenseToken: ${_deezer?.licenseToken != null && _deezer!.licenseToken!.isNotEmpty}',
-      );
-
-      if (_deezer?.licenseToken != null && _deezer!.licenseToken!.isNotEmpty) {
-        _log('Trying API method with trackToken');
-        var url = await _getTrackUrlFromAPI(trackId, trackToken, quality);
-
-        if (url == null) {
-          _log('First API attempt returned null, fetching fresh token');
-          final freshToken = await _getFreshTrackToken(trackId);
-
-          if (freshToken != null && freshToken.isNotEmpty) {
-            _log('Got fresh token, retrying API');
-            url = await _getTrackUrlFromAPI(trackId, freshToken, quality);
-          } else {
-            _log('Fresh token is null or empty');
+      Lyrics? lyrics;
+      if (savedChoice != null &&
+          savedChoice != 'default' &&
+          savedChoice != 'native' &&
+          savedChoice.startsWith('platform:')) {
+        final platformId = savedChoice.substring('platform:'.length);
+        final provider = platformId == nativePlatform.platformId
+            ? nativePlatform
+            : await createDownloadPlatform(
+                platformId,
+                settings,
+                executeJavaScriptOnRootIsolate:
+                    executeJavaScriptOnRootIsolate,
+              );
+        resolvedSource = 'platform:${provider.platformId}';
+        if (provider.platformId == nativePlatform.platformId) {
+          lyrics = await _getNativeLyrics(provider, metadata);
+        } else {
+          final queries = <String>{
+            provider.getLyricsSearchQuery(track),
+            ...track.lyricSearchQueries,
+          }..removeWhere((query) => query.trim().isEmpty);
+          for (final query in queries) {
+            final results = await provider.search(query);
+            final result = results.tracks?.firstOrNull;
+            if (result?.id == null) continue;
+            lyrics = await provider.getLyrics(result!.id!);
+            if (lyrics.isLoaded()) break;
           }
         }
-
-        if (url != null && url.isNotEmpty) {
-          _log('Successfully got URL from API');
-          return url;
-        } else {
-          _log('API method failed, url is null or empty');
+      } else if (savedChoice != null &&
+          savedChoice != 'default' &&
+          savedChoice != 'native') {
+        final separator = savedChoice.indexOf('|');
+        final providerId = separator > 0
+            ? savedChoice.substring(0, separator)
+            : savedChoice;
+        final candidateId = separator > 0
+            ? savedChoice.substring(separator + 1)
+            : null;
+        final lyricProvider = LyricsRegistry.instance.get(providerId);
+        if (lyricProvider != null) {
+          resolvedSource = providerId;
+          final candidates = await lyricProvider.getLyricsCandidates(track);
+          final selected = candidateId == null
+              ? null
+              : candidates.where((candidate) => candidate.id == candidateId)
+                    .firstOrNull;
+          lyrics = selected?.lyrics ?? await lyricProvider.getLyrics(track);
         }
-      } else {
-        _log('No license token, skipping API method');
       }
-      return null;
-    } catch (e, stackTrace) {
-      _error('Error getting track URL: $e');
-      _error('Stack trace: ${_safeSubstring(stackTrace.toString(), 300)}');
-      return null;
-    }
-  }
 
-  /// Fetch fresh track token
-  Future<String?> _getFreshTrackToken(String trackId) async {
-    try {
-      _log('Fetching fresh track token for: $trackId');
-      Map<dynamic, dynamic> data = await _deezer!.callGwApi(
-        'song.getListData',
-        params: {
-          'sng_ids': [trackId],
-        },
-      );
-
-      _log('Token fetch response keys: ${data.keys.join(", ")}');
-
-      if (data['results']?['data'] != null &&
-          (data['results']['data'] as List).isNotEmpty) {
-        final trackData = data['results']['data'][0];
-        final token = trackData['TRACK_TOKEN'];
+      if (lyrics?.isLoaded() != true) {
+        if (nativePlatform.capabilities.supportsLyrics) {
+          resolvedSource = 'platform:${nativePlatform.platformId}';
+          lyrics = await _getNativeLyrics(nativePlatform, metadata);
+        } else {
+          final lrclib = LyricsRegistry.instance.get('lrclib');
+          resolvedSource = 'lrclib';
+          lyrics = lrclib == null ? null : await lrclib.getLyrics(track);
+        }
+      }
+      if (lyrics?.isLoaded() != true) {
         _log(
-          'Fresh token obtained: ${token != null ? _safeSubstring(token, 20) : "null"}...',
+          'No offline lyrics found for ${track.id} (${track.title}) '
+          'using $resolvedSource',
         );
-        return token;
+        return null;
       }
-
-      _log('Token fetch: no results/data in response');
-      return null;
-    } catch (e, stackTrace) {
-      _error('Error fetching fresh token: $e');
-      _error('Stack trace: ${_safeSubstring(stackTrace.toString(), 300)}');
+      final loadedLyrics = lyrics!;
+      _log(
+        'Resolved offline lyrics for ${track.id} (${track.title}) '
+        'using $resolvedSource: '
+        '${loadedLyrics.syncedLyrics?.length ?? 0} synced lines, '
+        '${loadedLyrics.syncedLyrics?.fold<int>(0, (total, line) => total + (line.words?.length ?? 0)) ?? 0} synced words, '
+        'unsynced=${loadedLyrics.unsyncedLyrics?.isNotEmpty == true}',
+      );
+      return LyricsFull(
+        id: loadedLyrics.id,
+        writers: loadedLyrics.writers,
+        syncedLyrics: loadedLyrics.syncedLyrics,
+        unsyncedLyrics: loadedLyrics.unsyncedLyrics,
+        unsyncedTranslatedLyrics: loadedLyrics.unsyncedTranslatedLyrics,
+        unsyncedRomanizedLyrics: loadedLyrics.unsyncedRomanizedLyrics,
+        isExplicit: loadedLyrics.isExplicit,
+        copyright: loadedLyrics.copyright,
+      );
+    } catch (error, stackTrace) {
+      _error('Could not save selected offline lyrics: $error\n$stackTrace');
       return null;
     }
   }
 
-  /// Get track URL from API
-  Future<String?> _getTrackUrlFromAPI(
-    String trackId,
-    String trackToken,
-    int quality,
+  Future<Lyrics?> _getNativeLyrics(
+    MusicPlatform platform,
+    PlatformDownloadMetadata metadata,
   ) async {
-    try {
-      String format = 'FLAC';
-      if (quality == 3) format = 'MP3_320';
-      if (quality == 1) format = 'MP3_128';
-      if (trackId.startsWith('-')) format = 'MP3_MISC';
+    if (metadata.track.lyrics?.isLoaded() == true) {
+      return metadata.track.lyrics;
+    }
+    final trackId = metadata.lyricsTrackId ?? metadata.track.id;
+    if (trackId == null) return null;
+    var lyrics = await platform.getLyrics(trackId);
+    if (!lyrics.isLoaded() && metadata.track.fallback?.id != null) {
+      lyrics = await platform.getLyrics(metadata.track.fallback!.id!);
+    }
+    return lyrics;
+  }
 
-      _log(
-        'API call - format: $format, trackToken: ${_safeSubstring(trackToken, 20)}...',
-      );
-
-      final payload = {
-        'license_token': _deezer!.licenseToken,
-        'media': [
-          {
-            'type': 'FULL',
-            'formats': [
-              {'cipher': 'BF_CBC_STRIPE', 'format': format},
-            ],
-          },
-        ],
-        'track_tokens': [trackToken],
-      };
-
-      final headers = {
-        'Content-Type': 'application/json',
-        'Cookie': 'arl=${_deezer!.arl}',
-      };
-
-      _log('Calling media.deezer.com/v1/get_url');
-      final response = await http.post(
-        Uri.parse('https://media.deezer.com/v1/get_url'),
-        headers: headers,
-        body: jsonEncode(payload),
-      );
-
-      _log('API response status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final body = jsonDecode(response.body);
-        _log('Response body keys: ${body.keys.join(", ")}');
-
-        if (body['data'] != null) {
-          final data = body['data'] as List;
-          _log('Data array length: ${data.length}');
-
-          for (var item in data) {
-            if (item['media'] != null && (item['media'] as List).isNotEmpty) {
-              final media = item['media'][0];
-              if (media['sources'] != null &&
-                  (media['sources'] as List).isNotEmpty) {
-                final url = media['sources'][0]['url'];
-                _log('Found URL in API response');
-                return url;
-              } else {
-                _log('No sources in media');
-              }
-            } else {
-              _log('No media in item');
-            }
-          }
-        } else {
-          _log('No data in response body');
-        }
-      } else {
-        _log(
-          'API returned status ${response.statusCode}: ${_safeSubstring(response.body, 200)}',
-        );
+  String? _savedLyricsChoice(Track track) {
+    final title = (track.title ?? '').trim().toLowerCase();
+    if (title.isEmpty) return null;
+    final artist = (track.artistString ?? '').trim().toLowerCase();
+    final choices = settings['lyricsChoices'];
+    if (choices is! Map) return null;
+    final primaryKey = '$title|$artist';
+    final exact = choices[primaryKey];
+    if (exact is String) return exact;
+    for (final entry in choices.entries) {
+      if (entry.key is String &&
+          (entry.key as String).startsWith('$primaryKey|') &&
+          entry.value is String) {
+        return entry.value as String;
       }
-    } catch (e, stackTrace) {
-      _error('Error getting track URL from API: $e');
-      _error('Stack trace: ${_safeSubstring(stackTrace.toString(), 300)}');
+    }
+    for (final entry in choices.entries) {
+      if (entry.key is String &&
+          (entry.key as String).startsWith('$title|') &&
+          entry.value is String) {
+        return entry.value as String;
+      }
     }
     return null;
   }
 
-  /// Save cover art as separate file next to audio file
-  Future<void> _saveCoverArt(File audioFile, Uint8List coverBytes) async {
-    try {
-      _log('_saveCoverArt called with audio file: ${audioFile.path}');
-      final coverPath =
-          audioFile.path.substring(0, audioFile.path.lastIndexOf('.')) + '.jpg';
-      _log('Calculated cover path: $coverPath');
-      final coverFile = File(coverPath);
-      _log('Writing ${coverBytes.length} bytes to cover file');
-      await coverFile.writeAsBytes(coverBytes);
-      _log('Successfully saved track cover art: ${coverFile.path}');
-
-      // Verify file was created
-      final exists = await coverFile.exists();
-      final size = exists ? await coverFile.length() : 0;
-      _log('Verification - File exists: $exists, Size: $size bytes');
-    } catch (e, stackTrace) {
-      _error('Error saving cover art: $e');
-      _error('Stack trace: ${_safeSubstring(stackTrace.toString(), 300)}');
+  int? _estimateBitrateKbps(int bytes, Duration? duration) {
+    if (bytes <= 0 || duration == null || duration <= Duration.zero) {
+      return null;
     }
+    final kbps = (bytes * 8 / 1000 / duration.inMilliseconds * 1000).round();
+    return kbps > 0 ? kbps : null;
   }
 
-  /// Download album cover
-  Future<void> _downloadAlbumCover(File audioFile, Album album) async {
-    try {
-      final parentDir = audioFile.parent;
-      final coverFile = File(p.join(parentDir.path, 'cover.jpg'));
+  AudioQuality _qualityFromIndex(int index) {
+    if (index < 0 || index >= AudioQuality.values.length) {
+      return AudioQuality.MP3_320;
+    }
+    final quality = AudioQuality.values[index];
+    return quality == AudioQuality.ASK ? AudioQuality.MP3_320 : quality;
+  }
 
-      if (await coverFile.exists()) {
-        _log('Album cover already exists: ${coverFile.path}');
-        return;
+  Future<Directory> _temporaryRoot() async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      return await getExternalStorageDirectory() ??
+          await getApplicationSupportDirectory();
+    }
+    return getApplicationSupportDirectory();
+  }
+
+  Future<int?> _download(
+    String url,
+    File outputFile, {
+    Map<String, String> requestHeaders = const {},
+  }) async {
+    HttpClient? client;
+    IOSink? sink;
+    try {
+      var startByte = await outputFile.exists() ? await outputFile.length() : 0;
+      client = HttpClient();
+      final expectedLength = await _contentLength(
+        client,
+        url,
+        requestHeaders: requestHeaders,
+      );
+      final request = await client
+          .getUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 20));
+      requestHeaders.forEach(request.headers.set);
+      if (startByte > 0) {
+        request.headers.set(HttpHeaders.rangeHeader, 'bytes=$startByte-');
+      }
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      if (response.statusCode != HttpStatus.ok &&
+          response.statusCode != HttpStatus.partialContent) {
+        _error('HTTP ${response.statusCode} from stream URL');
+        return null;
       }
 
-      final resolution = settings['albumArtResolution'] as int;
-      final imageHash = album.art?.imageHash;
-      final coverUrl =
-          'http://e-cdn-images.deezer.com/images/cover/$imageHash/${resolution}x$resolution-000000-80-0-0.jpg';
-
-      await coverFile.create(recursive: true);
-
-      final response = await http.get(Uri.parse(coverUrl));
-      if (response.statusCode == 200) {
-        await coverFile.writeAsBytes(response.bodyBytes);
-        _log('Downloaded album cover: ${coverFile.path}');
-
-        if (settings['nomediaFiles'] as bool? ?? false) {
-          final nomediaFile = File(p.join(parentDir.path, '.nomedia'));
-          if (!await nomediaFile.exists()) {
-            await nomediaFile.create();
-          }
+      if (startByte > 0 && response.statusCode == HttpStatus.ok) {
+        startByte = 0;
+      }
+      final total = response.contentLength > 0
+          ? startByte + response.contentLength
+          : expectedLength > 0
+          ? expectedLength
+          : 0;
+      var received = startByte;
+      sink = outputFile.openWrite(
+        mode: startByte > 0 ? FileMode.append : FileMode.write,
+      );
+      await for (final chunk in response.timeout(const Duration(seconds: 30))) {
+        sink.add(chunk);
+        received += chunk.length;
+        _updateProgress(received, total);
+        // Some progressive audio endpoints keep the response open after
+        // sending the number of bytes they advertised. Once the declared
+        // payload is complete, finish the file instead of waiting forever
+        // for the server to close the connection.
+        if (total > 0 && received >= total) {
+          _log('Received the declared stream length ($received bytes)');
+          break;
         }
-      } else {
-        await coverFile.delete();
       }
-    } catch (e) {
-      _error('Error downloading album cover: $e');
+      await sink.flush();
+      await sink.close();
+      sink = null;
+      final resolvedTotal = total > 0 ? total : received;
+      _updateProgress(received, resolvedTotal);
+      return received;
+    } catch (error) {
+      _error('HTTP download failed: $error');
+      return null;
+    } finally {
+      await sink?.close();
+      client?.close(force: true);
     }
   }
 
-  /// Download LRC lyrics
-  Future<void> _downloadLrcLyrics(File audioFile, Track track) async {
+  Future<int> _contentLength(
+    HttpClient client,
+    String url, {
+    Map<String, String> requestHeaders = const {},
+  }) async {
     try {
-      _log('_downloadLrcLyrics called with audio file: ${audioFile.path}');
-      Lyrics? lyrics = track.lyrics;
-
-      if (lyrics == null || !lyrics.isLoaded()) {
-        _log('Lyrics not loaded, fetching from API for track ID: ${track.id}');
-        lyrics = await _deezer!.lyrics(track.id ?? '');
-      }
-
-      if (!lyrics.isLoaded()) {
-        _log('No lyrics available for track - lyrics is not loaded.');
-        return;
-      }
-
-      final lrcPath =
-          audioFile.path.substring(0, audioFile.path.lastIndexOf('.')) + '.lrc';
-      final lrcFile = File(lrcPath);
-
-      _log('Calculated LRC path: ${lrcFile.path}');
-
-      final lrcData = _generateLRC(track, lyrics);
-      _log('Generated LRC data (${lrcData.length} characters)');
-
-      await lrcFile.writeAsString(lrcData);
-      _log('Successfully wrote LRC file');
-
-      // Verify file was created
-      final exists = await lrcFile.exists();
-      final size = exists ? await lrcFile.length() : 0;
-      _log('Verification - LRC file exists: $exists, Size: $size bytes');
-    } catch (e, stackTrace) {
-      _error('Error downloading LRC lyrics: $e');
-      _error('Stack trace: ${_safeSubstring(stackTrace.toString(), 300)}');
+      final request = await client
+          .headUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 8));
+      requestHeaders.forEach(request.headers.set);
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
+      final length = response.contentLength;
+      await response.drain<void>().timeout(const Duration(seconds: 8));
+      return length > 0 ? length : 0;
+    } catch (_) {
+      return 0;
     }
   }
 
-  /// Generate LRC format from lyrics
-  String _generateLRC(Track track, Lyrics lyrics) {
+  Future<void> _postProcess(
+    File outputFile,
+    MusicPlatform platform,
+    PlatformDownloadMetadata metadata,
+  ) async {
+    Uint8List? coverBytes;
+    if (metadata.coverUrl?.isNotEmpty == true) {
+      try {
+        final response = await http.get(Uri.parse(metadata.coverUrl!));
+        if (response.statusCode == HttpStatus.ok) {
+          coverBytes = response.bodyBytes;
+        }
+      } catch (error) {
+        _error('Cover download failed: $error');
+      }
+    }
+
+    Lyrics? lyrics;
+    final enabledTags = (settings['tags'] as List<dynamic>? ?? const []);
+    final needsLyrics =
+        (settings['downloadLyrics'] as bool? ?? false) ||
+        enabledTags.contains('lyrics');
+    if (needsLyrics &&
+        platform.capabilities.supportsLyrics &&
+        metadata.lyricsTrackId != null) {
+      try {
+        lyrics = await platform.getLyrics(metadata.lyricsTrackId!);
+      } catch (error) {
+        _error('Lyrics download failed: $error');
+      }
+    }
+
+    if ((settings['trackCover'] as bool? ?? false) && coverBytes != null) {
+      await File(_sidecarPath(outputFile, 'jpg')).writeAsBytes(coverBytes);
+    }
+    if ((settings['albumCover'] as bool? ?? false) && coverBytes != null) {
+      final albumCover = File(p.join(outputFile.parent.path, 'cover.jpg'));
+      if (!await albumCover.exists()) await albumCover.writeAsBytes(coverBytes);
+    }
+    if (settings['nomediaFiles'] as bool? ?? false) {
+      final nomedia = File(p.join(outputFile.parent.path, '.nomedia'));
+      if (!await nomedia.exists()) await nomedia.create();
+    }
+
+    await _tagFile(outputFile, metadata, lyrics, coverBytes);
+    // Enhanced LRC uses per-word timestamps where available. If the provider
+    // only supplies ordinary synchronized lines, _generateLrc writes standard
+    // line-timed LRC instead. A single timed line is still valid LRC.
+    if ((settings['downloadLyrics'] as bool? ?? false) &&
+        lyrics?.syncedLyrics?.isNotEmpty == true) {
+      final useEnhancedLrc =
+          settings['downloadEnhancedLrc'] as bool? ?? false;
+      await File(
+        _sidecarPath(outputFile, 'lrc'),
+      ).writeAsString(
+        _generateLrc(metadata, lyrics!, enhanced: useEnhancedLrc),
+      );
+    }
+  }
+
+  Future<void> _tagFile(
+    File audioFile,
+    PlatformDownloadMetadata metadata,
+    Lyrics? lyrics,
+    Uint8List? coverBytes,
+  ) async {
+    try {
+      final enabled = settings['tags'] as List<dynamic>? ?? const [];
+      final separator = settings['artistSeparator'] as String? ?? ', ';
+      final tags = <MetadataTag>[];
+
+      void textTag(String setting, String tag, Object? value) {
+        final stringValue = value?.toString();
+        if (enabled.contains(setting) && stringValue?.isNotEmpty == true) {
+          tags.add(MetadataTag.text(tag, stringValue!));
+        }
+      }
+
+      textTag('title', CommonTags.title, metadata.title);
+      textTag('album', CommonTags.album, metadata.album);
+      textTag('artist', CommonTags.artist, metadata.artists?.join(separator));
+      textTag('albumArtist', CommonTags.albumArtist, metadata.albumArtist);
+      textTag('track', CommonTags.track, metadata.trackNumber);
+      textTag('disc', CommonTags.disc, metadata.discNumber);
+      textTag('trackTotal', CommonTags.trackTotal, metadata.trackTotal);
+      textTag('date', CommonTags.date, metadata.releaseDate);
+      textTag('genre', CommonTags.genre, metadata.genre);
+      textTag('bpm', CommonTags.bpm, metadata.bpm);
+      textTag('label', CommonTags.label, metadata.label);
+      textTag('isrc', CommonTags.isrc, metadata.isrc);
+      textTag('upc', CommonTags.barcode, metadata.upc);
+      textTag('lyrics', CommonTags.lyrics, lyrics?.unsyncedLyrics);
+
+      if (enabled.contains('contributors')) {
+        final contributors = metadata.contributors;
+        textTag(
+          'contributors',
+          CommonTags.composer,
+          contributors?.composers?.join(separator),
+        );
+        textTag(
+          'contributors',
+          CommonTags.comment,
+          contributors?.engineers?.join(separator),
+        );
+        textTag('contributors', 'MIXER', contributors?.mixers?.join(separator));
+        textTag(
+          'contributors',
+          'PRODUCER',
+          contributors?.producers?.join(separator),
+        );
+        textTag(
+          'contributors',
+          'AUTHOR',
+          contributors?.authors?.join(separator),
+        );
+        textTag(
+          'contributors',
+          'WRITER',
+          contributors?.writers?.join(separator),
+        );
+      }
+      for (final entry in metadata.extraTags.entries) {
+        tags.add(MetadataTag.text(entry.key, entry.value));
+      }
+      if (enabled.contains('art') && coverBytes != null) {
+        tags.add(MetadataTag.binary(CommonTags.albumArt, coverBytes));
+      }
+      if (tags.isNotEmpty) await MetaTagger().writeTags(audioFile.path, tags);
+    } catch (error, stackTrace) {
+      _error('Tagging failed: $error\n$stackTrace');
+    }
+  }
+
+  String _generateLrc(
+    PlatformDownloadMetadata metadata,
+    Lyrics lyrics, {
+    bool enhanced = false,
+  }) {
     final output = StringBuffer();
-
-    if (track.artists != null && track.artists!.isNotEmpty) {
-      final artists = track.artists!.map((a) => a.name).join(', ');
-      output.write('[ar:$artists]\r\n');
+    if (metadata.artists?.isNotEmpty == true) {
+      output.writeln('[ar:${metadata.artists!.join(', ')}]');
     }
-
-    if (track.album?.title != null) {
-      output.write('[al:${track.album!.title}]\r\n');
+    if (metadata.album?.isNotEmpty == true) {
+      output.writeln('[al:${metadata.album}]');
     }
-
-    if (track.title != null) {
-      output.write('[ti:${track.title}]\r\n');
+    if (metadata.title?.isNotEmpty == true) {
+      output.writeln('[ti:${metadata.title}]');
     }
-
-    if (lyrics.syncedLyrics != null) {
-      for (var lyric in lyrics.syncedLyrics!) {
-        if (lyric.lrcTimestamp != null && lyric.text != null) {
-          output.write('${lyric.lrcTimestamp}${lyric.text}\r\n');
+    for (final line in lyrics.syncedLyrics ?? const <SynchronizedLyric>[]) {
+      // Provider timestamps are not consistently LRC-formatted. NeuroKaraoke,
+      // for example, supplies hh:mm:ss.fffffff; write a canonical mm:ss.hh
+      // timestamp from the already-parsed offset instead of copying it raw.
+      final timestamp = _formatTimestamp(line.offset) ?? line.lrcTimestamp;
+      if (timestamp != null && enhanced && line.words?.isNotEmpty == true) {
+        final wrapped = timestamp.startsWith('[') ? timestamp : '[$timestamp]';
+        final body = StringBuffer(wrapped);
+        for (final word in line.words!) {
+          final wordTimestamp = _formatTimestamp(word.offset);
+          if (wordTimestamp == null) continue;
+          body
+            ..write('<$wordTimestamp>')
+            ..write(word.text);
         }
+        final lastWord = line.words!.last;
+        final endTimestamp = _formatTimestamp(
+          lastWord.offset + lastWord.duration,
+        );
+        if (endTimestamp != null) body.write('<$endTimestamp>');
+        output.writeln(body);
+      } else if (timestamp != null && line.text != null) {
+        final wrapped = timestamp.startsWith('[') ? timestamp : '[$timestamp]';
+        output.writeln('$wrapped${line.text}');
       }
     }
-
     return output.toString();
   }
 
-  /// Tag file with metadata
-  Future<void> _tagFile(
-    File audioFile,
-    Track track,
-    Map<dynamic, dynamic> publicAlbum,
-    Map<dynamic, dynamic> publicTrack,
-    Lyrics? lyrics,
-    Uint8List? coverArtBytes,
-  ) async {
-    try {
-      final tagger = MetaTagger();
-      List<MetadataTag> tags = [];
-
-      final enabledTags = settings['tags'] as List<dynamic>;
-
-      // Title
-      if (enabledTags.contains('title') && track.title != null) {
-        tags.add(MetadataTag.text(CommonTags.title, track.title!));
-      }
-      // Album
-      if (enabledTags.contains('album') && track.album!.title != null) {
-        tags.add(MetadataTag.text(CommonTags.album, track.album!.title!));
-      }
-
-      // Artists
-      if (enabledTags.contains('artist') &&
-          track.artists != null &&
-          track.artists!.isNotEmpty) {
-        tags.add(
-          MetadataTag.text(
-            CommonTags.artist,
-            track.artists!.map((a) => a.name).join(settings['artistSeparator']),
-          ),
-        );
-      }
-
-      // Album artist
-      if (enabledTags.contains('albumArtist') &&
-          track.album != null &&
-          track.album!.artists != null &&
-          track.album!.artists!.isNotEmpty) {
-        tags.add(
-          MetadataTag.text(
-            CommonTags.albumArtist,
-            track.album!.artists!.first.name!,
-          ),
-        );
-      }
-
-      // Track number
-      if (enabledTags.contains('track')) {
-        tags.add(
-          MetadataTag.text(CommonTags.track, track.trackNumber.toString()),
-        );
-      }
-
-      // Disc number
-      if (enabledTags.contains('disc')) {
-        tags.add(
-          MetadataTag.text(CommonTags.disc, track.diskNumber.toString()),
-        );
-      }
-
-      // Track total
-      if (enabledTags.contains('trackTotal') &&
-          publicAlbum['nb_tracks'] != null) {
-        tags.add(
-          MetadataTag.text(
-            CommonTags.trackTotal,
-            publicAlbum['nb_tracks'].toString(),
-          ),
-        );
-      }
-
-      // Date
-      if (enabledTags.contains('date') && track.album?.releaseDate != null) {
-        tags.add(MetadataTag.text(CommonTags.date, track.album!.releaseDate!));
-      }
-
-      // Genre
-      if (enabledTags.contains('genre')) {
-        String? genreName;
-
-        // Try to get genre from genres array
-        if (publicAlbum['genres'] != null &&
-            publicAlbum['genres']['data'] != null &&
-            (publicAlbum['genres']['data'] as List).isNotEmpty) {
-          genreName = publicAlbum['genres']['data'][0]['name'];
-        }
-
-        if (genreName != null) {
-          tags.add(MetadataTag.text(CommonTags.genre, genreName));
-        }
-      }
-
-      // Contributors (Composer, Engineer, Mixer, Producer, Author, Writer)
-      if (enabledTags.contains('contributors') && track.contributors != null) {
-        final contrib = track.contributors!;
-        final sep = settings['artistSeparator'];
-
-        // Composer
-        if (contrib.composers != null && contrib.composers!.isNotEmpty) {
-          final composer = contrib.composers!.join(sep);
-          tags.add(MetadataTag.text(CommonTags.composer, composer));
-        }
-        // Engineer
-        if (contrib.engineers != null && contrib.engineers!.isNotEmpty) {
-          final engineer = contrib.engineers!.join(sep);
-          tags.add(MetadataTag.text(CommonTags.comment, engineer));
-        }
-        // Mixer
-        if (contrib.mixers != null && contrib.mixers!.isNotEmpty) {
-          final mixer = contrib.mixers!.join(sep);
-          tags.add(MetadataTag.text('MIXER', mixer));
-        }
-        // Producer
-        if (contrib.producers != null && contrib.producers!.isNotEmpty) {
-          final producer = contrib.producers!.join(sep);
-          tags.add(MetadataTag.text('PRODUCER', producer));
-        }
-        // Author
-        if (contrib.authors != null && contrib.authors!.isNotEmpty) {
-          final author = contrib.authors!.join(sep);
-          tags.add(MetadataTag.text('AUTHOR', author));
-        }
-        // Writer
-        if (contrib.writers != null && contrib.writers!.isNotEmpty) {
-          final writer = contrib.writers!.join(sep);
-          tags.add(MetadataTag.text('WRITER', writer));
-        }
-      }
-
-      // BPM
-      if (enabledTags.contains('bpm') && publicTrack['bpm'] != null) {
-        tags.add(
-          MetadataTag.text(CommonTags.bpm, publicTrack['bpm'].toString()),
-        );
-      }
-
-      // Label
-      if (enabledTags.contains('label') && publicAlbum['label'] != null) {
-        tags.add(MetadataTag.text(CommonTags.label, publicAlbum['label']));
-      }
-
-      // ISRC
-      if (enabledTags.contains('isrc') && publicTrack['isrc'] != null) {
-        tags.add(MetadataTag.text(CommonTags.isrc, publicTrack['isrc']));
-      }
-
-      // UPC
-      if (enabledTags.contains('upc') && publicAlbum['upc'] != null) {
-        tags.add(MetadataTag.text(CommonTags.barcode, publicAlbum['upc']));
-      }
-
-      // Lyrics
-      if (enabledTags.contains('lyrics') &&
-          lyrics != null &&
-          lyrics.unsyncedLyrics != null) {
-        tags.add(MetadataTag.text(CommonTags.lyrics, lyrics.unsyncedLyrics!));
-      }
-
-      // Cover art - use in-memory bytes if available
-      if (enabledTags.contains('art') && coverArtBytes != null) {
-        _log('Adding cover art to tags (${coverArtBytes.length} bytes)');
-        tags.add(MetadataTag.binary(CommonTags.albumArt, coverArtBytes));
-      }
-      // Write metadata
-      await tagger.writeTags(audioFile.path, tags);
-
-      _log('Tagged file: ${audioFile.path}');
-    } catch (e, stackTrace) {
-      _error('Tagging error: $e\n$stackTrace');
-    }
+  String? _formatTimestamp(Duration? offset) {
+    if (offset == null) return null;
+    final minutes = offset.inMinutes.toString().padLeft(2, '0');
+    final seconds = offset.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hundredths = (offset.inMilliseconds.remainder(1000) ~/ 10)
+        .toString()
+        .padLeft(2, '0');
+    return '$minutes:$seconds.$hundredths';
   }
 
-  /// Generate filename with metadata
-  /// Process the full path template replacing all placeholders
   String _processPathTemplate(
-    String pathTemplate,
-    Track track,
-    Album? album,
-    int quality,
+    String template,
+    PlatformDownloadMetadata metadata,
+    String extension,
   ) {
-    String result = pathTemplate;
-
-    result = result.replaceAll('%title%', _sanitize(track.title ?? ''));
-    result = result.replaceAll('%album%', _sanitize(track.album?.title ?? ''));
-
-    if (album != null && album.artists != null && album.artists!.isNotEmpty) {
-      result = result.replaceAll(
-        '%albumArtist%',
-        _sanitize(album.artists!.first.name ?? ''),
-      );
-    } else {
-      result = result.replaceAll('%albumArtist%', '');
+    var result = template;
+    final artists = metadata.artists ?? const <String>[];
+    final separator = settings['artistSeparator'] as String? ?? ', ';
+    final replacements = <String, String>{
+      '%title%': _sanitize(metadata.title ?? ''),
+      '%album%': _sanitize(metadata.album ?? ''),
+      '%albumArtist%': _sanitize(metadata.albumArtist ?? ''),
+      '%artists%': _sanitize(artists.join(separator)),
+      '%artist%': _sanitize(artists.isEmpty ? '' : artists.first),
+      '%trackNumber%': (metadata.trackNumber ?? 1).toString(),
+      '%0trackNumber%': (metadata.trackNumber ?? 1).toString().padLeft(2, '0'),
+      '%date%': metadata.releaseDate ?? '',
+      '%year%': metadata.releaseDate?.split('-').first ?? '',
+    };
+    for (final entry in replacements.entries) {
+      result = result.replaceAll(entry.key, entry.value);
     }
-
-    if (track.artists != null && track.artists!.isNotEmpty) {
-      final artistSep = settings['artistSeparator'] as String? ?? ', ';
-      result = result.replaceAll(
-        '%artists%',
-        _sanitize(track.artists!.map((a) => a.name).join(artistSep)),
-      );
-      result = result.replaceAll(
-        '%artist%',
-        _sanitize(track.artists!.first.name ?? ''),
-      );
+    result = result
+        .replaceAll(RegExp(r'/\.+'), '/')
+        .replaceAll(RegExp(r'\\\.+'), '\\');
+    final currentExtension = p.extension(result).toLowerCase();
+    const audioExtensions = {'.mp3', '.flac', '.ogg', '.opus', '.m4a', '.aac'};
+    if (!audioExtensions.contains(currentExtension)) {
+      result = '$result.$extension';
     }
-
-    final trackNumber = track.trackNumber ?? 1;
-    result = result.replaceAll('%trackNumber%', trackNumber.toString());
-    result = result.replaceAll(
-      '%0trackNumber%',
-      trackNumber.toString().padLeft(2, '0'),
-    );
-
-    if (track.album?.releaseDate != null) {
-      final year = track.album!.releaseDate!.split('-')[0];
-      result = result.replaceAll('%year%', year);
-      result = result.replaceAll('%date%', track.album!.releaseDate!);
-    }
-
-    // Clean up any double slashes or dots in the path
-    result = result.replaceAll(RegExp(r'/\.+'), '/');
-    result = result.replaceAll(RegExp(r'\\\.+'), '\\');
-
-    // Ensure the path has the correct extension based on quality
-    // Only add extension if the path doesn't already have one
-    if (!result.endsWith('.mp3') && !result.endsWith('.flac')) {
-      if (quality == 9) {
-        result = '$result.flac';
-      } else {
-        result = '$result.mp3';
-      }
-    }
-
     return result;
   }
 
-  String _sanitize(String input) {
-    return input
-        .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+  String _extensionFor(PlatformDownloadMetadata metadata, String streamFormat) {
+    final provided = metadata.fileExtension
+        ?.replaceFirst('.', '')
+        .toLowerCase();
+    if (provided?.isNotEmpty == true) return provided!;
+    final normalized = streamFormat.toLowerCase();
+    if (normalized == 'mpeg') return 'mp3';
+    return normalized.isEmpty ? 'mp3' : normalized;
   }
+
+  String _sidecarPath(File audioFile, String extension) =>
+      p.setExtension(audioFile.path, '.$extension');
+
+  String _sanitize(String input) => input
+      .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 }

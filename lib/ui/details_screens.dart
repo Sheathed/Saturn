@@ -1,22 +1,31 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first
-import 'package:draggable_scrollbar/draggable_scrollbar.dart';
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:fluttericon/font_awesome5_icons.dart';
 import 'package:get_it/get_it.dart';
+import 'package:logging/logging.dart';
+import 'package:silky_scroll/silky_scroll.dart';
+import 'package:saturn/ui/smooth_scroll_config.dart';
 
 import '../api/cache.dart';
-import '../api/deezer.dart';
 import '../api/definitions.dart';
 import '../api/download.dart';
+import '../platform/music_platform.dart';
+import '../platform/platform_manager.dart';
+import '../platform/platform_registry.dart';
+import '../platform/soundcloud/soundcloud_client.dart';
 import '../service/audio_service.dart';
 import '../translations.i18n.dart';
 import '../ui/elements.dart';
 import '../ui/error.dart';
 import '../ui/search.dart';
 import 'cached_image.dart';
+import 'mosaic_image.dart';
 import 'menu.dart';
 import 'tiles.dart';
 import 'toast.dart';
+import 'mobile_scrollbar.dart';
+export 'track_details.dart';
 
 class AlbumDetails extends StatefulWidget {
   final Album album;
@@ -32,15 +41,23 @@ class _AlbumDetailsState extends State<AlbumDetails> {
   bool _error = false;
 
   Future _loadAlbum() async {
-    //Get album from API, if doesn't have tracks
-    if ((album.tracks ?? []).isEmpty) {
+    // Deezer's Pipe API has the AI-content marker; refresh Deezer album data
+    // even when tracks were passed in from a previous page.
+    final needsTracks = (album.tracks ?? []).isEmpty;
+    if (needsTracks || album.platformId == 'deezer') {
       try {
-        Album a = await deezerAPI.album(album.id ?? '');
+        Album a = await PlatformManager.instance
+            .getPlatform(album.platformId)
+            .getAlbum(album.id ?? '');
         //Preserve library
         a.library = album.library;
         setState(() => album = a);
       } catch (e) {
-        setState(() => _error = true);
+        if (needsTracks) {
+          setState(() => _error = true);
+        } else {
+          Logger.root.fine('Could not refresh Deezer album metadata: $e');
+        }
       }
     }
     setState(() => _loading = false);
@@ -53,6 +70,48 @@ class _AlbumDetailsState extends State<AlbumDetails> {
       if ((t.diskNumber ?? 1) > c) c = t.diskNumber!;
     }
     return c;
+  }
+
+  Widget _albumTitle(
+    BuildContext context, {
+    required TextAlign textAlign,
+    required int maxLines,
+    required double fontSize,
+  }) {
+    return Row(
+      mainAxisAlignment: textAlign == TextAlign.center
+          ? MainAxisAlignment.center
+          : MainAxisAlignment.start,
+      children: [
+        Flexible(
+          child: Text(
+            album.title ?? '',
+            textAlign: textAlign,
+            overflow: TextOverflow.ellipsis,
+            maxLines: maxLines,
+            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold),
+          ),
+        ),
+        if (album.hasIdentifiedAIContent) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              'AI',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSecondaryContainer,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -68,6 +127,7 @@ class _AlbumDetailsState extends State<AlbumDetails> {
       appBar: FreezerAppBar(
         album.title ?? 'Album'.i18n,
         actions: [
+          PlatformBadge(album.platformId, iconOnly: true),
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () {
@@ -85,7 +145,8 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                 color: Theme.of(context).primaryColor,
               ),
             )
-          : ListView(
+          : SilkyListView(
+              silkyConfig: silkyScrollConfig,
               children: <Widget>[
                 //Album art, title, artists
                 Container(
@@ -108,6 +169,7 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                                 url: album.art?.full ?? '',
                                 width: imageSize,
                                 rounded: true,
+                                caption: album.art?.caption,
                               ),
                               const SizedBox(width: 24.0),
                               Expanded(
@@ -115,21 +177,17 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: <Widget>[
-                                    Text(
-                                      album.title ?? '',
+                                    _albumTitle(
+                                      context,
                                       textAlign: TextAlign.left,
-                                      overflow: TextOverflow.ellipsis,
                                       maxLines: 3,
-                                      style: const TextStyle(
-                                        fontSize: 24.0,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      fontSize: 24,
                                     ),
                                     const SizedBox(height: 8.0),
-                                    Text(
-                                      album.artistString ?? '',
+                                    ArtistLinksText(
+                                      artists: album.artists,
+                                      fallback: album.artistString,
                                       textAlign: TextAlign.left,
-                                      overflow: TextOverflow.ellipsis,
                                       maxLines: 2,
                                       style: TextStyle(
                                         fontSize: 18.0,
@@ -169,6 +227,9 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                                                   '0',
                                               style: const TextStyle(
                                                 fontSize: 14.0,
+                                                fontFeatures: [
+                                                  FontFeature.tabularFigures(),
+                                                ],
                                               ),
                                             ),
                                           ],
@@ -186,6 +247,9 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                                               album.durationString,
                                               style: const TextStyle(
                                                 fontSize: 14.0,
+                                                fontFeatures: [
+                                                  FontFeature.tabularFigures(),
+                                                ],
                                               ),
                                             ),
                                           ],
@@ -213,60 +277,75 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                                     // Actions in wide screen
                                     Row(
                                       children: [
-                                        TextButton.icon(
-                                          style: ButtonStyle(
-                                            overlayColor:
-                                                WidgetStateProperty.resolveWith<
-                                                  Color?
-                                                >((Set<WidgetState> states) {
-                                                  if (states.contains(
-                                                    WidgetState.pressed,
-                                                  )) {
-                                                    return Theme.of(context)
-                                                        .primaryColor
-                                                        .withValues(alpha: 0.3);
-                                                  }
-                                                  return null;
-                                                }),
-                                          ),
-                                          icon: Icon(
-                                            (album.library ?? false)
-                                                ? Icons.favorite
-                                                : Icons.favorite_border,
-                                            size: 20,
-                                          ),
-                                          label: Text('Library'.i18n),
-                                          onPressed: () async {
-                                            //Add to library
-                                            if (!(album.library ?? false)) {
-                                              await deezerAPI.addFavoriteAlbum(
-                                                album.id ?? '',
-                                              );
+                                        if (PlatformManager
+                                            .instance
+                                            .active
+                                            .capabilities
+                                            .supportsAlbums)
+                                          TextButton.icon(
+                                            style: ButtonStyle(
+                                              overlayColor:
+                                                  WidgetStateProperty.resolveWith<
+                                                    Color?
+                                                  >((Set<WidgetState> states) {
+                                                    if (states.contains(
+                                                      WidgetState.pressed,
+                                                    )) {
+                                                      return Theme.of(
+                                                        context,
+                                                      ).primaryColor.withValues(
+                                                        alpha: 0.3,
+                                                      );
+                                                    }
+                                                    return null;
+                                                  }),
+                                            ),
+                                            icon: Icon(
+                                              (album.library ?? false)
+                                                  ? Icons.favorite
+                                                  : Icons.favorite_border,
+                                              size: 20,
+                                            ),
+                                            label: Text('Library'.i18n),
+                                            onPressed: () async {
+                                              //Add to library
+                                              if (!(album.library ?? false)) {
+                                                await PlatformManager
+                                                    .instance
+                                                    .active
+                                                    .addFavoriteAlbum(
+                                                      album.id ?? '',
+                                                    );
+                                                Fluttertoast.showToast(
+                                                  msg: 'Added to library'.i18n,
+                                                  toastLength:
+                                                      Toast.LENGTH_SHORT,
+                                                  gravity: ToastGravity.BOTTOM,
+                                                );
+                                                setState(
+                                                  () => album.library = true,
+                                                );
+                                                return;
+                                              }
+                                              //Remove
+                                              await PlatformManager
+                                                  .instance
+                                                  .active
+                                                  .removeFavoriteAlbum(
+                                                    album.id ?? '',
+                                                  );
                                               Fluttertoast.showToast(
-                                                msg: 'Added to library'.i18n,
+                                                msg:
+                                                    'Album removed from library!'
+                                                        .i18n,
                                                 toastLength: Toast.LENGTH_SHORT,
                                                 gravity: ToastGravity.BOTTOM,
                                               );
                                               setState(
-                                                () => album.library = true,
+                                                () => album.library = false,
                                               );
-                                              return;
-                                            }
-                                            //Remove
-                                            await deezerAPI.removeAlbum(
-                                              album.id ?? '',
-                                            );
-                                            Fluttertoast.showToast(
-                                              msg: 'Album removed from library!'
-                                                  .i18n,
-                                              toastLength: Toast.LENGTH_SHORT,
-                                              gravity: ToastGravity.BOTTOM,
-                                            );
-                                            setState(
-                                              () => album.library = false,
-                                            );
-                                          },
-                                        ),
+                                            },
+                                          ),
                                         MakeAlbumOffline(album: album),
                                         TextButton.icon(
                                           style: ButtonStyle(
@@ -319,31 +398,28 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                               url: album.art?.full ?? '',
                               width: imageSize,
                               rounded: true,
+                              caption: album.art?.caption,
                             ),
                             Container(height: 8),
                             Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16.0,
                               ),
-                              child: Text(
-                                album.title ?? '',
+                              child: _albumTitle(
+                                context,
                                 textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
                                 maxLines: 2,
-                                style: const TextStyle(
-                                  fontSize: 20.0,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                fontSize: 20,
                               ),
                             ),
                             Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16.0,
                               ),
-                              child: Text(
-                                album.artistString ?? '',
+                              child: ArtistLinksText(
+                                artists: album.artists,
+                                fallback: album.artistString,
                                 textAlign: TextAlign.center,
-                                overflow: TextOverflow.ellipsis,
                                 maxLines: 2,
                                 style: TextStyle(
                                   fontSize: 16.0,
@@ -397,7 +473,12 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                                 ), //Height to adjust card height
                                 Text(
                                   album.tracks?.length.toString() ?? '0',
-                                  style: const TextStyle(fontSize: 16.0),
+                                  style: const TextStyle(
+                                    fontSize: 16.0,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -411,7 +492,12 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                                 Container(width: 8.0),
                                 Text(
                                   album.durationString,
-                                  style: const TextStyle(fontSize: 16.0),
+                                  style: const TextStyle(
+                                    fontSize: 16.0,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -437,59 +523,66 @@ class _AlbumDetailsState extends State<AlbumDetails> {
                           mainAxisSize: MainAxisSize.max,
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: <Widget>[
-                            TextButton(
-                              style: ButtonStyle(
-                                overlayColor:
-                                    WidgetStateProperty.resolveWith<Color?>((
-                                      Set<WidgetState> states,
-                                    ) {
-                                      if (states.contains(
-                                        WidgetState.pressed,
-                                      )) {
-                                        return Theme.of(
-                                          context,
-                                        ).primaryColor.withValues(alpha: 0.3);
-                                      }
-                                      return null;
-                                    }),
-                              ),
-                              child: Row(
-                                children: <Widget>[
-                                  Icon(
-                                    (album.library ?? false)
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    size: 32,
-                                  ),
-                                  Container(width: 4),
-                                  Text('Library'.i18n),
-                                ],
-                              ),
-                              onPressed: () async {
-                                //Add to library
-                                if (!(album.library ?? false)) {
-                                  await deezerAPI.addFavoriteAlbum(
-                                    album.id ?? '',
-                                  );
+                            if (PlatformManager
+                                .instance
+                                .active
+                                .capabilities
+                                .supportsAlbums)
+                              TextButton(
+                                style: ButtonStyle(
+                                  overlayColor:
+                                      WidgetStateProperty.resolveWith<Color?>((
+                                        Set<WidgetState> states,
+                                      ) {
+                                        if (states.contains(
+                                          WidgetState.pressed,
+                                        )) {
+                                          return Theme.of(
+                                            context,
+                                          ).primaryColor.withValues(alpha: 0.3);
+                                        }
+                                        return null;
+                                      }),
+                                ),
+                                child: Row(
+                                  children: <Widget>[
+                                    Icon(
+                                      (album.library ?? false)
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      size: 32,
+                                    ),
+                                    Container(width: 4),
+                                    Text('Library'.i18n),
+                                  ],
+                                ),
+                                onPressed: () async {
+                                  //Add to library
+                                  if (!(album.library ?? false)) {
+                                    await PlatformManager.instance
+                                        .getPlatform(album.platformId)
+                                        .addFavoriteAlbum(album.id ?? '');
+                                    Fluttertoast.showToast(
+                                      msg: 'Added to library'.i18n,
+                                      toastLength: Toast.LENGTH_SHORT,
+                                      gravity: ToastGravity.BOTTOM,
+                                    );
+                                    setState(() => album.library = true);
+                                    return;
+                                  }
+                                  //Remove
+                                  await PlatformManager.instance
+                                      .getPlatform(album.platformId)
+                                      .removeFavoriteAlbum(album.id ?? '');
                                   Fluttertoast.showToast(
-                                    msg: 'Added to library'.i18n,
+                                    msg: 'Album removed from library!'.i18n,
                                     toastLength: Toast.LENGTH_SHORT,
                                     gravity: ToastGravity.BOTTOM,
                                   );
-                                  setState(() => album.library = true);
-                                  return;
-                                }
-                                //Remove
-                                await deezerAPI.removeAlbum(album.id ?? '');
-                                Fluttertoast.showToast(
-                                  msg: 'Album removed from library!'.i18n,
-                                  toastLength: Toast.LENGTH_SHORT,
-                                  gravity: ToastGravity.BOTTOM,
-                                );
-                                setState(() => album.library = false);
-                              },
-                            ),
-                            MakeAlbumOffline(album: album),
+                                  setState(() => album.library = false);
+                                },
+                              ),
+                            MakeAlbumOffline(album: album, size: 32.0),
                             TextButton(
                               style: ButtonStyle(
                                 overlayColor:
@@ -578,7 +671,8 @@ class _AlbumDetailsState extends State<AlbumDetails> {
 
 class MakeAlbumOffline extends StatefulWidget {
   final Album? album;
-  const MakeAlbumOffline({super.key, this.album});
+  final double size;
+  const MakeAlbumOffline({super.key, this.album, this.size = 20.0});
 
   @override
   _MakeAlbumOfflineState createState() => _MakeAlbumOfflineState();
@@ -612,7 +706,7 @@ class _MakeAlbumOfflineState extends State<MakeAlbumOffline> {
       ),
       child: Row(
         children: <Widget>[
-          Icon(_offline ? Icons.wifi_off : Icons.wifi, size: 32),
+          Icon(_offline ? Icons.wifi_off : Icons.wifi, size: widget.size),
           Container(width: 4),
           Text('Offline'.i18n),
         ],
@@ -620,7 +714,9 @@ class _MakeAlbumOfflineState extends State<MakeAlbumOffline> {
       onPressed: () async {
         if (!_offline) {
           //Add to offline
-          await deezerAPI.addFavoriteAlbum(widget.album?.id ?? '');
+          await PlatformManager.instance
+              .getPlatform(widget.album?.platformId ?? '')
+              .addFavoriteAlbum(widget.album?.id ?? '');
           downloadManager.addOfflineAlbum(
             widget.album ?? Album(),
             private: true,
@@ -631,7 +727,10 @@ class _MakeAlbumOfflineState extends State<MakeAlbumOffline> {
           });
           return;
         }
-        downloadManager.removeOfflineAlbum(widget.album?.id ?? '');
+        downloadManager.removeOfflineAlbum(
+          widget.album?.id ?? '',
+          platformId: widget.album?.platformId,
+        );
         Fluttertoast.showToast(
           msg: 'Removed album from offline!'.i18n,
           gravity: ToastGravity.BOTTOM,
@@ -642,39 +741,6 @@ class _MakeAlbumOfflineState extends State<MakeAlbumOffline> {
         });
       },
     );
-    // return Row(
-    //   children: <Widget>[
-    //     Switch(
-    //       value: _offline,
-    //       onChanged: (v) async {
-    //         if (v) {
-    //           //Add to offline
-    //           await deezerAPI.addFavoriteAlbum(widget.album?.id ?? '');
-    //           downloadManager.addOfflineAlbum(
-    //             widget.album ?? Album(),
-    //             private: true,
-    //           );
-    //           MenuSheet().showDownloadStartedToast();
-    //           setState(() {
-    //             _offline = true;
-    //           });
-    //           return;
-    //         }
-    //         downloadManager.removeOfflineAlbum(widget.album?.id ?? '');
-    //         Fluttertoast.showToast(
-    //           msg: 'Removed album from offline!'.i18n,
-    //           gravity: ToastGravity.BOTTOM,
-    //           toastLength: Toast.LENGTH_SHORT,
-    //         );
-    //         setState(() {
-    //           _offline = false;
-    //         });
-    //       },
-    //     ),
-    //     Container(width: 4.0),
-    //     Text('Offline'.i18n, style: const TextStyle(fontSize: 16)),
-    //   ],
-    // );
   }
 }
 
@@ -693,11 +759,23 @@ class _ArtistDetailsState extends State<ArtistDetails> {
 
   Future _loadArtist() async {
     //Load artist from api if no albums
-    if (artist.albums.isEmpty) {
+    final platform = PlatformManager.instance.getPlatform(artist.platformId);
+    if (artist.albums.isEmpty ||
+        (platform.capabilities.supportsArtists && !artist.pageSectionsLoaded) ||
+        (artist.description == null && !artist.pageSectionsLoaded)) {
       try {
-        Artist a = await deezerAPI.artist(artist.id ?? '');
+        Artist a = await PlatformManager.instance
+            .getPlatform(artist.platformId)
+            .getArtist(artist.id ?? '');
+        if (a.name == 'Unknown Artist' && artist.name?.isNotEmpty == true) {
+          a.name = artist.name;
+        }
+        a.picture ??= artist.picture;
+        a.description ??= artist.description;
+        a.library = artist.library == true || a.library == true;
         setState(() => artist = a);
-      } catch (e) {
+      } catch (e, stackTrace) {
+        Logger.root.warning('Could not load artist ${artist.id}', e, stackTrace);
         setState(() => _error = true);
       }
     }
@@ -713,8 +791,18 @@ class _ArtistDetailsState extends State<ArtistDetails> {
 
   @override
   Widget build(BuildContext context) {
+    final artistPlatform = PlatformManager.instance.getPlatform(
+      artist.platformId,
+    );
+    final artistPageSections = artistPlatform.buildArtistPageSections(
+      context,
+      artist,
+    );
     return Scaffold(
-      appBar: FreezerAppBar(artist.name ?? 'Artist'.i18n),
+      appBar: FreezerAppBar(
+        artist.name ?? 'Artist'.i18n,
+        actions: [PlatformBadge(artist.platformId, iconOnly: true)],
+      ),
       body: _error
           ? const ErrorScreen()
           : _loading
@@ -723,7 +811,8 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                 color: Theme.of(context).primaryColor,
               ),
             )
-          : ListView(
+          : SilkyListView(
+              silkyConfig: silkyScrollConfig,
               children: <Widget>[
                 //Artist picture, name, stats
                 Container(
@@ -745,7 +834,8 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                               ZoomableImage(
                                 url: artist.picture?.full ?? '',
                                 width: imageSize,
-                                rounded: true,
+                                circular: true,
+                                caption: artist.name,
                               ),
                               const SizedBox(width: 24.0),
                               Expanded(
@@ -769,78 +859,122 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                                       spacing: 16.0,
                                       runSpacing: 8.0,
                                       children: [
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.people,
-                                              size: 20.0,
-                                              semanticLabel: 'Fans'.i18n,
-                                            ),
-                                            const SizedBox(width: 6.0),
-                                            Text(
-                                              artist.fansString,
-                                              style: const TextStyle(
-                                                fontSize: 14.0,
+                                        if (artist.fans != null)
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.people,
+                                                size: 20.0,
+                                                semanticLabel: 'Fans'.i18n,
                                               ),
-                                            ),
-                                          ],
-                                        ),
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.album,
-                                              size: 20.0,
-                                              semanticLabel: 'Albums'.i18n,
-                                            ),
-                                            const SizedBox(width: 6.0),
-                                            Text(
-                                              artist.albumCount.toString(),
-                                              style: const TextStyle(
-                                                fontSize: 14.0,
+                                              const SizedBox(width: 6.0),
+                                              Text(
+                                                artist.fansString,
+                                                style: const TextStyle(
+                                                  fontSize: 14.0,
+                                                ),
                                               ),
-                                            ),
-                                          ],
-                                        ),
+                                            ],
+                                          ),
+                                        if (artist.albumCount != null)
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.album,
+                                                size: 20.0,
+                                                semanticLabel: 'Albums'.i18n,
+                                              ),
+                                              const SizedBox(width: 6.0),
+                                              Text(
+                                                artist.albumCountString,
+                                                style: const TextStyle(
+                                                  fontSize: 14.0,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                       ],
                                     ),
                                     const SizedBox(height: 16.0),
                                     // Actions in wide screen
                                     Row(
                                       children: [
-                                        TextButton.icon(
-                                          style: ButtonStyle(
-                                            overlayColor:
-                                                WidgetStateProperty.resolveWith<
-                                                  Color?
-                                                >((Set<WidgetState> states) {
-                                                  if (states.contains(
-                                                    WidgetState.pressed,
-                                                  )) {
-                                                    return Theme.of(context)
-                                                        .primaryColor
-                                                        .withValues(alpha: 0.3);
-                                                  }
-                                                  return null;
-                                                }),
+                                        if (artistPlatform
+                                            .capabilities
+                                            .supportsArtists)
+                                          TextButton.icon(
+                                            style: ButtonStyle(
+                                              overlayColor:
+                                                  WidgetStateProperty.resolveWith<
+                                                    Color?
+                                                  >((Set<WidgetState> states) {
+                                                    if (states.contains(
+                                                      WidgetState.pressed,
+                                                    )) {
+                                                      return Theme.of(
+                                                        context,
+                                                      ).primaryColor.withValues(
+                                                        alpha: 0.3,
+                                                      );
+                                                    }
+                                                    return null;
+                                                  }),
+                                            ),
+                                            icon: Icon(
+                                              artist.library == true
+                                                  ? Icons.favorite
+                                                  : Icons.favorite_border,
+                                              size: 20,
+                                            ),
+                                            label: Text(
+                                              artist.library == true
+                                                  ? 'Following'.i18n
+                                                  : 'Library'.i18n,
+                                            ),
+                                            onPressed: () async {
+                                              final wasFollowing =
+                                                  artist.library == true;
+                                              try {
+                                                if (wasFollowing) {
+                                                  await artistPlatform
+                                                      .removeFavoriteArtist(
+                                                        artist.id ?? '',
+                                                      );
+                                                } else {
+                                                  await artistPlatform
+                                                      .addFavoriteArtist(
+                                                        artist.id ?? '',
+                                                      );
+                                                }
+                                              } catch (error) {
+                                                Fluttertoast.showToast(
+                                                  msg:
+                                                      error
+                                                          is SoundCloudChallengeException
+                                                      ? error.toString()
+                                                      : 'Could not update artist follow'
+                                                            .i18n,
+                                                );
+                                                return;
+                                              }
+                                              if (mounted) {
+                                                setState(
+                                                  () => artist.library =
+                                                      !wasFollowing,
+                                                );
+                                              }
+                                              Fluttertoast.showToast(
+                                                msg: wasFollowing
+                                                    ? 'Artist removed from library'
+                                                          .i18n
+                                                    : 'Added to library'.i18n,
+                                                toastLength: Toast.LENGTH_SHORT,
+                                                gravity: ToastGravity.BOTTOM,
+                                              );
+                                            },
                                           ),
-                                          icon: const Icon(
-                                            Icons.favorite,
-                                            size: 20,
-                                          ),
-                                          label: Text('Library'.i18n),
-                                          onPressed: () async {
-                                            await deezerAPI.addFavoriteArtist(
-                                              artist.id ?? '',
-                                            );
-                                            Fluttertoast.showToast(
-                                              msg: 'Added to library'.i18n,
-                                              toastLength: Toast.LENGTH_SHORT,
-                                              gravity: ToastGravity.BOTTOM,
-                                            );
-                                          },
-                                        ),
                                         if ((artist.radio ?? false))
                                           TextButton.icon(
                                             style: ButtonStyle(
@@ -867,9 +1001,10 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                                             label: Text('Radio'.i18n),
                                             onPressed: () async {
                                               List<Track> tracks =
-                                                  await deezerAPI.smartRadio(
-                                                    artist.id ?? '',
-                                                  );
+                                                  await artistPlatform
+                                                      .getSmartRadio(
+                                                        artist.id ?? '',
+                                                      );
                                               if (tracks.isNotEmpty) {
                                                 GetIt.I<AudioPlayerHandler>()
                                                     .playFromTrackList(
@@ -889,6 +1024,13 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                                           ),
                                       ],
                                     ),
+                                    if (artist.description?.trim().isNotEmpty ==
+                                        true)
+                                      ArtistBiographySection(
+                                        description: artist.description!,
+                                        showDivider: false,
+                                        showTitle: false,
+                                      ),
                                   ],
                                 ),
                               ),
@@ -904,7 +1046,8 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                             ZoomableImage(
                               url: artist.picture?.full ?? '',
                               width: imageSize,
-                              rounded: true,
+                              circular: true,
+                              caption: artist.name,
                             ),
                             Container(height: 8.0),
                             Padding(
@@ -938,82 +1081,120 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                     }
                     return Column(
                       children: [
-                        const FreezerDivider(),
-                        //Stats
-                        Row(
-                          mainAxisSize: MainAxisSize.max,
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: <Widget>[
-                            Row(
-                              children: <Widget>[
-                                Icon(
-                                  Icons.people,
-                                  size: 32.0,
-                                  semanticLabel: 'Fans'.i18n,
+                        //Stats & Description
+                        if (artist.fans != null ||
+                            artist.albumCount != null) ...[
+                          const FreezerDivider(),
+                          Row(
+                            mainAxisSize: MainAxisSize.max,
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: <Widget>[
+                              if (artist.fans != null)
+                                Row(
+                                  children: <Widget>[
+                                    Icon(
+                                      Icons.people,
+                                      size: 32.0,
+                                      semanticLabel: 'Fans'.i18n,
+                                    ),
+                                    const SizedBox(width: 8.0, height: 42.0),
+                                    Text(
+                                      artist.fansString,
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8.0, height: 42.0),
-                                Text(
-                                  artist.fansString,
-                                  style: const TextStyle(fontSize: 16),
+                              if (artist.albumCount != null)
+                                Row(
+                                  children: <Widget>[
+                                    Icon(
+                                      Icons.album,
+                                      size: 32.0,
+                                      semanticLabel: 'Albums'.i18n,
+                                    ),
+                                    Container(width: 8.0),
+                                    Text(
+                                      artist.albumCountString,
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            Row(
-                              children: <Widget>[
-                                Icon(
-                                  Icons.album,
-                                  size: 32.0,
-                                  semanticLabel: 'Albums'.i18n,
-                                ),
-                                Container(width: 8.0),
-                                Text(
-                                  artist.albumCount.toString(),
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const FreezerDivider(),
+                            ],
+                          ),
+                        ],
                         //Actions
                         Row(
                           mainAxisSize: MainAxisSize.max,
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: <Widget>[
-                            TextButton(
-                              style: ButtonStyle(
-                                overlayColor:
-                                    WidgetStateProperty.resolveWith<Color?>((
-                                      Set<WidgetState> states,
-                                    ) {
-                                      if (states.contains(
-                                        WidgetState.pressed,
-                                      )) {
-                                        return Theme.of(
-                                          context,
-                                        ).primaryColor.withValues(alpha: 0.3);
-                                      }
-                                      return null;
-                                    }),
+                            if (artistPlatform.capabilities.supportsArtists)
+                              TextButton(
+                                style: ButtonStyle(
+                                  overlayColor:
+                                      WidgetStateProperty.resolveWith<Color?>((
+                                        Set<WidgetState> states,
+                                      ) {
+                                        if (states.contains(
+                                          WidgetState.pressed,
+                                        )) {
+                                          return Theme.of(
+                                            context,
+                                          ).primaryColor.withValues(alpha: 0.3);
+                                        }
+                                        return null;
+                                      }),
+                                ),
+                                child: Row(
+                                  children: <Widget>[
+                                    Icon(
+                                      artist.library == true
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      size: 32,
+                                    ),
+                                    Container(width: 4),
+                                    Text(
+                                      artist.library == true
+                                          ? 'Following'.i18n
+                                          : 'Library'.i18n,
+                                    ),
+                                  ],
+                                ),
+                                onPressed: () async {
+                                  final wasFollowing = artist.library == true;
+                                  try {
+                                    if (wasFollowing) {
+                                      await artistPlatform.removeFavoriteArtist(
+                                        artist.id ?? '',
+                                      );
+                                    } else {
+                                      await artistPlatform.addFavoriteArtist(
+                                        artist.id ?? '',
+                                      );
+                                    }
+                                  } catch (error) {
+                                    Fluttertoast.showToast(
+                                      msg: error is SoundCloudChallengeException
+                                          ? error.toString()
+                                          : 'Could not update artist follow'
+                                                .i18n,
+                                    );
+                                    return;
+                                  }
+                                  if (mounted) {
+                                    setState(
+                                      () => artist.library = !wasFollowing,
+                                    );
+                                  }
+                                  Fluttertoast.showToast(
+                                    msg: wasFollowing
+                                        ? 'Artist removed from library'.i18n
+                                        : 'Added to library'.i18n,
+                                    toastLength: Toast.LENGTH_SHORT,
+                                    gravity: ToastGravity.BOTTOM,
+                                  );
+                                },
                               ),
-                              child: Row(
-                                children: <Widget>[
-                                  const Icon(Icons.favorite, size: 32),
-                                  Container(width: 4),
-                                  Text('Library'.i18n),
-                                ],
-                              ),
-                              onPressed: () async {
-                                await deezerAPI.addFavoriteArtist(
-                                  artist.id ?? '',
-                                );
-                                Fluttertoast.showToast(
-                                  msg: 'Added to library'.i18n,
-                                  toastLength: Toast.LENGTH_SHORT,
-                                  gravity: ToastGravity.BOTTOM,
-                                );
-                              },
-                            ),
                             if ((artist.radio ?? false))
                               TextButton(
                                 style: ButtonStyle(
@@ -1039,8 +1220,8 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                                   ],
                                 ),
                                 onPressed: () async {
-                                  List<Track> tracks = await deezerAPI
-                                      .smartRadio(artist.id ?? '');
+                                  List<Track> tracks = await artistPlatform
+                                      .getSmartRadio(artist.id ?? '');
                                   if (tracks.isNotEmpty) {
                                     GetIt.I<AudioPlayerHandler>()
                                         .playFromTrackList(
@@ -1063,6 +1244,14 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                     );
                   },
                 ),
+                ...artistPageSections
+                    .where(
+                      (section) =>
+                          section.position == ArtistPageSectionPosition.top,
+                    )
+                    .map(
+                      (section) => ArtistPageSectionPreview(section: section),
+                    ),
                 const FreezerDivider(),
                 Container(height: 12.0),
                 //Highlight
@@ -1101,13 +1290,22 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                     ],
                   ),
                 //Top tracks
+                ...artistPageSections
+                    .where(
+                      (section) =>
+                          section.position ==
+                          ArtistPageSectionPosition.beforeTracks,
+                    )
+                    .map(
+                      (section) => ArtistPageSectionPreview(section: section),
+                    ),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16.0,
                     vertical: 2.0,
                   ),
                   child: Text(
-                    'Top Tracks'.i18n,
+                    artist.albums.isEmpty ? 'Tracks'.i18n : 'Top Tracks'.i18n,
                     textAlign: TextAlign.left,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
@@ -1148,64 +1346,334 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                             text: 'Top'.i18n + '${artist.name}',
                             source: 'artist_top',
                           ),
+                          loadTracks: () => PlatformManager.instance
+                              .getPlatform(artist.platformId)
+                              .getArtistTopTracks(artist.id!),
                         ),
                       ),
                     );
                   },
                 ),
-                const FreezerDivider(),
+                ...artistPageSections
+                    .where(
+                      (section) =>
+                          section.position ==
+                          ArtistPageSectionPosition.afterTracks,
+                    )
+                    .map(
+                      (section) => ArtistPageSectionPreview(section: section),
+                    ),
                 //Albums
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 8.0,
-                  ),
-                  child: Text(
-                    'Top Albums'.i18n,
-                    textAlign: TextAlign.left,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20.0,
+                if (artist.albums.isNotEmpty) ...[
+                  const FreezerDivider(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 8.0,
+                    ),
+                    child: Text(
+                      'Top Albums'.i18n,
+                      textAlign: TextAlign.left,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20.0,
+                      ),
                     ),
                   ),
-                ),
-                ...List.generate(
-                  artist.albums.length > 10 ? 11 : artist.albums.length + 1,
-                  (i) {
-                    //Show discography
-                    if (i == 10 || i == artist.albums.length) {
-                      return ListTile(
-                        title: Text('Show all albums'.i18n),
+                  ...List.generate(
+                    artist.albums.length > 10 ? 11 : artist.albums.length + 1,
+                    (i) {
+                      //Show discography
+                      if (i == 10 || i == artist.albums.length) {
+                        return ListTile(
+                          title: Text('Show all albums'.i18n),
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    DiscographyScreen(artist: artist),
+                              ),
+                            );
+                          },
+                        );
+                      }
+                      //Top albums
+                      Album a = artist.albums[i];
+                      return AlbumTile(
+                        a,
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) =>
-                                  DiscographyScreen(artist: artist),
+                              builder: (context) => AlbumDetails(a),
                             ),
                           );
                         },
+                        onHold: () {
+                          MenuSheet m = MenuSheet();
+                          m.defaultAlbumMenu(a, context: context);
+                        },
                       );
+                    },
+                  ),
+                ],
+                ...artistPageSections
+                    .where(
+                      (section) =>
+                          section.position ==
+                          ArtistPageSectionPosition.afterAlbums,
+                    )
+                    .map(
+                      (section) => ArtistPageSectionPreview(section: section),
+                    ),
+                ...artistPageSections
+                    .where(
+                      (section) =>
+                          section.position == ArtistPageSectionPosition.end,
+                    )
+                    .map(
+                      (section) => ArtistPageSectionPreview(section: section),
+                    ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth > 668 ||
+                        artist.description?.trim().isNotEmpty != true) {
+                      return const SizedBox.shrink();
                     }
-                    //Top albums
-                    Album a = artist.albums[i];
-                    return AlbumTile(
-                      a,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => AlbumDetails(a),
-                          ),
-                        );
-                      },
-                      onHold: () {
-                        MenuSheet m = MenuSheet();
-                        m.defaultAlbumMenu(a, context: context);
-                      },
+                    return ArtistBiographySection(
+                      description: artist.description!,
                     );
                   },
                 ),
               ],
             ),
+    );
+  }
+}
+
+class ArtistPageSectionPreview extends StatefulWidget {
+  final ArtistPageSection section;
+
+  const ArtistPageSectionPreview({required this.section, super.key});
+
+  @override
+  State<ArtistPageSectionPreview> createState() =>
+      _ArtistPageSectionPreviewState();
+}
+
+class _ArtistPageSectionPreviewState extends State<ArtistPageSectionPreview> {
+  late Future<List<dynamic>> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = widget.section.loadItems(widget.section.previewLimit);
+  }
+
+  @override
+  void didUpdateWidget(covariant ArtistPageSectionPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.section != widget.section) {
+      _items = widget.section.loadItems(widget.section.previewLimit);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<dynamic>>(
+    future: _items,
+    builder: (context, snapshot) {
+      final items = snapshot.data ?? const <dynamic>[];
+      if (items.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      final section = widget.section;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const FreezerDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              section.title,
+              style: DefaultTextStyle.of(
+                context,
+              ).style.copyWith(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+          ),
+          ...items.map((item) => section.itemBuilder(context, item, items)),
+          if (section.showMore && items.length >= section.previewLimit)
+            ListTile(
+              title: Text('${'Show more'.i18n} ${section.title.toLowerCase()}'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ArtistPageSectionScreen(
+                    section: section,
+                    initialItems: items,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    },
+  );
+}
+
+class ArtistPageSectionScreen extends StatefulWidget {
+  final ArtistPageSection section;
+  final List<dynamic>? initialItems;
+
+  const ArtistPageSectionScreen({
+    required this.section,
+    this.initialItems,
+    super.key,
+  });
+
+  @override
+  State<ArtistPageSectionScreen> createState() =>
+      _ArtistPageSectionScreenState();
+}
+
+class _ArtistPageSectionScreenState extends State<ArtistPageSectionScreen> {
+  List<dynamic> _items = const [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final cached = widget.section.getCachedItems?.call() ?? widget.initialItems;
+    if (cached != null && cached.isNotEmpty) {
+      _items = List<dynamic>.of(cached);
+    }
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    try {
+      final items = await widget.section.loadItems(null);
+      if (mounted) {
+        setState(() {
+          if (items.isNotEmpty) {
+            _items = items;
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: FreezerAppBar(widget.section.title),
+    body: _isLoading && _items.isEmpty
+        ? const Center(child: CircularProgressIndicator())
+        : Stack(
+            children: [
+              SilkyListView.builder(
+                silkyConfig: silkyScrollConfig,
+                itemCount: _items.length,
+                itemBuilder: (context, index) =>
+                    widget.section.itemBuilder(context, _items[index], _items),
+              ),
+              if (_isLoading && _items.isNotEmpty)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+            ],
+          ),
+  );
+}
+
+class ArtistBiographySection extends StatefulWidget {
+  final String description;
+  final bool showDivider;
+  final bool showTitle;
+
+  const ArtistBiographySection({
+    required this.description,
+    this.showDivider = true,
+    this.showTitle = true,
+    super.key,
+  });
+
+  @override
+  State<ArtistBiographySection> createState() => _ArtistBiographySectionState();
+}
+
+class _ArtistBiographySectionState extends State<ArtistBiographySection> {
+  static const int _previewLines = 5;
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.bodyMedium?.copyWith(fontSize: 14);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: widget.description, style: style),
+          textDirection: Directionality.of(context),
+          maxLines: _previewLines,
+        )..layout(maxWidth: constraints.maxWidth - 32);
+        final canExpand = painter.didExceedMaxLines;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.showDivider) const FreezerDivider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.showTitle) ...[
+                    Text(
+                      'Biography'.i18n,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    alignment: Alignment.topCenter,
+                    child: Text(
+                      widget.description,
+                      maxLines: canExpand && !_expanded ? _previewLines : null,
+                      overflow: canExpand && !_expanded
+                          ? TextOverflow.ellipsis
+                          : TextOverflow.visible,
+                      style: style,
+                    ),
+                  ),
+                  if (canExpand)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => setState(() => _expanded = !_expanded),
+                        icon: Icon(
+                          _expanded ? Icons.expand_less : Icons.expand_more,
+                        ),
+                        label: Text(
+                          _expanded ? 'Show less'.i18n : 'Read more'.i18n,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1235,10 +1703,9 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
     //Fetch data
     List<Album> data;
     try {
-      data = await deezerAPI.discographyPage(
-        artist.id ?? '',
-        start: artist.albums.length,
-      );
+      data = await PlatformManager.instance
+          .getPlatform(widget.artist.platformId)
+          .getDiscographyPage(artist.id ?? '', start: artist.albums.length);
     } catch (e) {
       setState(() {
         _error = true;
@@ -1301,20 +1768,109 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final artistPlatform = PlatformManager.instance.getPlatform(
+      widget.artist.platformId,
+    );
+    final hasSinglesTab = artistPlatform.capabilities.supportsSingles;
+    final hasFeaturedTab =
+        artistPlatform.capabilities.supportsFeaturedArtistAlbums;
+
+    if (!hasSinglesTab && !hasFeaturedTab) {
+      return Scaffold(
+        appBar: FreezerAppBar('Discography'.i18n),
+        body: SilkyListView.builder(
+          silkyConfig: silkyScrollConfig,
+          controller: _controllers[0],
+          itemCount: artist.albums.length + 1,
+          itemBuilder: (context, i) {
+            if (i == artist.albums.length) return _loadingWidget;
+            return _tile(artist.albums[i]);
+          },
+        ),
+      );
+    }
+
+    final tabs = <Widget>[
+      Tab(icon: Icon(Icons.album, semanticLabel: 'Albums'.i18n)),
+    ];
+    final tabViews = <Widget>[
+      //Albums
+      SilkyListView.builder(
+        silkyConfig: silkyScrollConfig,
+        controller: _controllers[0],
+        itemCount: artist.albums.length + 1,
+        itemBuilder: (context, i) {
+          if (i == artist.albums.length) return _loadingWidget;
+          if (!hasSinglesTab || artist.albums[i].type == AlbumType.ALBUM) {
+            return _tile(artist.albums[i]);
+          }
+          return const SizedBox(width: 0, height: 0);
+        },
+      ),
+    ];
+
+    if (hasSinglesTab) {
+      tabs.add(
+        Tab(icon: Icon(Icons.audiotrack, semanticLabel: 'Singles'.i18n)),
+      );
+      tabViews.add(
+        //Singles
+        SilkyListView.builder(
+          silkyConfig: silkyScrollConfig,
+          controller: _controllers[1],
+          itemCount: artist.albums.length + 1,
+          itemBuilder: (context, i) {
+            if (i == artist.albums.length) return _loadingWidget;
+            if (artist.albums[i].type == AlbumType.SINGLE) {
+              return _tile(artist.albums[i]);
+            }
+            return const SizedBox(width: 0, height: 0);
+          },
+        ),
+      );
+    }
+
+    if (hasFeaturedTab) {
+      tabs.add(
+        Tab(
+          icon: Icon(Icons.recent_actors, semanticLabel: 'Featured'.i18n),
+        ),
+      );
+      tabViews.add(
+        //Featured
+        SilkyListView.builder(
+          silkyConfig: silkyScrollConfig,
+          controller: _controllers[2],
+          itemCount: artist.albums.length + 1,
+          itemBuilder: (context, i) {
+            if (i == artist.albums.length) return _loadingWidget;
+            if (artist.albums[i].type == AlbumType.FEATURED) {
+              return _tile(artist.albums[i]);
+            }
+            return const SizedBox(width: 0, height: 0);
+          },
+        ),
+      );
+    }
+
     return DefaultTabController(
-      length: 3,
+      length: tabs.length,
       child: Builder(
         builder: (BuildContext context) {
           final TabController tabController = DefaultTabController.of(context);
           tabController.addListener(() {
             if (!tabController.indexIsChanging) {
               //Load data if empty tabs
-              int nSingles = artist.albums
-                  .where((a) => a.type == AlbumType.SINGLE)
-                  .length;
-              int nFeatures = artist.albums
-                  .where((a) => a.type == AlbumType.FEATURED)
-                  .length;
+              int nSingles = hasSinglesTab
+                  ? artist.albums
+                      .where((a) => a.type == AlbumType.SINGLE)
+                      .length
+                  : 1;
+              int nFeatures = hasFeaturedTab
+                  ? artist.albums
+                      .where((a) => a.type == AlbumType.FEATURED)
+                      .length
+                  : 1;
               if ((nSingles == 0 || nFeatures == 0) && !_loading) _load();
             }
           });
@@ -1336,61 +1892,11 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
                   return null;
                 }),
                 labelColor: Theme.of(context).primaryColor,
-                tabs: [
-                  Tab(icon: Icon(Icons.album, semanticLabel: 'Albums'.i18n)),
-                  Tab(
-                    icon: Icon(Icons.audiotrack, semanticLabel: 'Singles'.i18n),
-                  ),
-                  Tab(
-                    icon: Icon(
-                      Icons.recent_actors,
-                      semanticLabel: 'Featured'.i18n,
-                    ),
-                  ),
-                ],
+                tabs: tabs,
               ),
               height: 100.0,
             ),
-            body: TabBarView(
-              children: [
-                //Albums
-                ListView.builder(
-                  controller: _controllers[0],
-                  itemCount: artist.albums.length + 1,
-                  itemBuilder: (context, i) {
-                    if (i == artist.albums.length) return _loadingWidget;
-                    if (artist.albums[i].type == AlbumType.ALBUM) {
-                      return _tile(artist.albums[i]);
-                    }
-                    return const SizedBox(width: 0, height: 0);
-                  },
-                ),
-                //Singles
-                ListView.builder(
-                  controller: _controllers[1],
-                  itemCount: artist.albums.length + 1,
-                  itemBuilder: (context, i) {
-                    if (i == artist.albums.length) return _loadingWidget;
-                    if (artist.albums[i].type == AlbumType.SINGLE) {
-                      return _tile(artist.albums[i]);
-                    }
-                    return const SizedBox(width: 0, height: 0);
-                  },
-                ),
-                //Featured
-                ListView.builder(
-                  controller: _controllers[2],
-                  itemCount: artist.albums.length + 1,
-                  itemBuilder: (context, i) {
-                    if (i == artist.albums.length) return _loadingWidget;
-                    if (artist.albums[i].type == AlbumType.FEATURED) {
-                      return _tile(artist.albums[i]);
-                    }
-                    return const SizedBox(width: 0, height: 0);
-                  },
-                ),
-              ],
-            ),
+            body: TabBarView(children: tabViews),
           );
         },
       ),
@@ -1414,46 +1920,103 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
   final ScrollController _scrollController = ScrollController();
 
   //Get sorted playlist
+  List<Track>? _cachedSortedTracks;
+  Sorting? _lastAppliedSort;
+  List<Track>? _lastSourceTracks;
+
   List<Track> get sorted {
-    List<Track> tracks = List.from(playlist.tracks ?? []);
-    switch (_sort.type) {
-      case SortType.ALPHABETIC:
-        tracks.sort((a, b) => a.title!.compareTo(b.title!));
-        break;
-      case SortType.ARTIST:
-        tracks.sort(
-          (a, b) => a.artists![0].name!.toLowerCase().compareTo(
-            b.artists![0].name!.toLowerCase(),
-          ),
-        );
-        break;
-      case SortType.DATE_ADDED:
-        tracks.sort((a, b) => (a.addedDate ?? 0) - (b.addedDate ?? 0));
-        break;
-      case SortType.DEFAULT:
-      default:
-        break;
+    final currentTracks = playlist.tracks ?? [];
+    if (_cachedSortedTracks != null &&
+        identical(currentTracks, _lastSourceTracks) &&
+        _lastAppliedSort?.type == _sort.type &&
+        _lastAppliedSort?.reverse == _sort.reverse) {
+      return _cachedSortedTracks!;
     }
-    //Reverse
-    if (_sort.reverse) return tracks.reversed.toList();
-    return tracks;
+    _lastSourceTracks = currentTracks;
+    _lastAppliedSort = Sorting(
+      type: _sort.type,
+      reverse: _sort.reverse,
+      sourceType: _sort.sourceType,
+      id: _sort.id,
+    );
+    return _cachedSortedTracks = currentTracks.applySorting(_sort);
   }
 
   //Load tracks from api
   void _loadTracks() async {
     // Got all tracks, return
     if (_loading ||
-        playlist.tracks!.length >=
-            (playlist.trackCount ?? playlist.tracks!.length)) {
+        (playlist.trackCount != null &&
+            (playlist.tracks ?? []).length >= playlist.trackCount!)) {
       return;
     }
 
     setState(() => _loading = true);
-    int pos = playlist.tracks!.length;
+    int pos = (playlist.tracks ?? []).length;
     //Get another page of tracks
     List<Track> tracks;
     try {
-      tracks = await deezerAPI.playlistTracksPage(playlist.id!, pos, nb: 25);
+      final isLocal =
+          playlist.platformId == 'local' ||
+          (playlist.id?.startsWith('local_') ?? false);
+      if (isLocal) {
+        final localId = playlist.id!.startsWith('local_')
+            ? playlist.id!.substring(6)
+            : playlist.id!;
+        final localPlaylist = await downloadManager.localPlaylistManager
+            .getPlaylist(localId);
+        if (localPlaylist == null) {
+          if (mounted) {
+            setState(() {
+              _error = true;
+              _loading = false;
+            });
+          }
+          return;
+        }
+
+        if (pos >= localPlaylist.trackIds.length) {
+          setState(() => _loading = false);
+          return;
+        }
+
+        tracks = await downloadManager.loadLocalPlaylistTracks(
+          localPlaylist,
+          start: pos,
+          limit: 25,
+        );
+
+        int pageDurationSecs = 0;
+        for (final t in tracks) {
+          if (t.duration != null) {
+            pageDurationSecs += t.duration!.inSeconds;
+          }
+        }
+
+        if (playlist.duration == null) {
+          playlist.duration = Duration(seconds: pageDurationSecs);
+        } else {
+          playlist.duration = Duration(
+            seconds: playlist.duration!.inSeconds + pageDurationSecs,
+          );
+        }
+
+        if (pos == 0) {
+          playlist.mosaicImages = tracks
+              .take(4)
+              .map((t) => t.albumArt?.fullUrl ?? '')
+              .where((u) => u.isNotEmpty)
+              .toList();
+          localPlaylist.mosaicImages = playlist.mosaicImages;
+          await downloadManager.localPlaylistManager.updatePlaylist(
+            localPlaylist,
+          );
+        }
+      } else {
+        tracks = await PlatformManager.instance
+            .getPlatform(playlist.platformId)
+            .getPlaylistTracks(playlist.id!, pos, nb: 25);
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -1465,28 +2028,104 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
     }
 
     setState(() {
-      playlist.tracks!.addAll(tracks);
+      if (tracks.isEmpty) {
+        playlist.trackCount = (playlist.tracks ?? []).length;
+      } else if (playlist.tracks == null) {
+        playlist.tracks = tracks;
+      } else {
+        playlist.tracks!.addAll(tracks);
+      }
       _loading = false;
     });
   }
 
+  // Find cached sorting index (shared lookup, same as Android Auto/queue)
+  int? _findSortIndex() => Sorting.playlistIndex(
+    playlist.id,
+    platformId: playlist.platformId.isNotEmpty
+        ? playlist.platformId
+        : PlatformManager.instance.active.platformId,
+  );
+
+  // Sorting needs every track. Whether that has happened is tracked
+  // explicitly rather than inferred from trackCount, which platforms report
+  // inconsistently.
+  bool _fullLoaded = false;
+  Future<void>? _fullLoad;
+  Future<void> _ensureFullPlaylist() {
+    if (_fullLoaded || playlist.id == null) return Future.value();
+    return _fullLoad ??= _loadFullPlaylist().whenComplete(() => _fullLoad = null);
+  }
+
+  Future<void> _loadFullPlaylist() async {
+    if (mounted) setState(() => _loading = true);
+    try {
+      final isLocal = playlist.platformId == 'local' ||
+          playlist.id!.startsWith('local_');
+      if (isLocal) {
+        final localId = playlist.id!.startsWith('local_')
+            ? playlist.id!.substring(6)
+            : playlist.id!;
+        final complete = await downloadManager.getFullLocalPlaylist(localId);
+        if (complete != null && mounted) {
+          _fullLoaded = true;
+          setState(() => playlist = complete);
+        }
+      } else {
+        final pId = playlist.platformId.isNotEmpty
+            ? playlist.platformId
+            : PlatformManager.instance.active.platformId;
+        final platform = PlatformManager.instance.getPlatform(pId);
+        final complete = await platform.getFullPlaylist(playlist.id!);
+        if (complete.tracks != null && complete.tracks!.isNotEmpty && mounted) {
+          _fullLoaded = true;
+          complete.trackCount = complete.tracks!.length;
+          _preserveCurrentMosaic(complete);
+          setState(() {
+            if (complete.title == null ||
+                complete.title == 'Playlist ${complete.id}' ||
+                complete.title == 'Playlist VL${complete.id}') {
+              complete.title = playlist.title;
+            }
+            complete.image ??= playlist.image;
+            complete.description ??= playlist.description;
+            complete.editable =
+                complete.editable == true || playlist.editable == true;
+            playlist = complete;
+          });
+        }
+      }
+    } catch (e) {
+      Logger.root.fine('Playlist preload error: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _preserveCurrentMosaic(Playlist refreshed) {
+    if (widget.playlist.platformId == 'neurokaraoke') {
+      refreshed.mosaicImages = widget.playlist.mosaicImages;
+      refreshed.mosaicImageCaptions = widget.playlist.mosaicImageCaptions;
+    }
+  }
+
   //Load cached playlist sorting
-  void _restoreSort() async {
-    //Find index
-    int? index = Sorting.index(SortSourceTypes.PLAYLIST, id: playlist.id);
+  void _restoreSort() {
+    int? index = _findSortIndex();
     if (index == null) return;
 
-    //Preload tracks
-    if (playlist.tracks!.length < (playlist.trackCount ?? 0)) {
-      playlist = await deezerAPI.fullPlaylist(playlist.id!);
+    _sort = cache.sorts[index];
+    if (mounted) {
+      setState(() {});
     }
-    setState(() => _sort = cache.sorts[index]);
+    if (_sort.reverse || _sort.type != SortType.DEFAULT) {
+      _ensureFullPlaylist();
+    }
   }
 
   Future _reverse() async {
     setState(() => _sort.reverse = !_sort.reverse);
-    //Save sorting in cache
-    int? index = Sorting.index(SortSourceTypes.TRACKS);
+    int? index = _findSortIndex();
     if (index != null) {
       cache.sorts[index] = _sort;
     } else {
@@ -1494,9 +2133,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
     }
     await cache.save();
 
-    //Preload for sorting
-    if (playlist.tracks!.length < (playlist.trackCount ?? 0)) {
-      playlist = await deezerAPI.fullPlaylist(playlist.id!);
+    if (_sort.reverse || _sort.type != SortType.DEFAULT) {
+      await _ensureFullPlaylist();
     }
   }
 
@@ -1504,6 +2142,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
   void initState() {
     playlist = widget.playlist;
     _sort = Sorting(sourceType: SortSourceTypes.PLAYLIST, id: playlist.id);
+    _restoreSort();
+
     //If scrolled past 90% load next tracks
     _scrollController.addListener(() {
       double off = _scrollController.position.maxScrollExtent * 0.90;
@@ -1512,25 +2152,44 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
       }
     });
     // Initial load if no tracks
-    if (playlist.tracks!.isEmpty) {
+    if ((playlist.tracks ?? []).isEmpty) {
       //Get correct metadata
       setState(() => _loading = true);
-      deezerAPI
-          .playlist(playlist.id!, nb: 25)
-          .then((Playlist p) {
-            setState(() {
-              playlist = p;
-              _loading = false;
+      if (playlist.id!.startsWith('local_')) {
+        setState(() => _loading = false);
+        _loadTracks();
+      } else {
+        PlatformManager.instance
+            .getPlatform(playlist.platformId)
+            .getPlaylist(playlist.id!, limit: 25)
+            .then((Playlist p) async {
+              if (!mounted) return;
+              _preserveCurrentMosaic(p);
+              setState(() {
+                if (p.title == null ||
+                    p.title == 'Playlist ${p.id}' ||
+                    p.title == 'Playlist VL${p.id}') {
+                  p.title = playlist.title;
+                }
+                p.description ??= playlist.description;
+                p.image ??= playlist.image;
+                p.editable = p.editable == true || playlist.editable == true;
+                if (_fullLoaded) {
+                  p.tracks = playlist.tracks;
+                  p.trackCount = playlist.trackCount;
+                }
+                playlist = p;
+                _loading = false;
+              });
+              if (_sort.reverse || _sort.type != SortType.DEFAULT) {
+                await _ensureFullPlaylist();
+              }
+            })
+            .catchError((e) {
+              if (mounted) setState(() => _error = true);
             });
-            //Load tracks
-            //_load();
-          })
-          .catchError((e) {
-            if (mounted) setState(() => _error = true);
-          });
+      }
     }
-
-    _restoreSort();
 
     super.initState();
   }
@@ -1541,6 +2200,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
       appBar: FreezerAppBar(
         playlist.title ?? 'Playlist'.i18n,
         actions: [
+          PlatformBadge(playlist.platformId, iconOnly: true),
           IconButton(
             icon: const Icon(Icons.more_vert),
             onPressed: () {
@@ -1550,11 +2210,12 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
           ),
         ],
       ),
-      body: DraggableScrollbar.rrect(
+      body: MobileScrollbar(
         controller: _scrollController,
         backgroundColor: Theme.of(context).primaryColor,
-        child: ListView(
-          controller: _scrollController,
+        childBuilder: (scrollController, scrollPhysics) => ListView(
+          controller: scrollController,
+          physics: scrollPhysics,
           children: <Widget>[
             //Playlist image, title, user
             Container(
@@ -1573,12 +2234,22 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          CachedImage(
-                            url: playlist.image?.full ?? '',
-                            width: imageSize,
-                            rounded: true,
-                            fullThumb: true,
-                          ),
+                          (playlist.mosaicImages?.isNotEmpty == true)
+                              ? MosaicImage(
+                                  urls: playlist.mosaicImages!,
+                                  captions: playlist.mosaicImageCaptions,
+                                  width: imageSize,
+                                  height: imageSize,
+                                  rounded: true,
+                                  zoomOnTap: true,
+                                  caption: playlist.image?.caption,
+                                )
+                              : ZoomableImage(
+                                  url: playlist.image?.full ?? '',
+                                  width: imageSize,
+                                  rounded: true,
+                                  caption: playlist.image?.caption,
+                                ),
                           const SizedBox(width: 24.0),
                           Expanded(
                             child: Column(
@@ -1595,17 +2266,33 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                const SizedBox(height: 8.0),
-                                Text(
-                                  playlist.user?.name ?? '',
-                                  textAlign: TextAlign.left,
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 2,
-                                  style: TextStyle(
-                                    fontSize: 18.0,
-                                    color: Theme.of(context).primaryColor,
+                                if (playlist.user?.name?.isNotEmpty ==
+                                    true) ...[
+                                  const SizedBox(height: 8.0),
+                                  Text(
+                                    playlist.user!.name!,
+                                    textAlign: TextAlign.left,
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 2,
+                                    style: TextStyle(
+                                      fontSize: 18.0,
+                                      color: Theme.of(context).primaryColor,
+                                    ),
                                   ),
-                                ),
+                                ],
+                                if (playlist.image?.caption?.isNotEmpty ==
+                                    true) ...[
+                                  const SizedBox(height: 4.0),
+                                  Text(
+                                    'Artwork by'.i18n +
+                                        ' ${playlist.image!.caption!}',
+                                    textAlign: TextAlign.left,
+                                    style: TextStyle(
+                                      fontSize: 14.0,
+                                      color: Theme.of(context).disabledColor,
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 16.0),
                                 // Stats in wide screen
                                 Wrap(
@@ -1623,7 +2310,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                         const SizedBox(width: 6.0),
                                         Text(
                                           (playlist.trackCount ??
-                                                  playlist.tracks!.length)
+                                                  (playlist.tracks ?? [])
+                                                      .length)
                                               .toString(),
                                           style: const TextStyle(
                                             fontSize: 14.0,
@@ -1631,23 +2319,27 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                         ),
                                       ],
                                     ),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.timelapse,
-                                          size: 20.0,
-                                          semanticLabel: 'Duration'.i18n,
-                                        ),
-                                        const SizedBox(width: 6.0),
-                                        Text(
-                                          playlist.durationString,
-                                          style: const TextStyle(
-                                            fontSize: 14.0,
+                                    if (playlist.duration != null)
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.timelapse,
+                                            size: 20.0,
+                                            semanticLabel: 'Duration'.i18n,
                                           ),
-                                        ),
-                                      ],
-                                    ),
+                                          const SizedBox(width: 6.0),
+                                          Text(
+                                            playlist.durationString,
+                                            style: const TextStyle(
+                                              fontSize: 14.0,
+                                              fontFeatures: [
+                                                FontFeature.tabularFigures(),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                   ],
                                 ),
                                 if (playlist.description != null &&
@@ -1670,7 +2362,12 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                   children: [
                                     MakePlaylistOffline(playlist),
                                     if (playlist.user?.name !=
-                                        deezerAPI.userName)
+                                            PlatformManager
+                                                .instance
+                                                .active
+                                                .currentUserName &&
+                                        playlist.disableDownload != true &&
+                                        !playlist.id!.startsWith('local_'))
                                       TextButton.icon(
                                         style: ButtonStyle(
                                           overlayColor:
@@ -1688,7 +2385,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                               }),
                                         ),
                                         icon: Icon(
-                                          (playlist.library ?? false)
+                                          cache.checkPlaylistFavorite(playlist)
                                               ? Icons.favorite
                                               : Icons.favorite_outline,
                                           size: 20,
@@ -1696,10 +2393,19 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                         label: Text('Library'.i18n),
                                         onPressed: () async {
                                           //Add to library
-                                          if (!(playlist.library ?? false)) {
-                                            await deezerAPI.addPlaylist(
+                                          if (!cache.checkPlaylistFavorite(
+                                            playlist,
+                                          )) {
+                                            await PlatformManager
+                                                .instance
+                                                .active
+                                                .addFavoritePlaylist(
+                                                  playlist.id!,
+                                                );
+                                            cache.activeLibraryPlaylists.add(
                                               playlist.id!,
                                             );
+                                            cache.save();
                                             Fluttertoast.showToast(
                                               msg: 'Added to library'.i18n,
                                               toastLength: Toast.LENGTH_SHORT,
@@ -1711,9 +2417,15 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                             return;
                                           }
                                           //Remove
-                                          await deezerAPI.removePlaylist(
+                                          await PlatformManager.instance
+                                              .getPlatform(playlist.platformId)
+                                              .removeFavoritePlaylist(
+                                                playlist.id!,
+                                              );
+                                          cache.activeLibraryPlaylists.remove(
                                             playlist.id!,
                                           );
+                                          cache.save();
                                           Fluttertoast.showToast(
                                             msg:
                                                 'Playlist removed from library!'
@@ -1726,39 +2438,50 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                           );
                                         },
                                       ),
-                                    TextButton.icon(
-                                      style: ButtonStyle(
-                                        overlayColor:
-                                            WidgetStateProperty.resolveWith<
-                                              Color?
-                                            >((Set<WidgetState> states) {
-                                              if (states.contains(
-                                                WidgetState.pressed,
-                                              )) {
-                                                return Theme.of(context)
-                                                    .primaryColor
-                                                    .withValues(alpha: 0.3);
-                                              }
-                                              return null;
-                                            }),
+                                    if (((playlist.platformId == 'local' ||
+                                                (playlist.id?.startsWith(
+                                                      'local_',
+                                                    ) ??
+                                                    false)) ||
+                                            PlatformRegistry.instance
+                                                    .get(playlist.platformId)
+                                                    ?.capabilities
+                                                    .supportsDownload ==
+                                                true) &&
+                                        playlist.disableDownload != true)
+                                      TextButton.icon(
+                                        style: ButtonStyle(
+                                          overlayColor:
+                                              WidgetStateProperty.resolveWith<
+                                                Color?
+                                              >((Set<WidgetState> states) {
+                                                if (states.contains(
+                                                  WidgetState.pressed,
+                                                )) {
+                                                  return Theme.of(context)
+                                                      .primaryColor
+                                                      .withValues(alpha: 0.3);
+                                                }
+                                                return null;
+                                              }),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.file_download,
+                                          size: 20.0,
+                                        ),
+                                        label: Text('Download'.i18n),
+                                        onPressed: () async {
+                                          if (await downloadManager
+                                                  .addOfflinePlaylist(
+                                                    playlist,
+                                                    private: false,
+                                                  ) !=
+                                              false) {
+                                            MenuSheet()
+                                                .showDownloadStartedToast();
+                                          }
+                                        },
                                       ),
-                                      icon: const Icon(
-                                        Icons.file_download,
-                                        size: 20.0,
-                                      ),
-                                      label: Text('Download'.i18n),
-                                      onPressed: () async {
-                                        if (await downloadManager
-                                                .addOfflinePlaylist(
-                                                  playlist,
-                                                  private: false,
-                                                ) !=
-                                            false) {
-                                          MenuSheet()
-                                              .showDownloadStartedToast();
-                                        }
-                                      },
-                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 16.0),
@@ -1770,25 +2493,20 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                         context,
                                       ).scaffoldBackgroundColor,
                                       onSelected: (SortType s) async {
-                                        if (playlist.tracks!.length <
-                                            (playlist.trackCount ?? 0)) {
-                                          //Preload whole playlist
-                                          playlist = await deezerAPI
-                                              .fullPlaylist(playlist.id!);
-                                        }
                                         setState(() => _sort.type = s);
 
                                         //Save sort type to cache
-                                        int? index = Sorting.index(
-                                          SortSourceTypes.PLAYLIST,
-                                          id: playlist.id,
-                                        );
+                                        int? index = _findSortIndex();
                                         if (index == null) {
                                           cache.sorts.add(_sort);
                                         } else {
                                           cache.sorts[index] = _sort;
                                         }
                                         await cache.save();
+
+                                        if (s != SortType.DEFAULT || _sort.reverse) {
+                                          await _ensureFullPlaylist();
+                                        }
                                       },
                                       itemBuilder: (context) =>
                                           <PopupMenuEntry<SortType>>[
@@ -1881,12 +2599,22 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         Container(height: 4.0),
-                        CachedImage(
-                          url: playlist.image?.full ?? '',
-                          height: imageSize,
-                          rounded: true,
-                          fullThumb: true,
-                        ),
+                        (playlist.mosaicImages?.isNotEmpty == true)
+                            ? MosaicImage(
+                                urls: playlist.mosaicImages!,
+                                captions: playlist.mosaicImageCaptions,
+                                width: imageSize,
+                                height: imageSize,
+                                rounded: true,
+                                zoomOnTap: true,
+                                caption: playlist.image?.caption,
+                              )
+                            : ZoomableImage(
+                                url: playlist.image?.full ?? '',
+                                width: imageSize,
+                                rounded: true,
+                                caption: playlist.image?.caption,
+                              ),
                         Container(height: 8.0),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -1901,20 +2629,43 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                             ),
                           ),
                         ),
-                        Container(height: 4.0),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: Text(
-                            playlist.user?.name ?? '',
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 2,
-                            style: TextStyle(
-                              fontSize: 16.0,
-                              color: Theme.of(context).primaryColor,
+                        if (playlist.user?.name?.isNotEmpty == true) ...[
+                          Container(height: 4.0),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: Text(
+                              playlist.user!.name!,
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                              style: TextStyle(
+                                fontSize: 16.0,
+                                color: Theme.of(context).primaryColor,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
+                        if (playlist.image?.caption?.isNotEmpty == true) ...[
+                          Container(height: 2.0),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: Text(
+                              'Artwork by'.i18n +
+                                  ' ${playlist.image!.caption!}',
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                              style: TextStyle(
+                                fontSize: 13.0,
+                                color: Theme.of(context).disabledColor,
+                              ),
+                            ),
+                          ),
+                        ],
                         Container(height: 8.0),
                       ],
                     );
@@ -1946,26 +2697,31 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                             ),
                             const SizedBox(width: 8.0, height: 42.0),
                             Text(
-                              (playlist.trackCount ?? playlist.tracks!.length)
+                              (playlist.trackCount ??
+                                      (playlist.tracks ?? []).length)
                                   .toString(),
                               style: const TextStyle(fontSize: 16),
                             ),
                           ],
                         ),
-                        Row(
-                          children: <Widget>[
-                            Icon(
-                              Icons.timelapse,
-                              size: 32.0,
-                              semanticLabel: 'Duration'.i18n,
-                            ),
-                            Container(width: 8.0),
-                            Text(
-                              playlist.durationString,
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                          ],
-                        ),
+                        if (playlist.duration != null)
+                          Row(
+                            children: <Widget>[
+                              Icon(
+                                Icons.timelapse,
+                                size: 32.0,
+                                semanticLabel: 'Duration'.i18n,
+                              ),
+                              Container(width: 8.0),
+                              Text(
+                                playlist.durationString,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ],
@@ -2009,81 +2765,60 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: <Widget>[
                         if (!isWideScreen) ...[
-                          MakePlaylistOffline(playlist),
-                          if (playlist.user?.name != deezerAPI.userName)
-                            IconButton(
-                              icon: Icon(
-                                (playlist.library ?? false)
-                                    ? Icons.favorite
-                                    : Icons.favorite_outline,
-                                size: 32,
-                                semanticLabel: (playlist.library ?? false)
-                                    ? 'Unlove'.i18n
-                                    : 'Love'.i18n,
+                          MakePlaylistOffline(playlist, size: 32.0),
+                          if ((playlist.platformId == 'local' ||
+                                  (playlist.id?.startsWith('local_') ??
+                                      false) ||
+                                  playlist.user?.name !=
+                                      PlatformManager
+                                          .instance
+                                          .active
+                                          .currentUserName) &&
+                              playlist.disableDownload != true)
+                            if (((playlist.platformId == 'local' ||
+                                        (playlist.id?.startsWith('local_') ??
+                                            false)) ||
+                                    PlatformRegistry.instance
+                                            .get(playlist.platformId)
+                                            ?.capabilities
+                                            .supportsDownload ==
+                                        true) &&
+                                playlist.disableDownload != true)
+                              IconButton(
+                                icon: Icon(
+                                  Icons.file_download,
+                                  size: 32.0,
+                                  semanticLabel: 'Download'.i18n,
+                                ),
+                                onPressed: () async {
+                                  if (await downloadManager.addOfflinePlaylist(
+                                        playlist,
+                                        private: false,
+                                      ) !=
+                                      false) {
+                                    MenuSheet().showDownloadStartedToast();
+                                  }
+                                },
                               ),
-                              onPressed: () async {
-                                //Add to library
-                                if (!(playlist.library ?? false)) {
-                                  await deezerAPI.addPlaylist(playlist.id!);
-                                  Fluttertoast.showToast(
-                                    msg: 'Added to library'.i18n,
-                                    toastLength: Toast.LENGTH_SHORT,
-                                    gravity: ToastGravity.BOTTOM,
-                                  );
-                                  setState(() => playlist.library = true);
-                                  return;
-                                }
-                                //Remove
-                                await deezerAPI.removePlaylist(playlist.id!);
-                                Fluttertoast.showToast(
-                                  msg: 'Playlist removed from library!'.i18n,
-                                  toastLength: Toast.LENGTH_SHORT,
-                                  gravity: ToastGravity.BOTTOM,
-                                );
-                                setState(() => playlist.library = false);
-                              },
-                            ),
-                          IconButton(
-                            icon: Icon(
-                              Icons.file_download,
-                              size: 32.0,
-                              semanticLabel: 'Download'.i18n,
-                            ),
-                            onPressed: () async {
-                              if (await downloadManager.addOfflinePlaylist(
-                                    playlist,
-                                    private: false,
-                                  ) !=
-                                  false) {
-                                MenuSheet().showDownloadStartedToast();
-                              }
-                            },
-                          ),
                         ],
                         if (!isWideScreen) ...[
                           PopupMenuButton(
                             color: Theme.of(context).scaffoldBackgroundColor,
                             onSelected: (SortType s) async {
-                              if (playlist.tracks!.length <
-                                  (playlist.trackCount ?? 0)) {
-                                //Preload whole playlist
-                                playlist = await deezerAPI.fullPlaylist(
-                                  playlist.id!,
-                                );
-                              }
                               setState(() => _sort.type = s);
 
                               //Save sort type to cache
-                              int? index = Sorting.index(
-                                SortSourceTypes.PLAYLIST,
-                                id: playlist.id,
-                              );
+                              int? index = _findSortIndex();
                               if (index == null) {
                                 cache.sorts.add(_sort);
                               } else {
                                 cache.sorts[index] = _sort;
                               }
                               await cache.save();
+
+                              if (s != SortType.DEFAULT || _sort.reverse) {
+                                await _ensureFullPlaylist();
+                              }
                             },
                             itemBuilder: (context) =>
                                 <PopupMenuEntry<SortType>>[
@@ -2142,32 +2877,68 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
               },
             ),
             const FreezerDivider(),
-            ...List.generate(playlist.tracks!.length, (i) {
-              Track t = sorted[i];
-              return TrackTile(
-                t,
-                onTap: () {
-                  Playlist p = Playlist(
-                    title: playlist.title,
-                    id: playlist.id,
-                    tracks: sorted,
-                  );
-                  GetIt.I<AudioPlayerHandler>().playFromPlaylist(p, t.id!);
-                },
-                onHold: () {
-                  MenuSheet m = MenuSheet();
-                  m.defaultTrackMenu(
-                    t,
-                    context: context,
-                    options: [
-                      (playlist.user?.id == deezerAPI.userId)
-                          ? m.removeFromPlaylist(t, playlist, context)
-                          : const SizedBox(width: 0, height: 0),
-                    ],
-                  );
-                },
-              );
-            }),
+            Builder(
+              builder: (context) {
+                final sortedTracks = sorted;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(sortedTracks.length, (i) {
+                    Track t = sortedTracks[i];
+                    return TrackTile(
+                      t,
+                      showPlatformBadge: playlist.platformId == 'local',
+                      onTap: () {
+                        Playlist p = Playlist(
+                          title: playlist.title,
+                          id: playlist.id,
+                          platformId: playlist.platformId,
+                          trackCount: playlist.trackCount,
+                          tracks: sortedTracks,
+                        );
+                        GetIt.I<AudioPlayerHandler>().playFromPlaylist(
+                          p,
+                          t.id!,
+                          sort: _sort,
+                        );
+                      },
+                      onHold: () {
+                        MenuSheet m = MenuSheet();
+                        m.defaultTrackMenu(
+                          t,
+                          context: context,
+                          options: [
+                            (playlist.platformId == 'local' ||
+                                    playlist.editable == true ||
+                                    (playlist.user?.id != null &&
+                                        playlist.user?.id ==
+                                            PlatformManager.instance
+                                                .getPlatform(
+                                                  playlist.platformId,
+                                                )
+                                                .currentUserId))
+                                ? m.removeFromPlaylist(
+                                    t,
+                                    playlist,
+                                    context,
+                                    onRemove: () {
+                                      setState(() {
+                                        playlist.tracks?.removeWhere(
+                                          (track) => track.id == t.id,
+                                        );
+                                        playlist.trackCount =
+                                            (playlist.trackCount ?? 1) - 1;
+                                      });
+                                    },
+                                  )
+                                : const SizedBox(width: 0, height: 0),
+                          ],
+                        );
+                      },
+                    );
+                  }),
+                );
+              },
+            ),
             if (_loading)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -2190,7 +2961,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
 
 class MakePlaylistOffline extends StatefulWidget {
   final Playlist playlist;
-  const MakePlaylistOffline(this.playlist, {super.key});
+  final double size;
+  const MakePlaylistOffline(this.playlist, {super.key, this.size = 20.0});
 
   @override
   _MakePlaylistOfflineState createState() => _MakePlaylistOfflineState();
@@ -2199,19 +2971,43 @@ class MakePlaylistOffline extends StatefulWidget {
 class _MakePlaylistOfflineState extends State<MakePlaylistOffline> {
   late Playlist playlist;
   bool _offline = false;
+  StreamSubscription<void>? _offlineLibrarySub;
 
   @override
   void initState() {
     super.initState();
-    downloadManager.checkOffline(playlist: widget.playlist).then((v) {
-      setState(() {
-        _offline = v;
-      });
+    _offlineLibrarySub = downloadManager.offlineLibraryChanged.listen((_) {
+      _refreshOfflineState();
     });
+    _refreshOfflineState();
+  }
+
+  Future<void> _refreshOfflineState() async {
+    final offline = await downloadManager.checkOffline(playlist: widget.playlist);
+    if (mounted && offline != _offline) setState(() => _offline = offline);
+  }
+
+  @override
+  void dispose() {
+    _offlineLibrarySub?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isLocal =
+        widget.playlist.platformId == 'local' ||
+        (widget.playlist.id?.startsWith('local_') ?? false);
+    final supportsDownload =
+        isLocal ||
+        (PlatformRegistry.instance
+                .get(widget.playlist.platformId)
+                ?.capabilities
+                .supportsDownload ==
+            true);
+    if (!supportsDownload || widget.playlist.disableDownload == true) {
+      return const SizedBox.shrink();
+    }
     return TextButton(
       style: ButtonStyle(
         overlayColor: WidgetStateProperty.resolveWith<Color?>((
@@ -2225,7 +3021,7 @@ class _MakePlaylistOfflineState extends State<MakePlaylistOffline> {
       ),
       child: Row(
         children: <Widget>[
-          Icon(_offline ? Icons.wifi_off : Icons.wifi, size: 32),
+          Icon(_offline ? Icons.wifi_off : Icons.wifi, size: widget.size),
           Container(width: 4),
           Text('Offline'.i18n),
         ],
@@ -2233,17 +3029,20 @@ class _MakePlaylistOfflineState extends State<MakePlaylistOffline> {
       onPressed: () async {
         if (!_offline) {
           //Add to offline
-          if (widget.playlist.user?.id != deezerAPI.userId) {
-            await deezerAPI.addPlaylist(widget.playlist.id!);
-          }
-          downloadManager.addOfflinePlaylist(widget.playlist, private: true);
+          await downloadManager.addOfflinePlaylist(
+            widget.playlist,
+            private: true,
+          );
           MenuSheet().showDownloadStartedToast();
           setState(() {
             _offline = true;
           });
           return;
         }
-        downloadManager.removeOfflinePlaylist(widget.playlist.id!);
+        await downloadManager.removeOfflinePlaylist(
+          widget.playlist.id!,
+          platformId: widget.playlist.platformId,
+        );
         Fluttertoast.showToast(
           msg: 'Playlist removed from offline!'.i18n,
           gravity: ToastGravity.BOTTOM,
@@ -2268,8 +3067,13 @@ class ShowScreen extends StatefulWidget {
 class _ShowScreenState extends State<ShowScreen> {
   late Show _show;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _loadingAll = false;
+  bool _hasMore = true;
+  int _loadVersion = 0;
+  int _nextEpisodeStart = 0;
   bool _error = false;
-  late List<ShowEpisode> _episodes;
+  List<ShowEpisode> _episodes = [];
   Sorting _sort = Sorting(sourceType: SortSourceTypes.SHOWS);
   String _filter = '';
   final ScrollController _scrollController = ScrollController();
@@ -2295,26 +3099,120 @@ class _ShowScreenState extends State<ShowScreen> {
     return episodes;
   }
 
-  Future _load() async {
-    //Fetch
-    List<ShowEpisode> e;
+  Future<void> _load() async {
+    if (_loadingMore || _loadingAll || !_hasMore) return;
+    final version = _loadVersion;
+    setState(() => _loadingMore = true);
+    PaginatedShowEpisodeList page;
     try {
-      e = await deezerAPI.allShowEpisodes(_show.id!);
+      page = await PlatformManager.instance
+          .getPlatform(_show.platformId)
+          .getShowEpisodesPage(_show.id!, start: _nextEpisodeStart);
     } catch (e) {
+      if (!mounted || version != _loadVersion) return;
       setState(() {
         _loading = false;
-        _error = true;
+        _loadingMore = false;
+        _error = _episodes.isEmpty;
       });
       return;
     }
+    if (!mounted || version != _loadVersion) return;
     setState(() {
-      _episodes = e;
+      _nextEpisodeStart += page.episodes.length;
+      final previousCount = _episodes.length;
+      final knownIds = _episodes.map((episode) => episode.id).toSet();
+      _episodes.addAll(
+        page.episodes.where((episode) => knownIds.add(episode.id)),
+      );
+      _hasMore = page.hasMore && _episodes.length > previousCount;
+      _updateShowMetadata();
       _loading = false;
+      _loadingMore = false;
+      _error = false;
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _maybeLoadMoreEpisodes();
+    });
+  }
+
+  Future<void> _loadAllEpisodes() async {
+    if (_loadingAll || !_hasMore) return;
+    final version = ++_loadVersion;
+    setState(() {
+      _loadingAll = true;
+      _loading = true;
+      _loadingMore = false;
+    });
+    try {
+      final episodes = await PlatformManager.instance
+          .getPlatform(_show.platformId)
+          .getShowEpisodes(_show.id!);
+      if (!mounted || version != _loadVersion) return;
+      setState(() {
+        _episodes = episodes;
+        _nextEpisodeStart = episodes.length;
+        _hasMore = false;
+        _updateShowMetadata();
+        _loading = false;
+        _loadingAll = false;
+        _error = false;
+      });
+    } catch (_) {
+      if (!mounted || version != _loadVersion) return;
+      setState(() {
+        _loading = false;
+        _loadingAll = false;
+        _error = _episodes.isEmpty;
+      });
+    }
+  }
+
+  void _updateShowMetadata() {
+    final e = _episodes;
+    if (e.isEmpty) return;
+    final isEpisodeCollection = e.first.collection != null;
+    if (isEpisodeCollection) {
+      final collection = e.first.collection!;
+      _show = Show(
+        id: _show.id,
+        name: _show.name?.isNotEmpty == true ? _show.name : collection.name,
+        creator: _show.creator,
+        description: collection.description?.isNotEmpty == true
+            ? collection.description
+            : _show.description,
+        art: _show.art ?? collection.art,
+        platformId: _show.platformId,
+      );
+    } else if (!isEpisodeCollection && e.first.show != null) {
+      final fetchedShow = e.first.show!;
+      _show = Show(
+        id: _show.id ?? fetchedShow.id,
+        name: _show.name?.isNotEmpty == true ? _show.name : fetchedShow.name,
+        creator: fetchedShow.creator ?? _show.creator,
+        description: fetchedShow.description ?? _show.description,
+        art: fetchedShow.art ?? _show.art,
+        platformId: _show.platformId,
+      );
+    }
+  }
+
+  void _maybeLoadMoreEpisodes() {
+    if (!_hasMore ||
+        _loadingMore ||
+        _loadingAll ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final position = _scrollController.position;
+    if (position.extentAfter <= position.viewportDimension * 1.25) {
+      _load();
+    }
   }
 
   Future _reverse() async {
     setState(() => _sort.reverse = !_sort.reverse);
+    if (_hasMore) _loadAllEpisodes();
     //Save sorting in cache
     int? index = Sorting.index(SortSourceTypes.SHOWS);
     if (index != null) {
@@ -2327,6 +3225,7 @@ class _ShowScreenState extends State<ShowScreen> {
 
   @override
   void initState() {
+    super.initState();
     //Restore sort
     int? index = Sorting.index(SortSourceTypes.SHOWS);
     if (index != null) {
@@ -2334,19 +3233,31 @@ class _ShowScreenState extends State<ShowScreen> {
     }
 
     _show = widget.show;
-    _load();
-    super.initState();
+    _scrollController.addListener(_maybeLoadMoreEpisodes);
+    if (_sort.type != SortType.DEFAULT || _sort.reverse) {
+      _loadAllEpisodes();
+    } else {
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final displayedEpisodes = !_loading && !_error ? _sorted : <ShowEpisode>[];
     return Scaffold(
       appBar: FreezerAppBar(_show.name!),
-      body: DraggableScrollbar.rrect(
+      body: MobileScrollbar(
         controller: _scrollController,
         backgroundColor: Theme.of(context).primaryColor,
-        child: ListView(
-          controller: _scrollController,
+        childBuilder: (scrollController, scrollPhysics) => ListView(
+          controller: scrollController,
+          physics: scrollPhysics,
           children: <Widget>[
             //Show art, name, description
             Container(
@@ -2386,6 +3297,18 @@ class _ShowScreenState extends State<ShowScreen> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
+                                if (_show.creator?.isNotEmpty == true) ...[
+                                  const SizedBox(height: 4.0),
+                                  Text(
+                                    _show.creator!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 15.0,
+                                      color: Theme.of(context).disabledColor,
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 12.0),
                                 Text(
                                   _show.description ?? '',
@@ -2429,6 +3352,23 @@ class _ShowScreenState extends State<ShowScreen> {
                           ),
                         ),
                         Container(height: 8.0),
+                        if (_show.creator?.isNotEmpty == true)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: Text(
+                              _show.creator!,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.0,
+                                color: Theme.of(context).disabledColor,
+                              ),
+                            ),
+                          ),
+                        Container(height: 8.0),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16.0),
                           child: Text(
@@ -2452,9 +3392,9 @@ class _ShowScreenState extends State<ShowScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: <Widget>[
                 FutureBuilder<bool>(
-                  future: deezerAPI.checkShowFavorite(
-                    _show,
-                  ), // Asynchronous call
+                  future: PlatformManager.instance
+                      .getPlatform(_show.platformId)
+                      .isFavoriteShow(_show.id ?? ''), // Asynchronous call
                   builder: (context, snapshot) {
                     // Check the state of the future
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -2498,7 +3438,9 @@ class _ShowScreenState extends State<ShowScreen> {
                         onPressed: () async {
                           // Add to library
                           if (!isFavorited) {
-                            await deezerAPI.addFavoriteShow(_show.id!);
+                            await PlatformManager.instance
+                                .getPlatform(_show.platformId)
+                                .addFavoriteShow(_show.id!);
                             setState(() => isFavorited = true);
                             Fluttertoast.showToast(
                               msg: 'Added to library'.i18n,
@@ -2507,7 +3449,9 @@ class _ShowScreenState extends State<ShowScreen> {
                             );
                           } else {
                             // Remove
-                            await deezerAPI.removeShow(_show.id!);
+                            await PlatformManager.instance
+                                .getPlatform(_show.platformId)
+                                .removeFavoriteShow(_show.id!);
                             setState(() => isFavorited = false);
                             Fluttertoast.showToast(
                               msg: 'Show removed from library!'.i18n,
@@ -2524,6 +3468,7 @@ class _ShowScreenState extends State<ShowScreen> {
                   color: Theme.of(context).scaffoldBackgroundColor,
                   onSelected: (SortType s) async {
                     setState(() => _sort.type = s);
+                    if (_hasMore) _loadAllEpisodes();
                     // Save to cache
                     int? index = Sorting.index(SortSourceTypes.SHOWS);
                     if (index == null) {
@@ -2596,7 +3541,10 @@ class _ShowScreenState extends State<ShowScreen> {
               padding: const EdgeInsets.all(8.0),
               child: TextField(
                 cursorColor: Theme.of(context).primaryColor,
-                onChanged: (String s) => setState(() => _filter = s),
+                onChanged: (String s) {
+                  setState(() => _filter = s);
+                  if (s.isNotEmpty && _hasMore) _loadAllEpisodes();
+                },
                 decoration: InputDecoration(
                   labelText: 'Search'.i18n,
                   fillColor: Theme.of(context).bottomAppBarTheme.color,
@@ -2634,8 +3582,8 @@ class _ShowScreenState extends State<ShowScreen> {
 
             // Data
             if (!_loading && !_error)
-              ...List.generate(_sorted.length, (int i) {
-                ShowEpisode e = _sorted[i];
+              ...List.generate(displayedEpisodes.length, (int i) {
+                ShowEpisode e = displayedEpisodes[i];
                 return ShowEpisodeTile(
                   e,
                   trailing: IconButton(
@@ -2648,12 +3596,22 @@ class _ShowScreenState extends State<ShowScreen> {
                   onTap: () async {
                     await GetIt.I<AudioPlayerHandler>().playShowEpisode(
                       _show,
-                      _episodes,
+                      displayedEpisodes,
                       index: i,
+                      loadMore:
+                          _hasMore &&
+                          _sort.type == SortType.DEFAULT &&
+                          !_sort.reverse &&
+                          _filter.isEmpty,
                     );
                   },
                 );
               }),
+            if (!_loading && _loadingMore)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              ),
           ],
         ),
       ),

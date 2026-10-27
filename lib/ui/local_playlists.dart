@@ -1,22 +1,27 @@
-import 'dart:io';
+import 'dart:async';
 
-import 'package:flutter/material.dart';
-import 'package:get_it/get_it.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:logging/logging.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:saturn/ui/menu.dart';
 import 'package:saturn/ui/tiles.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../api/definitions.dart';
 import '../api/download.dart';
-import '../api/deezer.dart';
-import '../service/audio_service.dart';
 import '../translations.i18n.dart';
+import 'details_screens.dart';
+import 'menu.dart';
 
 class LocalPlaylistsSection extends StatefulWidget {
   final Function? onPlaylistsChanged;
+  final ValueChanged<bool>? onHasPlaylistsChanged;
+  final bool actionsOnly;
 
-  const LocalPlaylistsSection({this.onPlaylistsChanged, super.key});
+  const LocalPlaylistsSection({
+    this.onPlaylistsChanged,
+    this.onHasPlaylistsChanged,
+    this.actionsOnly = false,
+    super.key,
+  });
 
   @override
   State<LocalPlaylistsSection> createState() => _LocalPlaylistsSectionState();
@@ -25,12 +30,30 @@ class LocalPlaylistsSection extends StatefulWidget {
 class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
   List<LocalPlaylist> playlists = [];
   bool loading = true;
+  StreamSubscription<void>? _offlineLibrarySub;
 
   @override
   void initState() {
     super.initState();
+    _offlineLibrarySub = downloadManager.offlineLibraryChanged.listen((_) {
+      if (!widget.actionsOnly) _loadPlaylists();
+    });
     Logger.root.info('LocalPlaylistsSection initState');
-    _loadPlaylists();
+    if (!widget.actionsOnly) _loadPlaylists();
+  }
+
+  @override
+  void dispose() {
+    _offlineLibrarySub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant LocalPlaylistsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.actionsOnly && !widget.actionsOnly) {
+      _loadPlaylists();
+    }
   }
 
   Future<void> _loadPlaylists() async {
@@ -44,11 +67,13 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
           playlists = loaded;
           loading = false;
         });
+        widget.onHasPlaylistsChanged?.call(loaded.isNotEmpty);
       }
     } catch (e) {
       Logger.root.severe('Error loading playlists: $e');
       if (mounted) {
         setState(() => loading = false);
+        widget.onHasPlaylistsChanged?.call(playlists.isNotEmpty);
       }
     }
   }
@@ -63,7 +88,7 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
 
     await showDialog(
       context: context,
-      builder: (context) => _CreateLocalPlaylistDialog(
+      builder: (context) => CreateLocalPlaylistDialog(
         onSave: (t, d) {
           Logger.root.info('Dialog onSave called with title: $t');
           title = t;
@@ -156,12 +181,15 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
 
   Future<String?> _pickJsonFile() async {
     try {
-      // TODO: this sucks
-      final result = await showDialog<String>(
-        context: context,
-        builder: (context) => _FilePickerDialog(),
+      final result = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Import Playlist'.i18n,
       );
-      return result;
+      if (result != null && result.path != null) {
+        return result.path;
+      }
+      return null;
     } catch (e) {
       Logger.root.severe('Error picking file: $e');
       return null;
@@ -170,12 +198,63 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    if (loading && !widget.actionsOnly) {
       return const SizedBox(height: 0, width: 0);
+    }
+
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+
+    Widget actionCards() => SizedBox(
+      width: double.infinity,
+      child: ResponsiveMediaGrid.builder(
+        itemCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        extraTextHeight: 70,
+        itemBuilder: (context, index) => LayoutBuilder(
+          builder: (context, constraints) => PlaylistActionCard(
+            title: index == 0
+                ? 'Create local playlist'.i18n
+                : 'Import playlist'.i18n,
+            icon: index == 0 ? Icons.playlist_add : Icons.file_download,
+            width: constraints.maxWidth,
+            onTap: index == 0 ? _createPlaylist : _importPlaylist,
+          ),
+        ),
+      ),
+    );
+
+    if (widget.actionsOnly) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Local Playlists'.i18n,
+                style: const TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          actionCards(),
+        ],
+      );
+    }
+
+    if (playlists.isEmpty && isWide) {
+      return const SizedBox.shrink();
     }
 
     if (playlists.isEmpty) {
       return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ListTile(
             title: Text('Create local playlist'.i18n),
@@ -191,6 +270,79 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
       );
     }
 
+    if (isWide) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: 8.0,
+              horizontal: 16.0,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Local Playlists'.i18n,
+                style: const TextStyle(
+                  fontSize: 20.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: ResponsiveMediaGrid.builder(
+              itemCount: playlists.length + 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              extraTextHeight: 70,
+              itemBuilder: (context, index) {
+              if (index < 2) {
+                final actionIndex = index;
+                return LayoutBuilder(
+                  builder: (context, constraints) => PlaylistActionCard(
+                    title: actionIndex == 0
+                        ? 'Create local playlist'.i18n
+                        : 'Import playlist'.i18n,
+                    icon: actionIndex == 0
+                        ? Icons.playlist_add
+                        : Icons.file_download,
+                    width: constraints.maxWidth,
+                    onTap: actionIndex == 0 ? _createPlaylist : _importPlaylist,
+                  ),
+                );
+              }
+              final playlist = playlists[index - 2];
+              final item = Playlist(
+                id: 'local_${playlist.id}',
+                title: playlist.title,
+                description: playlist.description,
+                trackCount: playlist.trackIds.length,
+                platformId: 'local',
+                mosaicImages: playlist.mosaicImages,
+              );
+              return LayoutBuilder(
+                builder: (context, constraints) => PlaylistCardTile(
+                  item,
+                  width: constraints.maxWidth,
+                  subtitleOverride:
+                      '${playlist.trackIds.length} ${'Tracks'.i18n}',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => PlaylistDetails(item),
+                    ),
+                  ),
+                  onHold: () => _showPlaylistMenu(context, playlist),
+                ),
+              );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       children: [
         Padding(
@@ -201,19 +353,23 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
           ),
         ),
         ...playlists.map((playlist) {
-          return _LocalPlaylistTile(
-            playlist,
+          final p = Playlist(
+            id: 'local_${playlist.id}',
+            title: playlist.title,
+            description: playlist.description,
+            trackCount: playlist.trackIds.length,
+            platformId: 'local',
+          );
+          p.mosaicImages = playlist.mosaicImages;
+          return PlaylistTile(
+            p,
+            subtitleOverride: '${playlist.trackIds.length} ${'Tracks'.i18n}',
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => LocalPlaylistDetailsScreen(
-                    playlist,
-                    onChanged: _loadPlaylists,
-                  ),
-                ),
+                MaterialPageRoute(builder: (context) => PlaylistDetails(p)),
               );
             },
-            onLongPress: () {
+            onHold: () {
               _showPlaylistMenu(context, playlist);
             },
           );
@@ -233,334 +389,47 @@ class _LocalPlaylistsSectionState extends State<LocalPlaylistsSection> {
   }
 
   void _showPlaylistMenu(BuildContext context, LocalPlaylist playlist) {
-    showModalBottomSheet(
+    final p = Playlist(
+      id: 'local_${playlist.id}',
+      title: playlist.title,
+      description: playlist.description,
+      trackCount: playlist.trackIds.length,
+      platformId: 'local',
+      mosaicImages: playlist.mosaicImages,
+    );
+    MenuSheet().defaultPlaylistMenu(
+      p,
       context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            title: Text('Edit'.i18n),
-            leading: const Icon(Icons.edit),
-            onTap: () {
-              Navigator.pop(context);
-              _editPlaylist(playlist);
-            },
-          ),
-          ListTile(
-            title: Text('Export'.i18n),
-            leading: const Icon(Icons.file_upload),
-            onTap: () {
-              Navigator.pop(context);
-              _exportPlaylist(playlist);
-            },
-          ),
-          ListTile(
-            title: Text('Delete'.i18n),
-            leading: const Icon(Icons.delete),
-            onTap: () {
-              Navigator.pop(context);
-              _deletePlaylist(playlist);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _editPlaylist(LocalPlaylist playlist) async {
-    String? title = playlist.title;
-    String? description = playlist.description;
-
-    if (!mounted) return;
-
-    await showDialog(
-      context: context,
-      builder: (context) => _CreateLocalPlaylistDialog(
-        initialTitle: playlist.title,
-        initialDescription: playlist.description,
-        onSave: (t, d) {
-          title = t;
-          description = d;
-        },
-      ),
-    );
-
-    if (title == null || title!.isEmpty) return;
-
-    try {
-      final updated = LocalPlaylist(
-        id: playlist.id,
-        title: title!,
-        description: description,
-        trackIds: playlist.trackIds,
-        createdAt: playlist.createdAt,
-        updatedAt: DateTime.now(),
-      );
-      await downloadManager.localPlaylistManager.updatePlaylist(updated);
-      await _loadPlaylists();
-      widget.onPlaylistsChanged?.call();
-    } catch (e) {
-      // Error updating playlist
-    }
-  }
-
-  Future<void> _exportPlaylist(LocalPlaylist playlist) async {
-    try {
-      Logger.root.info('Exporting playlist: ${playlist.title}');
-
-      final dir = await getApplicationDocumentsDirectory();
-      final fileName =
-          '${playlist.title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_${DateTime.now().millisecondsSinceEpoch}.json';
-      final filePath = '${dir.path}/$fileName';
-
-      await downloadManager.localPlaylistManager.exportPlaylist(
-        playlist,
-        filePath,
-      );
-
-      Logger.root.info('Playlist exported to: $filePath');
-
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Exported'.i18n),
-            content: Text('Playlist saved to: $fileName'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('OK'.i18n),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      Logger.root.severe('Error exporting playlist: $e');
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Error'.i18n),
-            content: Text('Failed to export playlist: $e'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('OK'.i18n),
-              ),
-            ],
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _deletePlaylist(LocalPlaylist playlist) async {
-    if (!mounted) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete playlist?'.i18n),
-        content: Text('This cannot be undone.'.i18n),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel'.i18n),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('Delete'.i18n),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    try {
-      await downloadManager.localPlaylistManager.deletePlaylist(playlist.id);
-      await _loadPlaylists();
-      widget.onPlaylistsChanged?.call();
-    } catch (e) {
-      // Error deleting playlist
-    }
-  }
-}
-
-class _LocalPlaylistTile extends StatelessWidget {
-  final LocalPlaylist playlist;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-
-  const _LocalPlaylistTile(this.playlist, {this.onTap, this.onLongPress});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      title: Text(playlist.title, maxLines: 1),
-      subtitle: Text('${playlist.trackCount} ' + 'Tracks'.i18n, maxLines: 1),
-      leading: const Icon(Icons.playlist_play),
-      onTap: onTap,
-      onLongPress: onLongPress,
+      onRemove: () {
+        _loadPlaylists();
+        widget.onPlaylistsChanged?.call();
+      },
+      onUpdate: () {
+        _loadPlaylists();
+        widget.onPlaylistsChanged?.call();
+      },
     );
   }
 }
 
-class LocalPlaylistDetailsScreen extends StatefulWidget {
-  final LocalPlaylist playlist;
-  final Function? onChanged;
-
-  const LocalPlaylistDetailsScreen(this.playlist, {this.onChanged, super.key});
-
-  @override
-  State<LocalPlaylistDetailsScreen> createState() =>
-      _LocalPlaylistDetailsScreenState();
-}
-
-class _LocalPlaylistDetailsScreenState
-    extends State<LocalPlaylistDetailsScreen> {
-  late LocalPlaylist playlist;
-  List<Track> tracks = [];
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    playlist = widget.playlist;
-    _loadTracks();
-  }
-
-  Future<void> _loadTracks() async {
-    try {
-      Logger.root.info(
-        'Loading ${playlist.trackIds.length} tracks for playlist',
-      );
-      List<Track> loadedTracks = [];
-
-      try {
-        loadedTracks = await deezerAPI.tracks(playlist.trackIds);
-      } catch (e) {
-        Logger.root.warning('Failed to load tracks: $e');
-      }
-
-      if (mounted) {
-        setState(() {
-          tracks = loadedTracks;
-          loading = false;
-        });
-      }
-    } catch (e) {
-      Logger.root.severe('Error loading tracks: $e');
-      if (mounted) {
-        setState(() => loading = false);
-      }
-    }
-  }
-
-  Future<void> _removeTrack(String trackId) async {
-    try {
-      await downloadManager.localPlaylistManager.removeTrackFromPlaylist(
-        playlist.id,
-        trackId,
-      );
-      setState(() {
-        playlist = LocalPlaylist(
-          id: playlist.id,
-          title: playlist.title,
-          description: playlist.description,
-          trackIds: playlist.trackIds.where((id) => id != trackId).toList(),
-          createdAt: playlist.createdAt,
-          updatedAt: DateTime.now(),
-        );
-        tracks.removeWhere((t) => t.id == trackId);
-      });
-      widget.onChanged?.call();
-    } catch (e) {
-      Logger.root.severe('Error removing track: $e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(playlist.title)),
-      body: loading
-          ? Center(
-              child: CircularProgressIndicator(
-                color: Theme.of(context).primaryColor,
-              ),
-            )
-          : ListView(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (playlist.description != null &&
-                          playlist.description!.isNotEmpty)
-                        Text(
-                          playlist.description!,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${tracks.length} ' + 'Tracks'.i18n,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-                ...List.generate(tracks.length, (index) {
-                  final track = tracks[index];
-                  return TrackTile(
-                    track,
-                    onTap: () {
-                      GetIt.I<AudioPlayerHandler>().playFromTrackList(
-                        tracks,
-                        track.id ?? '',
-                        QueueSource(
-                          text: playlist.title,
-                          source: 'localplaylist',
-                        ),
-                      );
-                    },
-                    onHold: () {
-                      MenuSheet m = MenuSheet();
-                      m.defaultTrackMenu(track, context: context);
-                    },
-                    trailing: IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => _removeTrack(track.id!),
-                    ),
-                    trailingBypass: true,
-                  );
-                }),
-              ],
-            ),
-    );
-  }
-}
-
-class _CreateLocalPlaylistDialog extends StatefulWidget {
+class CreateLocalPlaylistDialog extends StatefulWidget {
   final String? initialTitle;
   final String? initialDescription;
   final Function(String, String?) onSave;
 
-  const _CreateLocalPlaylistDialog({
+  const CreateLocalPlaylistDialog({
+    super.key,
     this.initialTitle,
     this.initialDescription,
     required this.onSave,
   });
 
   @override
-  State<_CreateLocalPlaylistDialog> createState() =>
-      _CreateLocalPlaylistDialogState();
+  State<CreateLocalPlaylistDialog> createState() =>
+      CreateLocalPlaylistDialogState();
 }
 
-class _CreateLocalPlaylistDialogState
-    extends State<_CreateLocalPlaylistDialog> {
+class CreateLocalPlaylistDialogState extends State<CreateLocalPlaylistDialog> {
   late TextEditingController titleController;
   late TextEditingController descriptionController;
 
@@ -625,79 +494,6 @@ class _CreateLocalPlaylistDialogState
             Navigator.pop(context);
           },
           child: Text('Save'.i18n),
-        ),
-      ],
-    );
-  }
-}
-
-class _FilePickerDialog extends StatefulWidget {
-  const _FilePickerDialog();
-
-  @override
-  State<_FilePickerDialog> createState() => _FilePickerDialogState();
-}
-
-class _FilePickerDialogState extends State<_FilePickerDialog> {
-  late TextEditingController _pathController;
-
-  @override
-  void initState() {
-    super.initState();
-    _pathController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _pathController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Import Playlist'.i18n),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('Enter the path to the playlist JSON file:'),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _pathController,
-            decoration: InputDecoration(
-              labelText: 'File path'.i18n,
-              border: const OutlineInputBorder(),
-              hintText: 'C:\\Users\\...\\playlist.json',
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text('Cancel'.i18n),
-        ),
-        TextButton(
-          onPressed: () {
-            final path = _pathController.text.trim();
-            if (path.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Please enter a file path'.i18n)),
-              );
-              return;
-            }
-
-            final file = File(path);
-            if (!file.existsSync()) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('File not found'.i18n)));
-              return;
-            }
-
-            Navigator.pop(context, path);
-          },
-          child: Text('Import'.i18n),
         ),
       ],
     );

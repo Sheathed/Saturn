@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:external_path/external_path.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get_it/get_it.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:json_annotation/json_annotation.dart';
@@ -13,7 +13,9 @@ import 'package:path_provider/path_provider.dart';
 
 import 'api/download.dart';
 import 'main.dart';
+import 'package:audio_service/audio_service.dart';
 import 'service/audio_service.dart';
+import 'ui/app_theme.dart';
 import 'ui/cached_image.dart';
 
 part 'settings.g.dart';
@@ -34,11 +36,17 @@ class Settings {
   @JsonKey(defaultValue: false)
   late bool eastereggsDisabled;
 
-  //Account
+  // Legacy Deezer ARL. Read only so startup can migrate old settings into
+  // platformConfigs['deezer']; never write credentials back to the root.
+  @JsonKey(includeToJson: false)
   String? arl;
   @JsonKey(includeFromJson: false)
   @JsonKey(includeToJson: false)
   bool offlineMode = false;
+
+  @JsonKey(includeFromJson: false)
+  @JsonKey(includeToJson: false)
+  bool preventSave = false;
 
   //Quality
   @JsonKey(defaultValue: AudioQuality.MP3_320)
@@ -69,6 +77,10 @@ class Settings {
   late bool playlistFolder;
   @JsonKey(defaultValue: true)
   late bool downloadLyrics;
+  @JsonKey(defaultValue: false)
+  late bool downloadEnhancedLrc;
+  @JsonKey(defaultValue: false)
+  late bool saveOfflineTrackLyrics;
   @JsonKey(defaultValue: false)
   late bool trackCover;
   @JsonKey(defaultValue: true)
@@ -104,24 +116,32 @@ class Settings {
   late List<String> tags;
 
   //Appearance
-  @JsonKey(defaultValue: Themes.Dark)
+  @JsonKey(defaultValue: Themes.MaterialYouPrimary)
   late Themes theme;
+  @JsonKey(defaultValue: true)
+  late bool darkMode;
   @JsonKey(defaultValue: false)
   late bool useSystemTheme;
-  @JsonKey(defaultValue: true)
+
+  /// Device (Material You) schemes, filled by the app root at runtime.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  ColorScheme? dynamicLightScheme;
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  ColorScheme? dynamicDarkScheme;
+  @JsonKey(defaultValue: false)
   late bool colorGradientBackground;
-  @JsonKey(defaultValue: false)
+  @JsonKey(defaultValue: true)
   late bool blurPlayerBackground;
-  @JsonKey(defaultValue: false)
+  @JsonKey(defaultValue: true)
   late bool themeAdditonalItems;
   @JsonKey(defaultValue: 'Deezer')
   late String font;
   @JsonKey(defaultValue: false)
-  late bool lyricsVisualizer;
-  @JsonKey(defaultValue: false)
   late bool keepSidebarOpen;
   @JsonKey(defaultValue: false)
   late bool keepSidebarClosed;
+  @JsonKey(defaultValue: 256.0)
+  late double sidebarExpandedWidth;
   @JsonKey(defaultValue: null)
   int? displayMode;
 
@@ -132,19 +152,32 @@ class Settings {
   static int _colorToJson(Color c) => c.toARGB32();
   static Color _colorFromJson(int? v) => v == null ? Colors.blue : Color(v);
 
-  @JsonKey(defaultValue: false)
+  @JsonKey(defaultValue: true)
   bool useArtColor = false;
   StreamSubscription? _useArtColorSub;
+  StreamSubscription? _playbackStateSub;
+  Color? _activeArtColor;
+  String? _lastProcessedArtUri;
+
+  /// Effective primary color: uses current album art color only when active,
+  /// preserving [primaryColor] for when player is stopped/idle or art color is off.
+  Color get effectivePrimaryColor => (useArtColor && _activeArtColor != null)
+      ? _activeArtColor!
+      : primaryColor;
 
   //Deezer
   @JsonKey(defaultValue: 'en')
   late String deezerLanguage;
   @JsonKey(defaultValue: 'US')
   late String deezerCountry;
-  @JsonKey(defaultValue: false)
+  @JsonKey(defaultValue: true)
   late bool logListen;
   @JsonKey(defaultValue: null)
   String? proxyAddress;
+  @JsonKey(defaultValue: null)
+  String? proxyUsername;
+  @JsonKey(defaultValue: null)
+  String? proxyPassword;
 
   //LastFM
   @JsonKey(defaultValue: null)
@@ -166,67 +199,47 @@ class Settings {
   @JsonKey(defaultValue: null)
   String? tier;
 
+  //Platform management
+  /// The platform ID the user last selected, e.g. 'deezer', 'soundcloud'.
+  @JsonKey(defaultValue: 'deezer')
+  String activePlatformId = 'deezer';
+
+  /// Per-platform opaque config maps, keyed by platformId.
+  @JsonKey(defaultValue: {})
+  Map<String, dynamic> platformConfigs = {};
+
+  /// Preferred provider and lyric record for previously selected tracks.
+  @JsonKey(defaultValue: {})
+  Map<String, String> lyricsChoices = {};
+
+  /// Preferred content language for SoundCloud requests.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String get soundcloudLanguage =>
+      (platformConfigs['soundcloud'] as Map?)?['language'] as String? ?? 'en';
+  set soundcloudLanguage(String val) {
+    final cfg = platformConfigs['soundcloud'];
+    final map = cfg is Map
+        ? Map<String, dynamic>.from(cfg)
+        : <String, dynamic>{};
+    map['language'] = val;
+    platformConfigs['soundcloud'] = map;
+  }
+
   Settings({this.downloadPath, this.arl});
 
-  // List of rainbow colors
-  static const List<Color> _rainbowColors = [
-    Color(0xFFF44336),
-    Color(0xFFE91E63),
-    Color(0xFF9C27B0),
-    Color(0xFF673AB7),
-    Color(0xFF3F51B5),
-    Color(0xFF2196F3),
-    Color(0xFF03A9F4),
-    Color(0xFF00BCD4),
-    Color(0xFF009688),
-    Color(0xFF4CAF50),
-    Color(0xFF8BC34A),
-    Color(0xFFCDDC39),
-    Color(0xFFFFEB3B),
-    Color(0xFFFFC107),
-    Color(0xFFFF9800),
-    Color(0xFFFF5722),
-    Color(0xFF795548),
-    Color(0xFF607D8B),
-    Color(0xFF9E9E9E),
-  ];
-
-  late Timer _rainbowColorTimer = Timer(Duration.zero, () {});
-  int _currentColorIndex = 0;
-
-  // Method to start cycling rainbow colors
-  void startRainbowColorUpdates() {
-    if (_rainbowColorTimer.isActive) {
-      _rainbowColorTimer.cancel();
-    }
-    _rainbowColorTimer = Timer.periodic(const Duration(milliseconds: 300), (
-      timer,
-    ) {
-      primaryColor = _rainbowColors[_currentColorIndex];
-      _currentColorIndex = (_currentColorIndex + 1) % _rainbowColors.length;
-      updateTheme(); // Make sure this method updates the app theme with the new primary color
-    });
-  }
-
-  // Method to stop cycling rainbow colors
-  void stopRainbowColorUpdates() {
-    if (_rainbowColorTimer.isActive) {
-      _rainbowColorTimer.cancel();
-    }
-  }
-
+  /// The single app-wide theme, built by [AppTheme].
   ThemeData get themeData {
-    //System theme
-    if (useSystemTheme) {
-      if (PlatformDispatcher.instance.platformBrightness == Brightness.light) {
-        return _themeData[Themes.Light]!;
-      } else {
-        if (theme == Themes.Light) return _themeData[Themes.Dark]!;
-        return _themeData[theme]!;
-      }
-    }
-    //Theme
-    return _themeData[theme] ?? ThemeData();
+    return AppTheme.build(
+      theme: theme,
+      primary: effectivePrimaryColor,
+      isDark: isDark,
+      textTheme: textTheme,
+      fontFamily: _fontFamily,
+      outlinedButtonTheme: outlinedButtonTheme,
+      textButtonTheme: textButtonTheme,
+      dynamicLight: dynamicLightScheme,
+      dynamicDark: dynamicDarkScheme,
+    );
   }
 
   //Get all available fonts
@@ -234,23 +247,74 @@ class Settings {
     return ['Deezer', ...GoogleFonts.asMap().keys];
   }
 
+  void initArtColorListener() {
+    _useArtColorSub?.cancel();
+    _playbackStateSub?.cancel();
+    if (!useArtColor) return;
+    if (!GetIt.I.isRegistered<AudioPlayerHandler>()) return;
+
+    final handler = GetIt.I<AudioPlayerHandler>();
+
+    // Check once per song change
+    _useArtColorSub = handler.mediaItem.listen((item) async {
+      if (!useArtColor) return;
+      final uri = item?.artUri?.toString();
+      if (uri == null || uri.isEmpty) {
+        if (_activeArtColor != null || _lastProcessedArtUri != null) {
+          _activeArtColor = null;
+          _lastProcessedArtUri = null;
+          updateTheme();
+        }
+        return;
+      }
+      if (uri == _lastProcessedArtUri) return;
+      _lastProcessedArtUri = uri;
+
+      try {
+        final color = await imagesDatabase.getPrimaryColor(uri);
+        if (useArtColor &&
+            _lastProcessedArtUri == uri &&
+            _activeArtColor != color) {
+          _activeArtColor = color;
+          updateTheme();
+        }
+      } catch (_) {
+        if (_activeArtColor != null) {
+          _activeArtColor = null;
+          updateTheme();
+        }
+      }
+    });
+
+    // When player is inactive/stopped, revert to user's primary color
+    _playbackStateSub = handler.playbackState.listen((state) {
+      if (!useArtColor) return;
+      final isInactive =
+          state.processingState == AudioProcessingState.idle ||
+          state.processingState == AudioProcessingState.completed;
+      if (isInactive) {
+        if (_activeArtColor != null || _lastProcessedArtUri != null) {
+          _activeArtColor = null;
+          _lastProcessedArtUri = null;
+          updateTheme();
+        }
+      }
+    });
+  }
+
   void updateUseArtColor(bool v) {
     useArtColor = v;
+    save();
     if (v) {
-      //On media item change set color
-      _useArtColorSub = GetIt.I<AudioPlayerHandler>().mediaItem.listen((
-        event,
-      ) async {
-        if (event == null || event.artUri == null) return;
-        primaryColor = await imagesDatabase.getPrimaryColor(
-          event.artUri.toString(),
-        );
-        updateTheme();
-      });
+      initArtColorListener();
     } else {
-      //Cancel stream subscription
       _useArtColorSub?.cancel();
       _useArtColorSub = null;
+      _playbackStateSub?.cancel();
+      _playbackStateSub = null;
+      _activeArtColor = null;
+      _lastProcessedArtUri = null;
+      updateTheme();
     }
   }
 
@@ -291,6 +355,7 @@ class Settings {
   }
 
   Future save() async {
+    if (preventSave) return;
     File f = File(await getPath());
     await f.writeAsString(jsonEncode(toJson()));
     await downloadManager.updateServiceSettings();
@@ -313,14 +378,12 @@ class Settings {
 
   //Check if is dark, can't use theme directly, because of system themes, and Theme.of(context).brightness broke
   bool get isDark {
-    if (useSystemTheme) {
-      if (PlatformDispatcher.instance.platformBrightness == Brightness.light) {
-        return false;
-      }
-      return true;
-    }
     if (theme == Themes.Light) return false;
-    return true;
+    if (!themeHasLightVersion(theme)) return true;
+    if (useSystemTheme) {
+      return PlatformDispatcher.instance.platformBrightness != Brightness.light;
+    }
+    return darkMode;
   }
 
   static const deezerBg = Color(0xFF1F1A16);
@@ -339,7 +402,9 @@ class Settings {
       foregroundColor: WidgetStateProperty.all(
         isDark ? Colors.white : Colors.black,
       ),
-      side: WidgetStateProperty.all(BorderSide(color: Colors.grey.shade800)),
+      side: WidgetStateProperty.all(
+        BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+      ),
     ),
   );
   TextButtonThemeData get textButtonTheme => TextButtonThemeData(
@@ -350,287 +415,39 @@ class Settings {
     ),
   );
 
-  Map<Themes, ThemeData> get _themeData => {
-    Themes.Light: ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.light,
-      textTheme: textTheme,
-      fontFamily: _fontFamily,
-      primaryColor: primaryColor,
-      sliderTheme: SliderThemeData(),
-      outlinedButtonTheme: outlinedButtonTheme,
-      textButtonTheme: textButtonTheme,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryColor,
-        brightness: Brightness.light,
-      ),
-      checkboxTheme: CheckboxThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      radioTheme: RadioThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-        trackColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      bottomAppBarTheme: const BottomAppBarThemeData(color: Color(0xfff5f5f5)),
-    ),
-    Themes.Dark: ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      textTheme: textTheme,
-      fontFamily: _fontFamily,
-      primaryColor: primaryColor,
-      sliderTheme: SliderThemeData(),
-      outlinedButtonTheme: outlinedButtonTheme,
-      textButtonTheme: textButtonTheme,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryColor,
-        brightness: Brightness.dark,
-      ),
-      checkboxTheme: CheckboxThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      radioTheme: RadioThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-        trackColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      bottomAppBarTheme: const BottomAppBarThemeData(color: Color(0xff424242)),
-    ),
-    Themes.Deezer: ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      textTheme: textTheme,
-      fontFamily: _fontFamily,
-      primaryColor: primaryColor,
-      sliderTheme: SliderThemeData(),
-      scaffoldBackgroundColor: deezerBg,
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: deezerBottom,
-      ),
-      cardColor: deezerBg,
-      outlinedButtonTheme: outlinedButtonTheme,
-      textButtonTheme: textButtonTheme,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryColor,
-        brightness: Brightness.dark,
-      ).copyWith(surface: deezerBg),
-      checkboxTheme: CheckboxThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      radioTheme: RadioThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-        trackColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      bottomAppBarTheme: const BottomAppBarThemeData(color: deezerBottom),
-    ),
-    Themes.Black: ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      textTheme: textTheme,
-      fontFamily: _fontFamily,
-      primaryColor: primaryColor,
-      scaffoldBackgroundColor: Colors.black,
-      sliderTheme: SliderThemeData(),
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: Colors.black,
-      ),
-      outlinedButtonTheme: outlinedButtonTheme,
-      textButtonTheme: textButtonTheme,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryColor,
-        brightness: Brightness.dark,
-      ).copyWith(surface: Colors.black),
-      checkboxTheme: CheckboxThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      radioTheme: RadioThemeData(
-        fillColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-        trackColor: WidgetStateProperty.resolveWith<Color?>((
-          Set<WidgetState> states,
-        ) {
-          if (states.contains(WidgetState.disabled)) {
-            return null;
-          }
-          if (states.contains(WidgetState.selected)) {
-            return primaryColor;
-          }
-          return null;
-        }),
-      ),
-      bottomAppBarTheme: const BottomAppBarThemeData(color: Colors.black),
-    ),
-  };
-
   Future<String> getPath() async =>
       p.join((await getApplicationSupportDirectory()).path, 'settings.json');
 
   //JSON
-  factory Settings.fromJson(Map<String, dynamic> json) =>
-      _$SettingsFromJson(json);
+  factory Settings.fromJson(Map<String, dynamic> json) {
+    if (json['theme'] == 'Light') {
+      json['theme'] = 'Dark';
+      json['darkMode'] ??= false;
+    }
+    if (json['themeSource'] == 'materialYou') {
+      json['theme'] ??= 'MaterialYou';
+    } else if (json['themeSource'] == 'seed') {
+      json['theme'] ??= 'MaterialYouPrimary';
+    }
+    return _$SettingsFromJson(json);
+  }
   Map<String, dynamic> toJson() => _$SettingsToJson(this);
+}
+
+bool themeHasLightVersion(Themes theme) {
+  switch (theme) {
+    case Themes.Dark:
+    case Themes.MaterialYou:
+    case Themes.MaterialYouPrimary:
+      return true;
+    case Themes.Black:
+    case Themes.Deezer:
+      return false;
+    case Themes.Light:
+      return true;
+  }
 }
 
 enum AudioQuality { MP3_128, MP3_320, FLAC, ASK }
 
-enum Themes { Light, Dark, Deezer, Black }
+enum Themes { Light, Dark, Deezer, Black, MaterialYou, MaterialYouPrimary }

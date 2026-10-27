@@ -22,12 +22,16 @@ Track _$TrackFromJson(Map<String, dynamic> json) => Track(
   artists: (json['artists'] as List<dynamic>?)
       ?.map((e) => Artist.fromJson(e as Map<String, dynamic>))
       .toList(),
+  displayArtistName: json['displayArtistName'] as String?,
   trackNumber: (json['trackNumber'] as num?)?.toInt(),
   offline: json['offline'] as bool?,
+  qualityFormat: json['qualityFormat'] as String?,
+  qualityBitrate: (json['qualityBitrate'] as num?)?.toInt(),
   lyrics: json['lyrics'] == null
       ? null
       : LyricsFull.fromJson(json['lyrics'] as Map<String, dynamic>),
   favorite: json['favorite'] as bool?,
+  pinned: json['pinned'] as bool? ?? false,
   diskNumber: (json['diskNumber'] as num?)?.toInt(),
   explicit: json['explicit'] as bool?,
   addedDate: (json['addedDate'] as num?)?.toInt(),
@@ -39,6 +43,12 @@ Track _$TrackFromJson(Map<String, dynamic> json) => Track(
       : Track.fromJson(json['fallback'] as Map<String, dynamic>),
   playbackDetailsFallback: json['playbackDetailsFallback'] as List<dynamic>?,
   variation: (json['variation'] as num?)?.toInt(),
+  navigableArtists: (json['navigableArtists'] as List<dynamic>?)
+      ?.map((e) => Artist.fromJson(e as Map<String, dynamic>))
+      .toList(),
+  platformId: json['platformId'] as String? ?? 'deezer',
+  unavailable: json['unavailable'] as bool? ?? false,
+  unavailableReason: json['unavailableReason'] as String?,
 );
 
 Map<String, dynamic> _$TrackToJson(Track instance) => <String, dynamic>{
@@ -46,20 +56,28 @@ Map<String, dynamic> _$TrackToJson(Track instance) => <String, dynamic>{
   'title': instance.title,
   'album': instance.album,
   'artists': instance.artists,
+  'displayArtistName': instance.displayArtistName,
   'duration': instance.duration?.inMicroseconds,
   'albumArt': instance.albumArt,
   'trackNumber': instance.trackNumber,
   'offline': instance.offline,
+  'qualityFormat': instance.qualityFormat,
+  'qualityBitrate': instance.qualityBitrate,
   'lyrics': instance.lyrics,
   'favorite': instance.favorite,
+  'pinned': instance.pinned,
   'diskNumber': instance.diskNumber,
   'explicit': instance.explicit,
   'addedDate': instance.addedDate,
   'contributors': instance.contributors,
   'fallback': instance.fallback,
   'variation': instance.variation,
+  'unavailable': instance.unavailable,
+  'unavailableReason': instance.unavailableReason,
+  'platformId': instance.platformId,
   'playbackDetails': instance.playbackDetails,
   'playbackDetailsFallback': instance.playbackDetailsFallback,
+  'navigableArtists': instance.navigableArtists,
 };
 
 Contributors _$ContributorsFromJson(Map<String, dynamic> json) => Contributors(
@@ -106,9 +124,13 @@ Album _$AlbumFromJson(Map<String, dynamic> json) => Album(
   fans: (json['fans'] as num?)?.toInt(),
   offline: json['offline'] as bool?,
   library: json['library'] as bool?,
-  type: $enumDecodeNullable(_$AlbumTypeEnumMap, json['type']),
+  pinned: json['pinned'] as bool? ?? false,
+  type:
+      $enumDecodeNullable(_$AlbumTypeEnumMap, json['type']) ?? AlbumType.ALBUM,
   releaseDate: json['releaseDate'] as String?,
   favoriteDate: json['favoriteDate'] as String?,
+  platformId: json['platformId'] as String? ?? 'deezer',
+  hasIdentifiedAIContent: json['hasIdentifiedAIContent'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$AlbumToJson(Album instance) => <String, dynamic>{
@@ -120,9 +142,12 @@ Map<String, dynamic> _$AlbumToJson(Album instance) => <String, dynamic>{
   'fans': instance.fans,
   'offline': instance.offline,
   'library': instance.library,
+  'pinned': instance.pinned,
   'type': _$AlbumTypeEnumMap[instance.type],
   'releaseDate': instance.releaseDate,
   'favoriteDate': instance.favoriteDate,
+  'hasIdentifiedAIContent': instance.hasIdentifiedAIContent,
+  'platformId': instance.platformId,
 };
 
 const _$AlbumTypeEnumMap = {
@@ -161,17 +186,22 @@ Artist _$ArtistFromJson(Map<String, dynamic> json) => Artist(
           ?.map((e) => Track.fromJson(e as Map<String, dynamic>))
           .toList() ??
       const [],
+  topSongsPlaylistId: json['topSongsPlaylistId'] as String?,
   picture: json['picture'] == null
       ? null
       : ImageDetails.fromJson(json['picture'] as Map<String, dynamic>),
   fans: (json['fans'] as num?)?.toInt(),
   offline: json['offline'] as bool?,
   library: json['library'] as bool?,
+  pinned: json['pinned'] as bool? ?? false,
   radio: json['radio'] as bool?,
+  variation: (json['variation'] as num?)?.toInt(),
+  description: json['description'] as String?,
   favoriteDate: json['favoriteDate'] as String?,
   highlight: json['highlight'] == null
       ? null
       : ArtistHighlight.fromJson(json['highlight'] as Map<String, dynamic>),
+  platformId: json['platformId'] as String? ?? 'deezer',
 );
 
 Map<String, dynamic> _$ArtistToJson(Artist instance) => <String, dynamic>{
@@ -180,13 +210,18 @@ Map<String, dynamic> _$ArtistToJson(Artist instance) => <String, dynamic>{
   'albums': instance.albums,
   'albumCount': instance.albumCount,
   'topTracks': instance.topTracks,
+  'topSongsPlaylistId': instance.topSongsPlaylistId,
   'picture': instance.picture,
   'fans': instance.fans,
   'offline': instance.offline,
   'library': instance.library,
+  'pinned': instance.pinned,
   'radio': instance.radio,
+  'variation': instance.variation,
+  'description': instance.description,
   'favoriteDate': instance.favoriteDate,
   'highlight': instance.highlight,
+  'platformId': instance.platformId,
 };
 
 Playlist _$PlaylistFromJson(Map<String, dynamic> json) => Playlist(
@@ -207,7 +242,17 @@ Playlist _$PlaylistFromJson(Map<String, dynamic> json) => Playlist(
       : User.fromJson(json['user'] as Map<String, dynamic>),
   fans: (json['fans'] as num?)?.toInt(),
   library: json['library'] as bool?,
+  pinned: json['pinned'] as bool? ?? false,
   description: json['description'] as String?,
+  editable: json['editable'] as bool?,
+  mosaicImages: (json['mosaicImages'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  mosaicImageCaptions: (json['mosaicImageCaptions'] as List<dynamic>?)
+      ?.map((e) => e as String?)
+      .toList(),
+  disableDownload: json['disableDownload'] as bool?,
+  platformId: json['platformId'] as String? ?? 'deezer',
 );
 
 Map<String, dynamic> _$PlaylistToJson(Playlist instance) => <String, dynamic>{
@@ -220,7 +265,13 @@ Map<String, dynamic> _$PlaylistToJson(Playlist instance) => <String, dynamic>{
   'user': instance.user,
   'fans': instance.fans,
   'library': instance.library,
+  'pinned': instance.pinned,
   'description': instance.description,
+  'editable': instance.editable,
+  'mosaicImages': instance.mosaicImages,
+  'mosaicImageCaptions': instance.mosaicImageCaptions,
+  'disableDownload': instance.disableDownload,
+  'platformId': instance.platformId,
 };
 
 LocalPlaylist _$LocalPlaylistFromJson(Map<String, dynamic> json) =>
@@ -233,6 +284,10 @@ LocalPlaylist _$LocalPlaylistFromJson(Map<String, dynamic> json) =>
           .toList(),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      offline: json['offline'] as bool? ?? false,
+      mosaicImages: (json['mosaicImages'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
     );
 
 Map<String, dynamic> _$LocalPlaylistToJson(LocalPlaylist instance) =>
@@ -243,6 +298,8 @@ Map<String, dynamic> _$LocalPlaylistToJson(LocalPlaylist instance) =>
       'trackIds': instance.trackIds,
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),
+      'offline': instance.offline,
+      'mosaicImages': instance.mosaicImages,
     };
 
 User _$UserFromJson(Map<String, dynamic> json) => User(
@@ -264,6 +321,7 @@ ImageDetails _$ImageDetailsFromJson(Map<String, dynamic> json) => ImageDetails(
   thumbUrl: json['thumbUrl'] as String?,
   type: json['type'] as String?,
   imageHash: json['imageHash'] as String?,
+  caption: json['caption'] as String?,
 );
 
 Map<String, dynamic> _$ImageDetailsToJson(ImageDetails instance) =>
@@ -272,6 +330,7 @@ Map<String, dynamic> _$ImageDetailsToJson(ImageDetails instance) =>
       'thumbUrl': instance.thumbUrl,
       'type': instance.type,
       'imageHash': instance.imageHash,
+      'caption': instance.caption,
     };
 
 FlowImage _$FlowImageFromJson(Map<String, dynamic> json) => FlowImage(
@@ -312,6 +371,8 @@ LyricsClassic _$LyricsClassicFromJson(Map<String, dynamic> json) =>
             .toList(),
         errorMessage: json['errorMessage'] as String?,
         unsyncedLyrics: json['unsyncedLyrics'] as String?,
+        unsyncedTranslatedLyrics: json['unsyncedTranslatedLyrics'] as String?,
+        unsyncedRomanizedLyrics: json['unsyncedRomanizedLyrics'] as String?,
       )
       ..isExplicit = json['isExplicit'] as bool?
       ..copyright = json['copyright'] as String?;
@@ -323,6 +384,8 @@ Map<String, dynamic> _$LyricsClassicToJson(LyricsClassic instance) =>
       'syncedLyrics': instance.syncedLyrics,
       'errorMessage': instance.errorMessage,
       'unsyncedLyrics': instance.unsyncedLyrics,
+      'unsyncedTranslatedLyrics': instance.unsyncedTranslatedLyrics,
+      'unsyncedRomanizedLyrics': instance.unsyncedRomanizedLyrics,
       'isExplicit': instance.isExplicit,
       'copyright': instance.copyright,
     };
@@ -335,6 +398,8 @@ LyricsFull _$LyricsFullFromJson(Map<String, dynamic> json) => LyricsFull(
       .toList(),
   errorMessage: json['errorMessage'] as String?,
   unsyncedLyrics: json['unsyncedLyrics'] as String?,
+  unsyncedTranslatedLyrics: json['unsyncedTranslatedLyrics'] as String?,
+  unsyncedRomanizedLyrics: json['unsyncedRomanizedLyrics'] as String?,
   isExplicit: json['isExplicit'] as bool?,
   copyright: json['copyright'] as String?,
 );
@@ -346,9 +411,23 @@ Map<String, dynamic> _$LyricsFullToJson(LyricsFull instance) =>
       'syncedLyrics': instance.syncedLyrics,
       'errorMessage': instance.errorMessage,
       'unsyncedLyrics': instance.unsyncedLyrics,
+      'unsyncedTranslatedLyrics': instance.unsyncedTranslatedLyrics,
+      'unsyncedRomanizedLyrics': instance.unsyncedRomanizedLyrics,
       'isExplicit': instance.isExplicit,
       'copyright': instance.copyright,
     };
+
+LyricWord _$LyricWordFromJson(Map<String, dynamic> json) => LyricWord(
+  offset: Duration(microseconds: (json['offset'] as num).toInt()),
+  duration: Duration(microseconds: (json['duration'] as num).toInt()),
+  text: json['text'] as String,
+);
+
+Map<String, dynamic> _$LyricWordToJson(LyricWord instance) => <String, dynamic>{
+  'offset': instance.offset.inMicroseconds,
+  'duration': instance.duration.inMicroseconds,
+  'text': instance.text,
+};
 
 SynchronizedLyric _$SynchronizedLyricFromJson(Map<String, dynamic> json) =>
     SynchronizedLyric(
@@ -359,7 +438,12 @@ SynchronizedLyric _$SynchronizedLyricFromJson(Map<String, dynamic> json) =>
           ? null
           : Duration(microseconds: (json['duration'] as num).toInt()),
       text: json['text'] as String?,
+      translatedText: json['translatedText'] as String?,
+      romanizedText: json['romanizedText'] as String?,
       lrcTimestamp: json['lrcTimestamp'] as String?,
+      words: (json['words'] as List<dynamic>?)
+          ?.map((e) => LyricWord.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
 
 Map<String, dynamic> _$SynchronizedLyricToJson(SynchronizedLyric instance) =>
@@ -367,13 +451,19 @@ Map<String, dynamic> _$SynchronizedLyricToJson(SynchronizedLyric instance) =>
       'offset': instance.offset?.inMicroseconds,
       'duration': instance.duration?.inMicroseconds,
       'text': instance.text,
+      'translatedText': instance.translatedText,
+      'romanizedText': instance.romanizedText,
       'lrcTimestamp': instance.lrcTimestamp,
+      'words': instance.words,
     };
 
 QueueSource _$QueueSourceFromJson(Map<String, dynamic> json) => QueueSource(
   id: json['id'] as String?,
   text: json['text'] as String?,
   source: json['source'] as String?,
+  sort: json['sort'] == null
+      ? null
+      : Sorting.fromJson(json['sort'] as Map<String, dynamic>),
 );
 
 Map<String, dynamic> _$QueueSourceToJson(QueueSource instance) =>
@@ -381,6 +471,7 @@ Map<String, dynamic> _$QueueSourceToJson(QueueSource instance) =>
       'id': instance.id,
       'text': instance.text,
       'source': instance.source,
+      'sort': instance.sort,
     };
 
 SmartTrackList _$SmartTrackListFromJson(Map<String, dynamic> json) =>
@@ -397,10 +488,12 @@ SmartTrackList _$SmartTrackListFromJson(Map<String, dynamic> json) =>
           : ImageDetails.fromJson(json['cover'] as Map<String, dynamic>),
       subtitle: json['subtitle'] as String?,
       flowType: json['flowType'] as String?,
+      platformId: json['platformId'] as String? ?? 'deezer',
     );
 
 Map<String, dynamic> _$SmartTrackListToJson(SmartTrackList instance) =>
     <String, dynamic>{
+      'platformId': instance.platformId,
       'id': instance.id,
       'title': instance.title,
       'subtitle': instance.subtitle,
@@ -433,6 +526,8 @@ HomePageSection _$HomePageSectionFromJson(Map<String, dynamic> json) =>
           ? const []
           : HomePageSection._homePageItemFromJson(json['items'] as List),
       title: json['title'] as String?,
+      subtitle: json['subtitle'] as String?,
+      image: json['image'] as String?,
       pagePath: json['pagePath'] as String?,
       hasMore: json['hasMore'] as bool?,
     );
@@ -440,6 +535,8 @@ HomePageSection _$HomePageSectionFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$HomePageSectionToJson(HomePageSection instance) =>
     <String, dynamic>{
       'title': instance.title,
+      'subtitle': instance.subtitle,
+      'image': instance.image,
       'layout': _$HomePageSectionLayoutEnumMap[instance.layout],
       'pagePath': instance.pagePath,
       'hasMore': instance.hasMore,
@@ -449,6 +546,12 @@ Map<String, dynamic> _$HomePageSectionToJson(HomePageSection instance) =>
 const _$HomePageSectionLayoutEnumMap = {
   HomePageSectionLayout.ROW: 'ROW',
   HomePageSectionLayout.GRID: 'GRID',
+  HomePageSectionLayout.GRID_ROW: 'GRID_ROW',
+  HomePageSectionLayout.BROWSE_CATEGORIES: 'BROWSE_CATEGORIES',
+  HomePageSectionLayout.FEATURED_LIST: 'FEATURED_LIST',
+  HomePageSectionLayout.PILLS: 'PILLS',
+  HomePageSectionLayout.STATS_CHART: 'STATS_CHART',
+  HomePageSectionLayout.QUICK_ACCESS: 'QUICK_ACCESS',
 };
 
 DeezerChannel _$DeezerChannelFromJson(Map<String, dynamic> json) =>
@@ -536,24 +639,33 @@ const _$SortSourceTypesEnumMap = {
 
 Show _$ShowFromJson(Map<String, dynamic> json) => Show(
   name: json['name'] as String?,
+  creator: json['creator'] as String?,
   description: json['description'] as String?,
   art: json['art'] == null
       ? null
       : ImageDetails.fromJson(json['art'] as Map<String, dynamic>),
   id: json['id'] as String?,
+  platformId: json['platformId'] as String? ?? 'deezer',
+  pinned: json['pinned'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$ShowToJson(Show instance) => <String, dynamic>{
+  'platformId': instance.platformId,
   'name': instance.name,
+  'creator': instance.creator,
   'description': instance.description,
   'art': instance.art,
   'id': instance.id,
+  'pinned': instance.pinned,
 };
 
 ShowEpisode _$ShowEpisodeFromJson(Map<String, dynamic> json) => ShowEpisode(
   id: json['id'] as String?,
   title: json['title'] as String?,
   description: json['description'] as String?,
+  art: json['art'] == null
+      ? null
+      : ImageDetails.fromJson(json['art'] as Map<String, dynamic>),
   url: json['url'] as String?,
   duration: json['duration'] == null
       ? null
@@ -562,6 +674,11 @@ ShowEpisode _$ShowEpisodeFromJson(Map<String, dynamic> json) => ShowEpisode(
   show: json['show'] == null
       ? null
       : Show.fromJson(json['show'] as Map<String, dynamic>),
+  bookmarkSeconds: (json['bookmarkSeconds'] as num?)?.toInt(),
+  isHeard: json['isHeard'] as bool?,
+  isExplicit: json['isExplicit'] as bool?,
+  progressPercentage: (json['progressPercentage'] as num?)?.toDouble(),
+  pinned: json['pinned'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$ShowEpisodeToJson(ShowEpisode instance) =>
@@ -569,8 +686,14 @@ Map<String, dynamic> _$ShowEpisodeToJson(ShowEpisode instance) =>
       'id': instance.id,
       'title': instance.title,
       'description': instance.description,
+      'art': instance.art,
       'url': instance.url,
       'duration': instance.duration?.inMicroseconds,
       'publishedDate': instance.publishedDate,
       'show': instance.show,
+      'bookmarkSeconds': instance.bookmarkSeconds,
+      'isHeard': instance.isHeard,
+      'isExplicit': instance.isExplicit,
+      'progressPercentage': instance.progressPercentage,
+      'pinned': instance.pinned,
     };

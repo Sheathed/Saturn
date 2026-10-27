@@ -23,7 +23,7 @@ subprojects {
 
             def javaVersion = JavaVersion.VERSION_17
             android {
-                def androidApiVersion = 36
+                def androidApiVersion = 37
                 compileSdk androidApiVersion
                 
                 ndkVersion = "29.0.14206865" 

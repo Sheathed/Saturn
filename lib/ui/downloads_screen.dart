@@ -2,18 +2,54 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:filesize/filesize.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:silky_scroll/silky_scroll.dart';
+import 'package:saturn/ui/smooth_scroll_config.dart';
 
 import '../api/download.dart';
+import '../settings.dart';
 import '../translations.i18n.dart';
 import 'elements.dart';
 import 'cached_image.dart';
+import 'tiles.dart';
 
 final _log = Logger('DownloadsScreen');
+
+class _DownloadsEmptyState extends StatelessWidget {
+  const _DownloadsEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.download_for_offline_outlined,
+              size: 44,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'No downloads yet'.i18n,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class DownloadsScreen extends StatefulWidget {
   const DownloadsScreen({super.key});
@@ -27,6 +63,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   StreamSubscription? _stateSubscription;
   Timer? _reloadDebouncer;
   bool _needsReload = false;
+  final Map<int, Map<String, dynamic>> _latestActiveProgress = {};
 
   //Sublists
   List<Download> get downloading => downloads
@@ -42,8 +79,11 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       .where(
         (d) =>
             d.state == DownloadState.ERROR ||
-            d.state == DownloadState.DEEZER_ERROR,
+            d.state == DownloadState.PLATFORM_ERROR,
       )
+      .toList();
+  List<Download> get unavailable => downloads
+      .where((d) => d.state == DownloadState.UNAVAILABLE)
       .toList();
   List<Download> get finished =>
       downloads.where((d) => d.state == DownloadState.DONE).toList();
@@ -53,11 +93,22 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     //Load downloads
     List<Download> d = await downloadManager.getDownloads();
     _log.info(
-      '[DownloadsScreen] Loaded ${d.length} downloads - downloading: ${d.where((x) => x.state == DownloadState.DOWNLOADING).length}, queued: ${d.where((x) => x.state == DownloadState.NONE).length}, failed: ${d.where((x) => x.state == DownloadState.ERROR || x.state == DownloadState.DEEZER_ERROR).length}, done: ${d.where((x) => x.state == DownloadState.DONE).length}',
+      '[DownloadsScreen] Loaded ${d.length} downloads - downloading: ${d.where((x) => x.state == DownloadState.DOWNLOADING).length}, queued: ${d.where((x) => x.state == DownloadState.NONE).length}, failed: ${d.where((x) => x.state == DownloadState.ERROR || x.state == DownloadState.PLATFORM_ERROR).length}, done: ${d.where((x) => x.state == DownloadState.DONE).length}',
     );
-    setState(() {
-      downloads = d;
-    });
+    if (!mounted) return;
+    // A database reload can race with progress events and return an older
+    // snapshot. Keep the live worker values for downloads that are still active.
+    for (final download in d) {
+      final id = download.id;
+      if (id == null) continue;
+      final live = _latestActiveProgress[id];
+      if (live != null &&
+          (live['state'] == DownloadState.DOWNLOADING.index ||
+              live['state'] == DownloadState.POST.index)) {
+        download.updateFromJson(live);
+      }
+    }
+    setState(() => downloads = d);
   }
 
   @override
@@ -79,20 +130,31 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           // We just need to trigger a rebuild
         });
       }
-      //Progress change
       if (e['type'] == 'progress') {
         // Progress is already throttled at service level (500ms)
         // Just update data and UI together
         setState(() {
           for (Map su in e['data']) {
-            downloads
-                .firstWhere((d) => d.id == su['id'], orElse: () => Download())
-                .updateFromJson(su);
+            _log.info('UI received progress for id ${su['id']}: received=${su['received']}, total=${su['filesize']}, state=${su['state']}');
+            final id = su['id'];
+            if (id is int &&
+                (su['state'] == DownloadState.DOWNLOADING.index ||
+                    su['state'] == DownloadState.POST.index)) {
+              _latestActiveProgress[id] = Map<String, dynamic>.from(su);
+            }
+            int idx = downloads.indexWhere((d) => d.id == su['id']);
+            if (idx != -1) {
+              downloads[idx].updateFromJson(su);
+            } else {
+              downloads.add(Download.fromJson(su));
+            }
           }
         });
       }
       //Download completed - reload to show in "Done" section
       if (e['type'] == 'downloadComplete' || e['type'] == 'downloadError') {
+        final id = e['id'];
+        if (id is int) _latestActiveProgress.remove(id);
         _debouncedReload();
       }
 
@@ -139,9 +201,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             icon: Icon(Icons.delete_sweep, semanticLabel: 'Clear all'.i18n),
             onPressed: () async {
               await downloadManager.removeDownloads(DownloadState.ERROR);
-              await downloadManager.removeDownloads(DownloadState.DEEZER_ERROR);
+              await downloadManager.removeDownloads(
+                DownloadState.PLATFORM_ERROR,
+              );
               await downloadManager.removeDownloads(DownloadState.DONE);
               await downloadManager.removeDownloads(DownloadState.NONE);
+              await downloadManager.removeDownloads(
+                DownloadState.UNAVAILABLE,
+              );
               await _load();
             },
           ),
@@ -171,112 +238,138 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           ),
         ],
       ),
-      body: ListView(
-        children: [
-          //Now downloading
-          Container(height: 2.0),
-          Column(
-            children: List.generate(
-              downloading.length,
-              (int i) =>
-                  DownloadTile(downloading[i], updateCallback: () => _load()),
-            ),
-          ),
-          Container(height: 8.0),
+      body: downloads.isEmpty
+          ? const _DownloadsEmptyState()
+          : SilkyListView(
+              silkyConfig: silkyScrollConfig,
+              children: [
+                //Now downloading
+                Container(height: 2.0),
+                Column(
+                  children: List.generate(
+                    downloading.length,
+                    (int i) => DownloadTile(
+                      downloading[i],
+                      updateCallback: () => _load(),
+                    ),
+                  ),
+                ),
+                Container(height: 8.0),
 
-          //Queued
-          if (queued.isNotEmpty)
-            Text(
-              'Queued'.i18n,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 24.0,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          Column(
-            children: List.generate(
-              queued.length,
-              (int i) => DownloadTile(queued[i], updateCallback: () => _load()),
-            ),
-          ),
-          if (queued.isNotEmpty)
-            ListTile(
-              title: Text('Clear queue'.i18n),
-              leading: const Icon(Icons.delete),
-              onTap: () async {
-                await downloadManager.removeDownloads(DownloadState.NONE);
-                await _load();
-              },
-            ),
+                //Queued
+                if (queued.isNotEmpty)
+                  Text(
+                    'Queued'.i18n,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 24.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                Column(
+                  children: List.generate(
+                    queued.length,
+                    (int i) => DownloadTile(queued[i], updateCallback: () => _load()),
+                  ),
+                ),
+                if (queued.isNotEmpty)
+                  ListTile(
+                    title: Text('Clear queue'.i18n),
+                    leading: const Icon(Icons.delete),
+                    onTap: () async {
+                      await downloadManager.removeDownloads(DownloadState.NONE);
+                      await _load();
+                    },
+                  ),
 
-          //Failed
-          if (failed.isNotEmpty)
-            Text(
-              'Failed'.i18n,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 24.0,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          Column(
-            children: List.generate(
-              failed.length,
-              (int i) => DownloadTile(failed[i], updateCallback: () => _load()),
-            ),
-          ),
-          //Restart failed
-          if (failed.isNotEmpty)
-            ListTile(
-              title: Text('Restart failed downloads'.i18n),
-              leading: const Icon(Icons.restore),
-              onTap: () async {
-                await downloadManager.retryDownloads();
-                await _load();
-              },
-            ),
-          if (failed.isNotEmpty)
-            ListTile(
-              title: Text('Clear failed'.i18n),
-              leading: const Icon(Icons.delete),
-              onTap: () async {
-                await downloadManager.removeDownloads(DownloadState.ERROR);
-                await downloadManager.removeDownloads(
-                  DownloadState.DEEZER_ERROR,
-                );
-                await _load();
-              },
-            ),
+                // Keep skipped tracks visible so users can see why they were
+                // not downloaded.
+                if (unavailable.isNotEmpty)
+                  Text(
+                    'Track is unavailable'.i18n,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 24.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                Column(
+                  children: List.generate(
+                    unavailable.length,
+                    (int i) => DownloadTile(
+                      unavailable[i],
+                      updateCallback: () => _load(),
+                    ),
+                  ),
+                ),
 
-          //Finished
-          if (finished.isNotEmpty)
-            Text(
-              'Done'.i18n,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 24.0,
-                fontWeight: FontWeight.bold,
-              ),
+                //Failed
+                if (failed.isNotEmpty)
+                  Text(
+                    'Failed'.i18n,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 24.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                Column(
+                  children: List.generate(
+                    failed.length,
+                    (int i) => DownloadTile(failed[i], updateCallback: () => _load()),
+                  ),
+                ),
+                //Restart failed
+                if (failed.isNotEmpty)
+                  ListTile(
+                    title: Text('Restart failed downloads'.i18n),
+                    leading: const Icon(Icons.restore),
+                    onTap: () async {
+                      await downloadManager.retryDownloads();
+                      await _load();
+                    },
+                  ),
+                if (failed.isNotEmpty)
+                  ListTile(
+                    title: Text('Clear failed'.i18n),
+                    leading: const Icon(Icons.delete),
+                    onTap: () async {
+                      await downloadManager.removeDownloads(DownloadState.ERROR);
+                      await downloadManager.removeDownloads(
+                        DownloadState.PLATFORM_ERROR,
+                      );
+                      await _load();
+                    },
+                  ),
+
+                //Finished
+                if (finished.isNotEmpty)
+                  Text(
+                    'Done'.i18n,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 24.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                Column(
+                  children: List.generate(
+                    finished.length,
+                    (int i) =>
+                        DownloadTile(finished[i], updateCallback: () => _load()),
+                  ),
+                ),
+                if (finished.isNotEmpty)
+                  ListTile(
+                    title: Text('Clear downloads history'.i18n),
+                    leading: const Icon(Icons.delete),
+                    onTap: () async {
+                      await downloadManager.removeDownloads(DownloadState.DONE);
+                      await _load();
+                    },
+                  ),
+              ],
             ),
-          Column(
-            children: List.generate(
-              finished.length,
-              (int i) =>
-                  DownloadTile(finished[i], updateCallback: () => _load()),
-            ),
-          ),
-          if (finished.isNotEmpty)
-            ListTile(
-              title: Text('Clear downloads history'.i18n),
-              leading: const Icon(Icons.delete),
-              onTap: () async {
-                await downloadManager.removeDownloads(DownloadState.DONE);
-                await _load();
-              },
-            ),
-        ],
-      ),
     );
   }
 }
@@ -303,20 +396,31 @@ class DownloadTile extends StatelessWidget {
     if (download.state == DownloadState.POST) {
       return 'Post processing...'.i18n;
     }
+    if (download.state == DownloadState.UNAVAILABLE ||
+        download.unavailable) {
+      return 'Track is unavailable'.i18n;
+    }
 
-    //Quality
-    if (download.quality == 9) out += 'FLAC';
-    if (download.quality == 3) out += 'MP3 320kbps';
-    if (download.quality == 1) out += 'MP3 128kbps';
+    if (download.quality == AudioQuality.MP3_128.index) {
+      out += 'Low Quality'.i18n;
+    } else if (download.quality == AudioQuality.MP3_320.index) {
+      out += 'Medium Quality'.i18n;
+    } else if (download.quality == AudioQuality.FLAC.index) {
+      out += 'High Quality'.i18n;
+    }
 
     //Downloading show progress
     if (download.state == DownloadState.DOWNLOADING) {
-      if (download.received != null && download.filesize != null) {
+      if (download.received != null &&
+          download.filesize != null &&
+          download.filesize! > 0) {
         out +=
             ' | ${filesize(download.received, 2)} / ${filesize(download.filesize, 2)}';
         double progress =
             download.received!.toDouble() / download.filesize!.toDouble();
         out += ' ${(progress * 100.0).toStringAsFixed(2)}%';
+      } else if ((download.received ?? 0) > 0) {
+        out += ' | ${filesize(download.received, 2)}';
       }
     }
 
@@ -389,7 +493,9 @@ class DownloadTile extends StatelessWidget {
         return const Icon(Icons.miscellaneous_services);
       case DownloadState.DONE:
         return const Icon(Icons.done, color: Colors.green);
-      case DownloadState.DEEZER_ERROR:
+      case DownloadState.UNAVAILABLE:
+        return const Icon(Icons.block);
+      case DownloadState.PLATFORM_ERROR:
         return const Icon(Icons.error, color: Colors.blue);
       case DownloadState.ERROR:
         return const Icon(Icons.error, color: Colors.red);
@@ -400,35 +506,71 @@ class DownloadTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        ListTile(
-          title: Text(download.title!),
-          leading: CachedImage(url: download.image!),
-          subtitle: Text(
-            subtitle(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: trailing(),
-          onTap: () => onClick(context),
-        ),
-        if (download.state == DownloadState.DOWNLOADING)
-          LinearProgressIndicator(
-            value: download.progress,
-            color: Theme.of(context).primaryColor,
-            backgroundColor: Theme.of(
+    final isUnavailable =
+        download.unavailable || download.state == DownloadState.UNAVAILABLE;
+    return Opacity(
+      opacity: isUnavailable ? 0.5 : 1,
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(download.title!),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                alignment: Alignment.center,
+                children: [
+                  SizedBox.square(
+                    dimension: 48,
+                    child: CachedImage(
+                      url: download.image!,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  if (isUnavailable)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black45,
+                        child: const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 32,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            subtitle: platformSubtitle(
               context,
-            ).primaryColor.withValues(alpha: 0.1),
+              subtitle(),
+              download.platformId ?? 'deezer',
+            ),
+            trailing: trailing(),
+            onTap: () => onClick(context),
           ),
-        if (download.state == DownloadState.POST)
-          LinearProgressIndicator(
-            color: Theme.of(context).primaryColor,
-            backgroundColor: Theme.of(
-              context,
-            ).primaryColor.withValues(alpha: 0.1),
-          ),
-      ],
+          if (download.state == DownloadState.DOWNLOADING)
+            LinearProgressIndicator(
+              // The worker reports zero bytes while it resolves track metadata
+              // and the stream URL. Show activity during that phase instead of a
+              // determinate bar that appears frozen at zero.
+              value: (download.filesize ?? 0) > 0 ? download.progress : null,
+              color: Theme.of(context).primaryColor,
+              backgroundColor: Theme.of(
+                context,
+              ).primaryColor.withValues(alpha: 0.1),
+            ),
+          if (download.state == DownloadState.POST)
+            LinearProgressIndicator(
+              color: Theme.of(context).primaryColor,
+              backgroundColor: Theme.of(
+                context,
+              ).primaryColor.withValues(alpha: 0.1),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -539,7 +681,8 @@ class _DownloadLogViewerState extends State<DownloadLogViewer> {
           ),
         ],
       ),
-      body: ListView.builder(
+      body: SilkyListView.builder(
+        silkyConfig: silkyScrollConfig,
         itemCount: data.length,
         itemBuilder: (context, i) {
           return Padding(

@@ -1,12 +1,22 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:get_it/get_it.dart';
+import 'package:logging/logging.dart';
 import 'package:saturn/service/audio_service.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 class TrayService {
   static TrayService? _instance;
+
+  final Logger _logger = Logger('TrayService');
   bool _isInitialized = false;
+  TrayIcon? _trayIcon;
+  Image? _icon;
+  Menu? _contextMenu;
+  final List<MenuItem> _menuItems = [];
+  ListenerId? _trayListenerId;
 
   TrayService._();
 
@@ -16,87 +26,135 @@ class TrayService {
   }
 
   Future<void> initialize() async {
-    if (_isInitialized) return;
+    if (_isInitialized ||
+        (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux)) {
+      return;
+    }
 
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      // Set up tray manager event handlers
-      trayManager.addListener(_TrayListener());
+    try {
+      final trayIcon = TrayIcon.create();
+      if (trayIcon == null) {
+        throw StateError('The native tray icon could not be created.');
+      }
 
-      // Load the app icon for the tray
       final iconPath = Platform.isWindows
           ? 'assets/icon-taskbar-white.ico'
           : 'assets/icon-taskbar-white.png';
-      await trayManager.setIcon(iconPath);
+      final icon = ImageAsset.fromAsset(iconPath);
+      if (icon == null) {
+        trayIcon.dispose();
+        throw ArgumentError.value(iconPath, 'iconPath', 'Unable to load tray icon');
+      }
 
-      // Create the tray menu
+      _trayIcon = trayIcon;
+      _icon = icon;
+      trayIcon
+        ..icon = icon
+        ..setTooltip('Saturn')
+        ..setVisible(true);
+
+      _trayListenerId = trayIcon.addListener(_onTrayEvent);
       await _createMenu();
-
       _isInitialized = true;
+    } catch (error, stackTrace) {
+      await _disposeNativeObjects();
+      _logger.warning('Could not initialize the system tray.', error, stackTrace);
     }
   }
 
   Future<void> _createMenu() async {
-    Menu menu = Menu(
-      items: [
-        MenuItem(
-          label: 'Restore',
-          onClick: (_) async {
-            await windowManager.show();
-            await windowManager.focus();
-          },
-        ),
-        MenuItem(
-          label: 'Play',
-          onClick: (_) async {
-            GetIt.I<AudioPlayerHandler>().play();
-          },
-        ),
-        MenuItem(
-          label: 'Next',
-          onClick: (_) async {
-            GetIt.I<AudioPlayerHandler>().skipToNext();
-          },
-        ),
-        MenuItem(
-          label: 'Previous',
-          onClick: (_) async {
-            GetIt.I<AudioPlayerHandler>().skipToPrevious();
-          },
-        ),
-        MenuItem(
-          label: 'Exit',
-          onClick: (_) async {
-            await trayManager.destroy();
-            exit(0);
-          },
-        ),
-      ],
-    );
+    final trayIcon = _trayIcon;
+    if (trayIcon == null) return;
 
-    await trayManager.setContextMenu(menu);
+    final menu = Menu.create();
+    if (menu == null) throw StateError('The native tray menu could not be created.');
+
+    MenuItem createItem(String label, Future<void> Function() onClick) {
+      final item = MenuItem.createWithLabelAndType(label, MenuItemType.normal);
+      if (item == null) throw StateError('Could not create tray menu item: $label');
+      item.addListener((event) {
+        if (event is MenuItemClickedEvent) unawaited(onClick());
+      });
+      _menuItems.add(item);
+      menu.addItem(item);
+      return item;
+    }
+
+    createItem('Open Saturn', _showWindow);
+    createItem('Play/Pause', () async {
+      final player = GetIt.I<AudioPlayerHandler>();
+      if (player.player.playing) {
+        await player.pause();
+      } else {
+        await player.play();
+      }
+    });
+    createItem('Next', () async {
+      await GetIt.I<AudioPlayerHandler>().skipToNext();
+    });
+    createItem('Previous', () async {
+      await GetIt.I<AudioPlayerHandler>().skipToPrevious();
+    });
+    menu.addSeparator();
+    createItem('Exit', () async {
+      await destroy();
+      exit(0);
+    });
+
+    trayIcon.setContextMenu(menu);
+    // Linux StatusNotifierItem hosts won't publish the menu when its trigger
+    // is left at `none`. Configure it after attaching the menu as well.
+    trayIcon.setContextMenuTrigger(ContextMenuTrigger.rightClicked);
+    _contextMenu = menu;
   }
 
-  Future<void> destroy() async {
-    if (_isInitialized) {
-      await trayManager.destroy();
-      _isInitialized = false;
+  void _onTrayEvent(TrayIconEvent event) {
+    switch (event) {
+      case TrayIconClickedEvent():
+        // The native Linux StatusNotifierItem protocol does not report icon
+        // clicks to the app. Linux users can choose Open Saturn from its menu.
+        unawaited(_showWindow());
+      case TrayIconRightClickedEvent():
+        // The attached menu opens natively through the configured trigger.
+        break;
+      case TrayIconDoubleClickedEvent():
+        unawaited(_showWindow());
     }
   }
-}
 
-class _TrayListener with TrayListener {
-  @override
-  void onTrayIconMouseDown() async {
-    // Show window on tray icon click
+  Future<void> _showWindow() async {
+    if (await windowManager.isMinimized()) {
+      await windowManager.restore();
+    }
     await windowManager.show();
     await windowManager.focus();
   }
 
-  @override
-  void onTrayIconRightMouseDown() async {
-    await trayManager.popUpContextMenu();
+  Future<void> _disposeNativeObjects() async {
+    final trayIcon = _trayIcon;
+    final listenerId = _trayListenerId;
+    if (trayIcon != null && listenerId != null) {
+      trayIcon.removeListener(listenerId);
+    }
+    _trayListenerId = null;
+
+    // Release the icon after the tray has stopped referencing it.
+    trayIcon?.dispose();
+    _trayIcon = null;
+    _icon?.dispose();
+    _icon = null;
+
+    for (final item in _menuItems) {
+      item.dispose();
+    }
+    _menuItems.clear();
+    _contextMenu?.dispose();
+    _contextMenu = null;
   }
 
-  @override
-  void onTrayMenuItemClick(MenuItem menuItem) {}
+  Future<void> destroy() async {
+    if (!_isInitialized && _trayIcon == null) return;
+    await _disposeNativeObjects();
+    _isInitialized = false;
+  }
 }

@@ -1,6 +1,12 @@
 name: Build - Saturn
 
 on:
+  workflow_dispatch:
+    inputs:
+      canary:
+        description: Build and publish a canary prerelease
+        type: boolean
+        default: false
   push:
     branches:
       - "**"
@@ -9,52 +15,74 @@ on:
       - 'README.md'
 
 env:
+  FLUTTER_VERSION: "3.47.0"
+  FASTFORGE_VERSION: "0.6.12"
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  BUILD_FLAVOR: ${{ inputs.canary && 'canary' || 'stable' }}
+  RELEASE_SUFFIX: ${{ inputs.canary && '-canary' || '' }}
+
+concurrency:
+  group: saturn-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   VERSION_BUMP:
     name: Bump Version
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.build_metadata.outputs.commit }}
+      release_version: ${{ steps.build_metadata.outputs.release_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Check if version bump should be skipped
         id: check_skip
         run: |
           COMMIT_MSG=$(git log -1 --pretty=%B)
           echo "Commit message: $COMMIT_MSG"
-          if [[ "$COMMIT_MSG" == *"--no-bump"* ]]; then
+          if [[ "$BUILD_FLAVOR" == "canary" || "$COMMIT_MSG" == *"--no-bump"* ]]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Skipping version bump"
           else
             echo "skip=false" >> $GITHUB_OUTPUT
             echo "Proceeding with version bump"
           fi
-      
+
       - name: Bump version
         if: steps.check_skip.outputs.skip != 'true'
         run: |
           CURRENT_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
           echo "Current version: $CURRENT_VERSION"
-          
+
           IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
           NEW_PATCH=$((patch + 1))
           NEW_VERSION="$major.$minor.$NEW_PATCH"
           echo "New version: $NEW_VERSION"
-          
+
           sed -i "s/^version: .*/version: $NEW_VERSION/" pubspec.yaml
-          
+
           echo "Updated pubspec.yaml:"
           grep '^version:' pubspec.yaml
-      
+
       - name: Commit version bump
         if: steps.check_skip.outputs.skip != 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: Automated Version Bump
-          push_options: '--force'
           skip_dirty_check: true
+
+      - name: Record build metadata
+        id: build_metadata
+        run: |
+          VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d'+' -f1 | tr -d '\r')
+          if [[ "$BUILD_FLAVOR" == "canary" ]]; then
+            VERSION="${VERSION}-canary.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "release_version=$VERSION" >> "$GITHUB_OUTPUT"
 
   LINUX:
     name: Linux
@@ -65,59 +93,66 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
-      
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.44.0"
-          cache: true
+          ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
-      - name: Create secret files
-        run: |
-          mkdir -p lib/utils
-          mkdir -p android
-          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
-          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
-          echo "Created files:"
-          ls -la lib/ lib/utils android/ android/app/
-      
-      - name: Install Flutter dependencies
-        run: flutter pub get
-      
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-3-dev \
+            libx11-dev \
+            libxi-dev \
             libayatana-appindicator3-dev \
-            libmpv-dev
-      
+            libmpv-dev \
+            libwebkit2gtk-4.1-dev \
+            libfuse2 \
+            rpm \
+            patchelf
+          pkg-config --modversion gtk+-3.0 x11 xi webkit2gtk-4.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Generate environment code
+        env:
+          ENV_FILE: ${{ secrets.env }}
+        run: dart run tool/ci/prepare_env.dart
+
+      - name: Generate application code
+        run: dart run build_runner build
+
       - name: Set glibc compatibility
         run: |
           # Build with maximum glibc compatibility
           export GLIBC_COMPATIBILITY=1
           export CFLAGS="-march=x86-64 -mtune=generic"
           export CXXFLAGS="-march=x86-64 -mtune=generic"
-      
+
       - name: Install dependencies for AppImage
         run: |
           sudo apt install -y locate
           wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x appimagetool
           sudo mv appimagetool /usr/local/bin/
-      
+
       - name: Install Fastforge
-        run: dart pub global activate fastforge
-        
+        run: dart pub global activate fastforge "$FASTFORGE_VERSION"
+
       - name: Build and release
-        run: fastforge release --name linux
+        # These names select the matching release entries in distribute_options.yaml.
+        run: dart pub global run fastforge:main release --name "${{ inputs.canary && 'linux-canary' || 'linux' }}"
 
       - name: Replace AppRun
         run: |
@@ -127,26 +162,26 @@ jobs:
             echo "No AppImage found, skipping AppRun replacement"
             exit 0
           fi
-          
+
           # Convert to absolute path
           APPIMAGE_FILE="$(cd "$(dirname "$APPIMAGE_FILE")" && pwd)/$(basename "$APPIMAGE_FILE")"
           echo "Found AppImage: $APPIMAGE_FILE"
-          
+
           # Make AppImage executable
           chmod +x "$APPIMAGE_FILE"
-          
+
           # Extract the AppImage
           APPIMAGE_DIR=$(mktemp -d)
           echo "Extracting to: $APPIMAGE_DIR"
           cd "$APPIMAGE_DIR"
           "$APPIMAGE_FILE" --appimage-extract
-          
+
           # Check if extraction was successful
           if [ ! -d squashfs-root ]; then
             echo "Error: AppImage extraction failed"
             exit 1
           fi
-          
+
           # Replace the AppRun script with our distro-agnostic version
           if [ -f squashfs-root/AppRun ]; then
             cp "$GITHUB_WORKSPACE/linux/packaging/appimage/AppRun" squashfs-root/AppRun
@@ -155,7 +190,7 @@ jobs:
           else
             echo "Warning: AppRun not found in extracted AppImage"
           fi
-          
+
           # Rebuild the AppImage
           cd "$GITHUB_WORKSPACE"
           appimagetool -n "$APPIMAGE_DIR/squashfs-root" "$APPIMAGE_FILE"
@@ -165,8 +200,9 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ runner.os }}
+          name: dist-${{ runner.os }}${{ env.RELEASE_SUFFIX }}
           path: dist/
+          if-no-files-found: error
 
   ANDROID:
     name: Android
@@ -177,28 +213,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
-      
+          ref: ${{ needs.VERSION_BUMP.outputs.commit }}
+
+      - name: Install Linux dependencies for Dart hooks
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libx11-dev \
+            libxi-dev
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.0"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      - name: Create secret files
+      - name: Create Android signing files
+        env:
+          KEY_PROPERTIES: ${{ secrets.keyproperties }}
+          UPLOAD_KEYSTORE: ${{ secrets.uploadkeystore }}
         run: |
-          mkdir -p lib/utils
-          mkdir -p android
-          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
-          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
-          echo "${{ secrets.keyproperties }}" | tr -d '\r' > android/key.properties
-          echo "${{ secrets.uploadkeystore }}" | base64 -d > android/app/upload-keystore.jks
-          echo "Created files:"
-          ls -la lib/ lib/utils android/ android/app/
-      
+          mkdir -p android/app
+          printf '%s\n' "$KEY_PROPERTIES" | tr -d '\r' > android/key.properties
+          printf '%s' "$UPLOAD_KEYSTORE" | base64 -d > android/app/upload-keystore.jks
+
       - name: Install Flutter dependencies
         run: flutter pub get
-      
+
+      - name: Generate environment code
+        env:
+          ENV_FILE: ${{ secrets.env }}
+        run: dart run tool/ci/prepare_env.dart
+
+      - name: Generate application code
+        run: dart run build_runner build
+
       - name: Verify signing configuration
         run: |
           echo "Checking signing files:"
@@ -214,82 +264,142 @@ jobs:
             echo "✗ Keystore missing"
             exit 1
           fi
-      
+
       - name: Build signed Android APKs
         run: |
-          flutter build apk --release --split-per-abi
+          flutter build apk --release --split-per-abi --flavor "$BUILD_FLAVOR"
           echo "Built APKs:"
           ls -la build/app/outputs/flutter-apk/
-      
+
       - name: Get version from pubspec.yaml
         id: get_version
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
-      
+
       - name: Prepare all APKs for release
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p "dist/$VERSION"
-          
-          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+
+          for apk in build/app/outputs/flutter-apk/app-*-${BUILD_FLAVOR}-release.apk; do
             if [ -f "$apk" ]; then
-              abi=$(basename "$apk" | sed 's/app-\(.*\)-release\.apk/\1/')
+              abi=$(basename "$apk" | sed "s/app-\(.*\)-${BUILD_FLAVOR}-release\.apk/\1/")
               cp "$apk" "dist/$VERSION/saturn-${VERSION}-android-${abi}.apk"
               echo "Copied: $apk -> saturn-${VERSION}-android-${abi}.apk"
             fi
           done
-          
+
           echo "All APKs prepared:"
           ls -la "dist/$VERSION/"
-      
+
       - name: Upload all Android APKs
         uses: actions/upload-artifact@v4
         with:
-          name: android-apks
+          name: android-apks${{ env.RELEASE_SUFFIX }}
           path: dist/${{ steps.get_version.outputs.version }}/
+          if-no-files-found: error
 
-  MACOSIOS:
-    name: MacOS & iOS
-    runs-on: macos-latest
+  MACOS:
+    name: macOS
+    # The checked-in Icon Composer assets require Xcode 26 or newer.
+    runs-on: macos-26
     environment: workflow
     needs: VERSION_BUMP
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.0"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Install appdmg
         run: npm install -g appdmg
 
-      - name: Create secret files
+      - name: Configure Apple build tools
         run: |
-          mkdir -p lib/utils
-          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
-          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
-          echo "Created files:"
-          ls -la lib/ lib/utils/
+          flutter config --no-enable-swift-package-manager
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          xcodebuild -version
+          pod --version
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Generate environment code
+        env:
+          ENV_FILE: ${{ secrets.env }}
+        run: dart run tool/ci/prepare_env.dart
+
+      - name: Generate application code
+        run: dart run build_runner build
+
+      - name: Install macOS pods
+        working-directory: macos
+        run: pod install --repo-update
+
       - name: Install Fastforge
-        run: dart pub global activate fastforge
-        
+        run: dart pub global activate fastforge "$FASTFORGE_VERSION"
+
       - name: Build and release
-        run: fastforge release --name macos
+        # These names select the matching release entries in distribute_options.yaml.
+        run: dart pub global run fastforge:main release --name "${{ inputs.canary && 'macos-canary' || 'macos' }}"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-macOS${{ env.RELEASE_SUFFIX }}
+          path: dist/
+          if-no-files-found: error
+
+  IOS:
+    name: iOS
+    runs-on: macos-26
+    environment: workflow
+    needs: VERSION_BUMP
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.VERSION_BUMP.outputs.commit }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Configure Apple build tools
+        run: |
+          flutter config --no-enable-swift-package-manager
+          rustup target add aarch64-apple-ios
+          xcodebuild -version
+          pod --version
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Generate environment code
+        env:
+          ENV_FILE: ${{ secrets.env }}
+        run: dart run tool/ci/prepare_env.dart
+
+      - name: Generate application code
+        run: dart run build_runner build
+
+      - name: Install iOS pods
+        working-directory: ios
+        run: pod install --repo-update
 
       - name: Build iOS app
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --verbose --dart-define="SATURN_FLAVOR=$BUILD_FLAVOR"
 
       - name: Get version from pubspec.yaml
         id: get_version
@@ -303,20 +413,20 @@ jobs:
           VERSION="${{ steps.get_version.outputs.version }}"
           VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p "dist/$VERSION"
-          mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
-          cd dist/$VERSION
-          zip -r "saturn-${VERSION}-ios.ipa" ../../Payload
-          cd ../..
-          rm -rf Payload
+          IPA_PATH="$GITHUB_WORKSPACE/dist/$VERSION/saturn-${VERSION}-ios.ipa"
+          PACKAGE_DIR=$(mktemp -d)
+          mkdir -p "$PACKAGE_DIR/Payload"
+          cp -R build/ios/iphoneos/Runner.app "$PACKAGE_DIR/Payload/"
+          (cd "$PACKAGE_DIR" && zip -qry "$IPA_PATH" Payload)
           echo "Packaged IPA:"
           ls -la "dist/$VERSION/"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ runner.os }}
+          name: dist-iOS${{ env.RELEASE_SUFFIX }}
           path: dist/
+          if-no-files-found: error
 
   WINDOWS:
     name: Windows
@@ -327,56 +437,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.0"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
-
-      - name: Create secret files
-        shell: bash
-        run: |
-          mkdir -p lib/utils
-          echo "${{ secrets.env }}" | tr -d '\r' > lib/.env
-          echo "${{ secrets.envgdart }}" | tr -d '\r' > lib/utils/env.g.dart
-          echo "Created files:"
-          ls -la lib/ lib/utils/
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Generate environment code
+        env:
+          ENV_FILE: ${{ secrets.env }}
+        run: dart run tool/ci/prepare_env.dart
+
+      - name: Generate application code
+        run: dart run build_runner build
+
       - name: Install Fastforge
-        run: dart pub global activate fastforge
-        
+        run: dart pub global activate fastforge "$env:FASTFORGE_VERSION"
+
       - name: Build and release
-        run: fastforge release --name windows
+        # These names select the matching release entries in distribute_options.yaml.
+        run: dart pub global run fastforge:main release --name "${{ inputs.canary && 'windows-canary' || 'windows' }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ runner.os }}
+          name: dist-${{ runner.os }}${{ env.RELEASE_SUFFIX }}
           path: dist
+          if-no-files-found: error
 
   CREATE_RELEASE:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [LINUX, ANDROID, WINDOWS]
+    needs: [VERSION_BUMP, LINUX, ANDROID, MACOS, IOS, WINDOWS]
     permissions:
       contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
-
-      - name: Get version from pubspec.yaml
-        id: get_version
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | tr -d '\r')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
+          ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -385,31 +489,31 @@ jobs:
 
       - name: Prepare release assets
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          SAFE_VERSION="$(echo -n "$VERSION" | tr -d '\r')"
           mkdir -p release_assets
-          
-          # Copy every file from downloaded artifacts (APKs, DMGs, AppImages, etc.)
-          find artifacts -type f -print0 | xargs -0 -I{} cp {} release_assets/ || true
-          
-          for f in release_assets/*; do
-            [ -e "$f" ] || continue
-            clean=$(printf '%s' "$f" | tr -d '\r\n')
-            if [ "$f" != "$clean" ]; then
-              mv "$f" "$clean"
+
+          # Publish installers only; Fastforge also emits metadata files.
+          while IFS= read -r -d '' asset; do
+            filename=$(basename "$asset" | tr -d '\r\n')
+            if [[ "$BUILD_FLAVOR" == "canary" ]]; then
+              filename="${filename%.*}-canary.${GITHUB_RUN_NUMBER}.${filename##*.}"
             fi
-          done
-          
+            cp "$asset" "release_assets/$filename"
+          done < <(find artifacts -type f \( -name '*.apk' -o -name '*.ipa' -o -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -print0)
+          test -n "$(find release_assets -type f -print -quit)"
+
           echo "Release assets:"
-          ls -la release_assets/ || echo "No release assets found"
+          ls -la release_assets/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.get_version.outputs.version }}
-          name: Saturn v${{ steps.get_version.outputs.version }}
+          tag_name: v${{ needs.VERSION_BUMP.outputs.release_version }}
+          name: Saturn v${{ needs.VERSION_BUMP.outputs.release_version }}
+          target_commitish: ${{ needs.VERSION_BUMP.outputs.commit }}
           body: |
-            Changes: ${{ github.event.head_commit.url }}
+            Changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.VERSION_BUMP.outputs.commit }}
           files: release_assets/*
           draft: false
-          prerelease: false
+          prerelease: ${{ inputs.canary == true }}
+          make_latest: ${{ inputs.canary && 'false' || 'true' }}
+          fail_on_unmatched_files: true

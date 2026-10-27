@@ -9,7 +9,7 @@ class MediaItemConverter {
       title: json['title'],
       artist: json['artist'],
       genre: json['genre'],
-      duration: Duration(milliseconds: json['duration']),
+      duration: json['duration'] != null ? Duration(milliseconds: json['duration']) : null,
       artUri: json['artUri'] != null ? Uri.parse(json['artUri']) : null,
       artHeaders: Map<String, String>.from(json['artHeaders'] ?? {}),
       playable: json['playable'],

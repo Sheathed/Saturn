@@ -3,16 +3,19 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  gtk
+  app_links_linux
+  disk_space_2
+  dynamic_color
   media_kit_libs_linux
   screen_retriever_linux
-  tray_manager
   url_launcher_linux
+  webview_all_linux
   window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
   flutter_discord_rpc
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

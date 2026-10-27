@@ -8,13 +8,31 @@ part of 'cache.dart';
 
 Cache _$CacheFromJson(Map<String, dynamic> json) =>
     Cache(
-        libraryTracks: (json['libraryTracks'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
+        platformLibraryTracks:
+            (json['platformLibraryTracks'] as Map<String, dynamic>?)?.map(
+              (k, e) => MapEntry(
+                k,
+                (e as List<dynamic>).map((e) => e as String).toList(),
+              ),
+            ) ??
+            {},
+        platformLibraryPlaylists:
+            (json['platformLibraryPlaylists'] as Map<String, dynamic>?)?.map(
+              (k, e) => MapEntry(
+                k,
+                (e as List<dynamic>).map((e) => e as String).toList(),
+              ),
+            ) ??
+            {},
       )
       ..history =
           (json['history'] as List<dynamic>?)
               ?.map((e) => Track.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          []
+      ..pendingListenLogs =
+          (json['pendingListenLogs'] as List<dynamic>?)
+              ?.map((e) => e as Map<String, dynamic>)
               .toList() ??
           []
       ..sorts =
@@ -22,6 +40,8 @@ Cache _$CacheFromJson(Map<String, dynamic> json) =>
               ?.map((e) => Sorting.fromJson(e as Map<String, dynamic>))
               .toList() ??
           []
+      ..podcastPlaybackSpeed =
+          (json['podcastPlaybackSpeed'] as num?)?.toDouble() ?? 1.0
       ..searchHistory = Cache._searchHistoryFromJson(
         json['searchHistory2'] as List?,
       )
@@ -29,9 +49,12 @@ Cache _$CacheFromJson(Map<String, dynamic> json) =>
       ..lastUpdateCheck = (json['lastUpdateCheck'] as num?)?.toInt() ?? 0;
 
 Map<String, dynamic> _$CacheToJson(Cache instance) => <String, dynamic>{
-  'libraryTracks': instance.libraryTracks,
+  'platformLibraryTracks': instance.platformLibraryTracks,
+  'platformLibraryPlaylists': instance.platformLibraryPlaylists,
   'history': instance.history,
+  'pendingListenLogs': instance.pendingListenLogs,
   'sorts': instance.sorts,
+  'podcastPlaybackSpeed': instance.podcastPlaybackSpeed,
   'searchHistory2': Cache._searchHistoryToJson(instance.searchHistory),
   'threadsWarning': instance.threadsWarning,
   'lastUpdateCheck': instance.lastUpdateCheck,
@@ -54,4 +77,5 @@ const _$SearchHistoryItemTypeEnumMap = {
   SearchHistoryItemType.ALBUM: 'ALBUM',
   SearchHistoryItemType.ARTIST: 'ARTIST',
   SearchHistoryItemType.PLAYLIST: 'PLAYLIST',
+  SearchHistoryItemType.RADIO: 'RADIO',
 };

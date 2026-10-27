@@ -1,38 +1,39 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:country_currency_pickers/country.dart';
-import 'package:country_currency_pickers/country_picker_dialog.dart';
-import 'package:country_currency_pickers/utils/utils.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:universal_disk_space/universal_disk_space.dart';
-import 'package:disk_space_plus/disk_space_plus.dart';
+import 'package:disk_space_2/disk_space_2.dart' as disk_space_2;
 import 'package:filesize/filesize.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' as material;
+import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter_displaymode/flutter_displaymode.dart';
-//import 'package:flutter_file_dialog/flutter_file_dialog.dart';
-import 'package:flutter_material_color_picker/flutter_material_color_picker.dart';
 import 'package:fluttericon/font_awesome5_icons.dart';
 import 'package:fluttericon/web_symbols_icons.dart';
 import 'package:get_it/get_it.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-//import 'package:permission_handler/permission_handler.dart';
 import 'package:saturn/ui/log_screen.dart';
 import 'package:saturn/ui/player_bar.dart';
 import 'package:scrobblenaut/scrobblenaut.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import 'package:saturn/ui/toast.dart';
 import 'package:external_path/external_path.dart';
+import 'package:silky_scroll/silky_scroll.dart';
+import 'package:saturn/ui/smooth_scroll_config.dart';
+import 'primary_color_picker_dialog.dart';
+import '../utils/logging.dart';
 
 import '../api/cache.dart';
-import '../api/deezer.dart';
 import '../main.dart';
 import '../service/audio_service.dart';
 import '../settings.dart';
+import '../platform/platform_registry.dart';
+import '../platform/platform_settings.dart';
+import '../ui/login_screen.dart';
 import '../translations.i18n.dart';
 import '../ui/downloads_screen.dart';
 import '../ui/elements.dart';
@@ -40,6 +41,9 @@ import '../ui/error.dart';
 import '../ui/home_screen.dart';
 import '../ui/updater.dart';
 import '../utils/file_utils.dart';
+import '../utils/app_http_proxy.dart';
+import '../utils/app_config.dart';
+import '../utils/app_webview_proxy.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -49,121 +53,212 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  int _selectedCategory = 0;
+
+  String _categoryTitle(int index) => switch (index) {
+    0 => 'General'.i18n,
+    1 => 'Download Settings'.i18n,
+    2 => 'Appearance'.i18n,
+    3 => 'Quality'.i18n,
+    4 => 'Platforms'.i18n,
+    5 => 'Language'.i18n,
+    6 => 'Updates'.i18n,
+    _ => 'About'.i18n,
+  };
+
+  IconData _categoryIcon(int index) => switch (index) {
+    0 => Icons.settings,
+    1 => Icons.cloud_download,
+    2 => Icons.color_lens,
+    3 => Icons.high_quality,
+    4 => Icons.extension,
+    5 => Icons.language,
+    6 => Icons.update,
+    _ => Icons.info,
+  };
+
+  Color _categoryColor(int index) => switch (index) {
+    0 => const Color(0xffeca704),
+    1 => const Color(0xffbe3266),
+    2 => const Color(0xff4b2e7e),
+    3 => const Color(0xff384697),
+    4 => const Color(0xff8e44ad),
+    5 => const Color(0xff009a85),
+    6 => const Color(0xff2ba766),
+    _ => Colors.grey,
+  };
+
+  Widget _settingsPage(int index) => switch (index) {
+    0 => const GeneralSettings(),
+    1 => const DownloadsSettings(),
+    2 => const AppearanceSettings(),
+    3 => const QualitySettings(),
+    4 => const PlatformSettingsScreen(),
+    5 => _LanguageSettingsPage(onChanged: () => setState(() {})),
+    6 => const UpdaterScreen(),
+    _ => const CreditsScreen(),
+  };
+
+  void _openCategory(int index) {
+    if (index == 5) {
+      showDialog(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: Text('Select language'.i18n),
+          children: List.generate(languages.length, (languageIndex) {
+            final language = languages[languageIndex];
+            return ListTile(
+              title: Text(language.name),
+              subtitle: Text('${language.locale}-${language.country}'),
+              onTap: () async {
+                I18n.of(dialogContext).locale = Locale(
+                  language.locale,
+                  language.country,
+                );
+                setState(
+                  () => settings.language =
+                      '${language.locale}-${language.country}',
+                );
+                await settings.save();
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+              },
+            );
+          }),
+        ),
+      );
+      return;
+    }
+    final page = _settingsPage(index);
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  }
+
+  Widget _categoryTile(int index, {required bool selected}) => ListTile(
+    selected: selected,
+    selectedTileColor: Colors.transparent,
+    title: AnimatedDefaultTextStyle(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOut,
+      style: (Theme.of(context).textTheme.titleMedium ?? const TextStyle())
+          .copyWith(
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).textTheme.titleMedium?.color,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+      child: Text(
+        _categoryTitle(index),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+    leading: LeadingIcon(_categoryIcon(index), color: _categoryColor(index)),
+    onTap: () {
+      ScrollUnderScope.reset(context);
+      setState(() => _selectedCategory = index);
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).width >= 1000) {
+      final isScrolledUnder = ScrollUnderScope.maybeOf(context) ?? false;
+      return Scaffold(
+        body: Row(
+          children: [
+            SizedBox(
+              width: 280,
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.linear,
+                      height: kToolbarHeight,
+                      color: isScrolledUnder
+                          ? Theme.of(context).colorScheme.surfaceContainerLow
+                          : Theme.of(context).scaffoldBackgroundColor,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Settings'.i18n,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: SilkyListView.builder(
+                        silkyConfig: silkyScrollConfig,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        itemCount: 8,
+                        itemBuilder: (context, index) => _categoryTile(
+                          index,
+                          selected: index == _selectedCategory,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(child: _settingsPage(_selectedCategory)),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: FreezerAppBar('Settings'.i18n),
-      body: ListView(
-        children: <Widget>[
-          ListTile(
-            title: Text('General'.i18n),
-            leading: const LeadingIcon(
-              Icons.settings,
-              color: Color(0xffeca704),
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
+        children: List.generate(
+          8,
+          (index) => ListTile(
+            title: Text(_categoryTitle(index)),
+            leading: LeadingIcon(
+              _categoryIcon(index),
+              color: _categoryColor(index),
             ),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const GeneralSettings()),
-            ),
+            onTap: () => _openCategory(index),
           ),
-          ListTile(
-            title: Text('Download Settings'.i18n),
-            leading: const LeadingIcon(
-              Icons.cloud_download,
-              color: Color(0xffbe3266),
-            ),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const DownloadsSettings(),
-              ),
-            ),
-          ),
-          ListTile(
-            title: Text('Appearance'.i18n),
-            leading: const LeadingIcon(
-              Icons.color_lens,
-              color: Color(0xff4b2e7e),
-            ),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const AppearanceSettings(),
-              ),
-            ),
-          ),
-          ListTile(
-            title: Text('Quality'.i18n),
-            leading: const LeadingIcon(
-              Icons.high_quality,
-              color: Color(0xff384697),
-            ),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const QualitySettings()),
-            ),
-          ),
-          ListTile(
-            title: Text('Deezer'.i18n),
-            leading: const LeadingIcon(
-              Icons.equalizer,
-              color: Color(0xff0880b5),
-            ),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const DeezerSettings()),
-            ),
-          ),
-          //Language select
-          ListTile(
-            title: Text('Language'.i18n),
-            leading: const LeadingIcon(
-              Icons.language,
-              color: Color(0xff009a85),
-            ),
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => SimpleDialog(
-                  title: Text('Select language'.i18n),
-                  children: List.generate(languages.length, (int i) {
-                    Language l = languages[i];
-                    return ListTile(
-                      title: Text(l.name),
-                      subtitle: Text('${l.locale}-${l.country}'),
-                      onTap: () async {
-                        I18n.of(context).locale = Locale(l.locale, l.country);
-                        setState(
-                          () => settings.language = '${l.locale}-${l.country}',
-                        );
-                        await settings.save();
-                        // Close the SimpleDialog
-                        if (context.mounted) Navigator.of(context).pop();
-                      },
-                    );
-                  }),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            title: Text('Updates'.i18n),
-            leading: const LeadingIcon(Icons.update, color: Color(0xff2ba766)),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const UpdaterScreen()),
-            ),
-          ),
-          ListTile(
-            title: Text('About'.i18n),
-            leading: const LeadingIcon(Icons.info, color: Colors.grey),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const CreditsScreen()),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
+}
+
+class _LanguageSettingsPage extends StatelessWidget {
+  final VoidCallback onChanged;
+
+  const _LanguageSettingsPage({required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: FreezerAppBar('Language'.i18n),
+    body: SilkyListView.builder(
+      silkyConfig: silkyScrollConfig,
+      itemCount: languages.length,
+      itemBuilder: (context, index) {
+        final language = languages[index];
+        final value = '${language.locale}-${language.country}';
+        return ListTile(
+          title: Text(language.name),
+          subtitle: Text(value),
+          trailing: settings.language == value ? const Icon(Icons.check) : null,
+          onTap: () async {
+            I18n.of(context).locale = Locale(language.locale, language.country);
+            settings.language = value;
+            await settings.save();
+            onChanged();
+          },
+        );
+      },
+    ),
+  );
 }
 
 class LicenseDetail extends StatelessWidget {
@@ -176,7 +271,8 @@ class LicenseDetail extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar(title),
-      body: SingleChildScrollView(
+      body: SilkySingleChildScrollView(
+        silkyConfig: silkyScrollConfig,
         padding: const EdgeInsets.all(16.0),
         child: SelectableText(
           content.isNotEmpty ? content : 'No license text available'.i18n,
@@ -195,39 +291,34 @@ class AppearanceSettings extends StatefulWidget {
 }
 
 class _AppearanceSettingsState extends State<AppearanceSettings> {
-  ColorSwatch<dynamic> _swatch(int c) => ColorSwatch(c, {500: Color(c)});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('Appearance'.i18n),
-      body: ListView(
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
         children: <Widget>[
           ListTile(
             title: Text('Theme'.i18n),
-            subtitle: Text(
-              'Currently'.i18n +
-                  ': ${settings.theme.toString().split('.').last}',
-            ),
+            subtitle: Text(switch (settings.theme) {
+              Themes.Light => 'Classic'.i18n,
+              Themes.Dark => 'Classic'.i18n,
+              Themes.Black => 'Black (AMOLED)'.i18n,
+              Themes.Deezer => 'Deezer (Dark)'.i18n,
+              Themes.MaterialYou => 'Material You'.i18n,
+              Themes.MaterialYouPrimary => 'Material You (Primary color)'.i18n,
+            }),
             leading: const Icon(Icons.color_lens),
             onTap: () {
               showDialog(
                 context: context,
                 builder: (context) {
+                  final canPickDarkOnly = settings.isDark;
                   return SimpleDialog(
                     title: Text('Select theme'.i18n),
                     children: <Widget>[
                       SimpleDialogOption(
-                        child: Text('Light'.i18n),
-                        onPressed: () {
-                          setState(() => settings.theme = Themes.Light);
-                          settings.save();
-                          updateTheme();
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                      SimpleDialogOption(
-                        child: Text('Dark'.i18n),
+                        child: Text('Classic'.i18n),
                         onPressed: () {
                           setState(() => settings.theme = Themes.Dark);
                           settings.save();
@@ -236,18 +327,62 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
                         },
                       ),
                       SimpleDialogOption(
-                        child: Text('Black (AMOLED)'.i18n),
+                        onPressed: canPickDarkOnly
+                            ? () {
+                                setState(() => settings.theme = Themes.Black);
+                                settings.save();
+                                updateTheme();
+                                Navigator.of(context).pop();
+                              }
+                            : null,
+                        child: Text(
+                          'Black (AMOLED)'.i18n +
+                              (canPickDarkOnly
+                                  ? ''
+                                  : ' (' + 'Dark only'.i18n + ')'),
+                          style: canPickDarkOnly
+                              ? null
+                              : TextStyle(
+                                  color: Theme.of(context).disabledColor,
+                                ),
+                        ),
+                      ),
+                      SimpleDialogOption(
+                        onPressed: canPickDarkOnly
+                            ? () {
+                                setState(() => settings.theme = Themes.Deezer);
+                                settings.save();
+                                updateTheme();
+                                Navigator.of(context).pop();
+                              }
+                            : null,
+                        child: Text(
+                          'Deezer (Dark)'.i18n +
+                              (canPickDarkOnly
+                                  ? ''
+                                  : ' (' + 'Dark only'.i18n + ')'),
+                          style: canPickDarkOnly
+                              ? null
+                              : TextStyle(
+                                  color: Theme.of(context).disabledColor,
+                                ),
+                        ),
+                      ),
+                      SimpleDialogOption(
+                        child: Text('Material You'.i18n),
                         onPressed: () {
-                          setState(() => settings.theme = Themes.Black);
+                          setState(() => settings.theme = Themes.MaterialYou);
                           settings.save();
                           updateTheme();
                           Navigator.of(context).pop();
                         },
                       ),
                       SimpleDialogOption(
-                        child: Text('Deezer (Dark)'.i18n),
+                        child: Text('Material You (Primary color)'.i18n),
                         onPressed: () {
-                          setState(() => settings.theme = Themes.Deezer);
+                          setState(
+                            () => settings.theme = Themes.MaterialYouPrimary,
+                          );
                           settings.save();
                           updateTheme();
                           Navigator.of(context).pop();
@@ -260,22 +395,56 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
             },
           ),
           ListTile(
-            title: Text('Use system theme'.i18n),
+            title: Text('Dark mode'.i18n),
+            subtitle: !themeHasLightVersion(settings.theme)
+                ? Text('Dark mode only'.i18n)
+                : (settings.useSystemTheme
+                      ? Text('Controlled by system theme'.i18n)
+                      : null),
+            enabled:
+                themeHasLightVersion(settings.theme) &&
+                !settings.useSystemTheme,
+            leading: const Icon(Icons.brightness_4),
             trailing: Switch(
-              value: settings.useSystemTheme,
-              onChanged: (bool v) async {
-                setState(() {
-                  settings.useSystemTheme = v;
-                });
-                updateTheme();
-                await settings.save();
-              },
+              value: settings.isDark,
+              onChanged:
+                  (themeHasLightVersion(settings.theme) &&
+                      !settings.useSystemTheme)
+                  ? (bool v) async {
+                      setState(() {
+                        settings.darkMode = v;
+                      });
+                      updateTheme();
+                      await settings.save();
+                    }
+                  : null,
+            ),
+          ),
+          ListTile(
+            title: Text('Use system theme'.i18n),
+            subtitle: !themeHasLightVersion(settings.theme)
+                ? Text('Dark mode only'.i18n)
+                : null,
+            enabled: themeHasLightVersion(settings.theme),
+            trailing: Switch(
+              value: themeHasLightVersion(settings.theme)
+                  ? settings.useSystemTheme
+                  : false,
+              onChanged: themeHasLightVersion(settings.theme)
+                  ? (bool v) async {
+                      setState(() {
+                        settings.useSystemTheme = v;
+                      });
+                      updateTheme();
+                      await settings.save();
+                    }
+                  : null,
             ),
             leading: Platform.isAndroid
-                ? Icon(Icons.android)
+                ? const Icon(Icons.android)
                 : Platform.isIOS
-                ? Icon(Icons.apple)
-                : Icon(Icons.computer),
+                ? const Icon(Icons.apple)
+                : const Icon(Icons.computer),
           ),
           ListTile(
             title: Text('Font'.i18n),
@@ -330,64 +499,47 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
             ),
           ),
           ListTile(
-            title: Text('Visualizer'.i18n),
-            subtitle: Text(
-              'Show visualizers on lyrics page. WARNING: Requires microphone permission!'
-                  .i18n,
-            ),
-            leading: const Icon(Icons.equalizer),
-            trailing: Switch(
-              value: settings.lyricsVisualizer,
-              onChanged: null,
-              // onChanged: (bool v) async {
-              //   if (await Permission.microphone.request().isGranted) {
-              //     setState(() => settings.lyricsVisualizer = v);
-              //     await settings.save();
-              //     return;
-              //   }
-              // },
-            ),
-            enabled: false,
-          ),
-          ListTile(
+            enabled: settings.theme != Themes.MaterialYou,
             title: Text('Primary color'.i18n),
             leading: const Icon(Icons.format_paint),
             subtitle: Text(
-              'Selected color'.i18n,
-              style: TextStyle(color: settings.primaryColor),
+              settings.theme == Themes.MaterialYou
+                  ? 'Material You active'.i18n
+                  : '#${settings.primaryColor.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+              style: TextStyle(
+                color: settings.theme == Themes.MaterialYou
+                    ? null
+                    : settings.primaryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            trailing: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: settings.theme == Themes.MaterialYou
+                    ? Colors.grey
+                    : settings.primaryColor,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  width: 2,
+                ),
+              ),
             ),
             onTap: () {
               showDialog(
                 context: context,
                 builder: (context) {
-                  return AlertDialog(
-                    title: Text('Primary color'.i18n),
-                    content: SizedBox(
-                      height: 240,
-                      child: MaterialColorPicker(
-                        colors: [
-                          ...Colors.primaries,
-                          //Logo colors
-                          _swatch(0xffeca704),
-                          _swatch(0xffbe3266),
-                          _swatch(0xff4b2e7e),
-                          _swatch(0xff384697),
-                          _swatch(0xff0880b5),
-                          _swatch(0xff009a85),
-                          _swatch(0xff2ba766),
-                        ],
-                        allowShades: false,
-                        selectedColor: settings.primaryColor,
-                        onMainColorChange: (ColorSwatch? color) {
-                          setState(() {
-                            settings.primaryColor = color!;
-                          });
-                          settings.save();
-                          updateTheme();
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    ),
+                  return PrimaryColorPickerDialog(
+                    initialColor: settings.primaryColor,
+                    onColorSelected: (color) {
+                      setState(() {
+                        settings.primaryColor = color;
+                      });
+                      settings.save();
+                      updateTheme();
+                    },
                   );
                 },
               );
@@ -395,7 +547,6 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
           ),
           ListTile(
             title: Text('Use album art primary color'.i18n),
-            subtitle: Text('Warning: might be buggy'.i18n),
             leading: const Icon(Icons.invert_colors),
             trailing: Switch(
               value: settings.useArtColor,
@@ -421,37 +572,38 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
             ),
           ),
           //Display mode
-          ListTile(
-            leading: const Icon(Icons.screen_lock_portrait),
-            title: Text('Change display mode'.i18n),
-            subtitle: Text('Enable high refresh rates'.i18n),
-            onTap: () async {
-              List modes = await FlutterDisplayMode.supported;
-              if (!context.mounted) return;
-              showDialog(
-                context: context,
-                builder: (context) {
-                  return SimpleDialog(
-                    title: Text('Display mode'.i18n),
-                    children: List.generate(
-                      modes.length,
-                      (i) => SimpleDialogOption(
-                        child: Text(modes[i].toString()),
-                        onPressed: () async {
-                          settings.displayMode = i;
-                          await settings.save();
-                          await FlutterDisplayMode.setPreferredMode(modes[i]);
-                          if (context.mounted) {
-                            Navigator.of(context).pop();
-                          }
-                        },
+          if (Platform.isAndroid)
+            ListTile(
+              leading: const Icon(Icons.screen_lock_portrait),
+              title: Text('Change display mode'.i18n),
+              subtitle: Text('Enable high refresh rates'.i18n),
+              onTap: () async {
+                List modes = await FlutterDisplayMode.supported;
+                if (!context.mounted) return;
+                showDialog(
+                  context: context,
+                  builder: (context) {
+                    return SimpleDialog(
+                      title: Text('Display mode'.i18n),
+                      children: List.generate(
+                        modes.length,
+                        (i) => SimpleDialogOption(
+                          child: Text(modes[i].toString()),
+                          onPressed: () async {
+                            settings.displayMode = i;
+                            await settings.save();
+                            await FlutterDisplayMode.setPreferredMode(modes[i]);
+                            if (context.mounted) {
+                              Navigator.of(context).pop();
+                            }
+                          },
+                        ),
                       ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
+                    );
+                  },
+                );
+              },
+            ),
         ],
       ),
     );
@@ -557,8 +709,22 @@ class _QualitySettingsState extends State<QualitySettings> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('Quality'.i18n),
-      body: ListView(
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
         children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 16.0,
+            ),
+            child: Text(
+              'Note: Not all platforms support different audio qualities.'.i18n,
+              style: TextStyle(
+                color: Theme.of(context).textTheme.bodySmall?.color,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
           ListTile(
             title: Text('Mobile streaming'.i18n),
             leading: const LeadingIcon(
@@ -661,23 +827,36 @@ class _QualityPickerState extends State<QualityPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final available = const [
+      AudioQuality.MP3_128,
+      AudioQuality.MP3_320,
+      AudioQuality.FLAC,
+    ];
     return RadioGroup<AudioQuality>(
       groupValue: _quality,
-      onChanged: (q) => _updateQuality(q!),
+      onChanged: (q) {
+        if (q != null) _updateQuality(q);
+      },
       child: Column(
         children: [
-          const RadioListTile<AudioQuality>(
-            title: Text('MP3 128kbps'),
-            value: AudioQuality.MP3_128,
-          ),
-          const RadioListTile<AudioQuality>(
-            title: Text('MP3 320kbps'),
-            value: AudioQuality.MP3_320,
-          ),
-          const RadioListTile<AudioQuality>(
-            title: Text('FLAC'),
-            value: AudioQuality.FLAC,
-          ),
+          if (available.contains(AudioQuality.MP3_128))
+            RadioListTile<AudioQuality>(
+              title: Text('Low Quality'.i18n),
+              subtitle: const Text('MP3 128kbps'),
+              value: AudioQuality.MP3_128,
+            ),
+          if (available.contains(AudioQuality.MP3_320))
+            RadioListTile<AudioQuality>(
+              title: Text('Medium Quality'.i18n),
+              subtitle: const Text('MP3 320kbps'),
+              value: AudioQuality.MP3_320,
+            ),
+          if (available.contains(AudioQuality.FLAC))
+            RadioListTile<AudioQuality>(
+              title: Text('Highest Quality'.i18n),
+              subtitle: const Text('FLAC'),
+              value: AudioQuality.FLAC,
+            ),
           if (widget.field == 'download')
             RadioListTile<AudioQuality>(
               title: Text('Ask before downloading'.i18n),
@@ -695,14 +874,10 @@ class ContentLanguage {
   ContentLanguage(this.code, this.name);
 
   static List<ContentLanguage> get all => [
-    ContentLanguage('cs', 'Čeština'),
     ContentLanguage('da', 'Dansk'),
     ContentLanguage('de', 'Deutsch'),
     ContentLanguage('en', 'English'),
     ContentLanguage('us', 'English (us)'),
-    ContentLanguage('es', 'Español'),
-    ContentLanguage('mx', 'Español (latam)'),
-    ContentLanguage('fr', 'Français'),
     ContentLanguage('hr', 'Hrvatski'),
     ContentLanguage('id', 'Indonesia'),
     ContentLanguage('it', 'Italiano'),
@@ -711,176 +886,11 @@ class ContentLanguage {
     ContentLanguage('nl', 'Nederlands'),
     ContentLanguage('no', 'Norsk'),
     ContentLanguage('pl', 'Polski'),
-    ContentLanguage('br', 'Português (br)'),
-    ContentLanguage('pt', 'Português (pt)'),
-    ContentLanguage('ro', 'Română'),
-    ContentLanguage('sk', 'Slovenčina'),
-    ContentLanguage('sl', 'Slovenščina'),
     ContentLanguage('sq', 'Shqip'),
     ContentLanguage('sr', 'Srpski'),
     ContentLanguage('fi', 'Suomi'),
     ContentLanguage('sv', 'Svenska'),
-    ContentLanguage('tr', 'Türkçe'),
-    ContentLanguage('bg', 'Български'),
-    ContentLanguage('ru', 'Pусский'),
-    ContentLanguage('uk', 'Українська'),
-    ContentLanguage('he', 'עִברִית'),
-    ContentLanguage('ar', 'العربیة'),
-    ContentLanguage('cn', '中文'),
-    ContentLanguage('ja', '日本語'),
-    ContentLanguage('ko', '한국어'),
-    ContentLanguage('th', 'ภาษาไทย'),
   ];
-}
-
-class DeezerSettings extends StatefulWidget {
-  const DeezerSettings({super.key});
-
-  @override
-  _DeezerSettingsState createState() => _DeezerSettingsState();
-}
-
-class _DeezerSettingsState extends State<DeezerSettings> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: FreezerAppBar('Deezer'.i18n),
-      body: ListView(
-        children: <Widget>[
-          ListTile(
-            title: Text('Content language'.i18n),
-            subtitle: Text(
-              'Not app language, used in headers. Now'.i18n +
-                  ': ${settings.deezerLanguage}',
-            ),
-            leading: const Icon(Icons.language),
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => SimpleDialog(
-                  title: Text('Select language'.i18n),
-                  children: List.generate(
-                    ContentLanguage.all.length,
-                    (i) => ListTile(
-                      title: Text(ContentLanguage.all[i].name),
-                      subtitle: Text(ContentLanguage.all[i].code),
-                      onTap: () async {
-                        setState(
-                          () => settings.deezerLanguage =
-                              ContentLanguage.all[i].code,
-                        );
-                        await settings.save();
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            title: Text('Content country'.i18n),
-            subtitle: Text(
-              'Country used in headers. Now'.i18n +
-                  ': ${settings.deezerCountry}',
-            ),
-            leading: const Icon(Icons.vpn_lock),
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => CountryPickerDialog(
-                  title: Text('Select country'.i18n),
-                  titlePadding: const EdgeInsets.all(8.0),
-                  isSearchable: true,
-                  itemBuilder: (country) => Row(
-                    children: <Widget>[
-                      CountryPickerUtils.getDefaultFlagImage(country),
-                      const SizedBox(width: 8.0),
-                      Expanded(
-                        child: Text('${country.name} (${country.isoCode})'),
-                      ),
-                    ],
-                  ),
-                  onValuePicked: (Country country) {
-                    setState(
-                      () => settings.deezerCountry = country.isoCode ?? 'us',
-                    );
-                    settings.save();
-                  },
-                ),
-              );
-            },
-          ),
-          ListTile(
-            title: Text('Log tracks'.i18n),
-            subtitle: Text(
-              'Send track listen logs to Deezer, enable it for features like Flow to work properly'
-                  .i18n,
-            ),
-            trailing: Switch(
-              value: settings.logListen,
-              onChanged: (bool v) {
-                setState(() => settings.logListen = v);
-                settings.save();
-              },
-            ),
-            leading: const Icon(Icons.history_toggle_off),
-          ),
-          //todo: Reimplement proxy
-          //          ListTile(
-          //            title: Text('Proxy'.i18n),
-          //            leading: Icon(Icons.vpn_key),
-          //            subtitle: Text(settings.proxyAddress??'Not set'.i18n),
-          //            onTap: () {
-          //              String _new;
-          //              showDialog(
-          //                context: context,
-          //                builder: (BuildContext context) {
-          //                  return AlertDialog(
-          //                    title: Text('Proxy'.i18n),
-          //                    content: TextField(
-          //                      onChanged: (String v) => _new = v,
-          //                      decoration: InputDecoration(
-          //                        hintText: 'IP:PORT'
-          //                      ),
-          //                    ),
-          //                    actions: [
-          //                      TextButton(
-          //                        child: Text('Cancel'.i18n),
-          //                        onPressed: () => Navigator.of(context).pop(),
-          //                      ),
-          //                      TextButton(
-          //                        child: Text('Reset'.i18n),
-          //                        onPressed: () async {
-          //                          setState(() {
-          //                            settings.proxyAddress = null;
-          //                          });
-          //                          await settings.save();
-          //                          Navigator.of(context).pop();
-          //                        },
-          //                      ),
-          //                      TextButton(
-          //                        child: Text('Save'.i18n),
-          //                        onPressed: () async {
-          //                          setState(() {
-          //                            settings.proxyAddress = _new;
-          //                          });
-          //                          await settings.save();
-          //                          Navigator.of(context).pop();
-          //                        },
-          //                      )
-          //                    ],
-          //                  );
-          //                }
-          //              );
-          //            },
-          //          )
-        ],
-      ),
-    );
-  }
 }
 
 class FilenameTemplateDialog extends StatefulWidget {
@@ -1022,7 +1032,8 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('Download Settings'.i18n),
-      body: ListView(
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
         children: [
           ListTile(
             title: Text('Download path'.i18n),
@@ -1233,6 +1244,38 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
             ),
             leading: const Icon(Icons.subtitles),
           ),
+          ListTile(
+            title: Text('Use Enhanced LRC word timing'.i18n),
+            subtitle: Text(
+              'Include word timestamps when the lyrics source provides them.'
+                  .i18n,
+            ),
+            trailing: Switch(
+              value: settings.downloadEnhancedLrc,
+              onChanged: settings.downloadLyrics
+                  ? (v) {
+                      setState(() => settings.downloadEnhancedLrc = v);
+                      settings.save();
+                    }
+                  : null,
+            ),
+            leading: const Icon(Icons.lyrics),
+          ),
+          ListTile(
+            title: Text('Save lyrics for offline tracks'.i18n),
+            subtitle: Text(
+              'Use the selected lyrics source and save lyrics with offline tracks.'
+                  .i18n,
+            ),
+            trailing: Switch(
+              value: settings.saveOfflineTrackLyrics,
+              onChanged: (v) {
+                setState(() => settings.saveOfflineTrackLyrics = v);
+                settings.save();
+              },
+            ),
+            leading: const Icon(Icons.library_music),
+          ),
           const FreezerDivider(),
           ListTile(
             title: Text('Save cover file for every track'.i18n),
@@ -1376,7 +1419,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('Tags'.i18n),
-      body: ListView(
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
         children: List.generate(
           tags.length,
           (i) => ListTile(
@@ -1409,11 +1453,168 @@ class GeneralSettings extends StatefulWidget {
 }
 
 class _GeneralSettingsState extends State<GeneralSettings> {
+  Future<void> _editProxy() async {
+    final controller = TextEditingController(text: settings.proxyAddress ?? '');
+    final usernameController = TextEditingController(
+      text: settings.proxyUsername ?? '',
+    );
+    final passwordController = TextEditingController(
+      text: settings.proxyPassword ?? '',
+    );
+    String? error;
+    String? authError;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Proxy'.i18n),
+          scrollable: true,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                keyboardType: TextInputType.url,
+                decoration: InputDecoration(
+                  labelText: 'HTTP proxy',
+                  hintText: 'host:port',
+                  errorText: error,
+                ),
+                onChanged: (_) {
+                  if (error != null) setDialogState(() => error = null);
+                },
+              ),
+              TextField(
+                controller: usernameController,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: 'Username (optional)',
+                  errorText: authError,
+                ),
+                onChanged: (_) {
+                  if (authError != null) setDialogState(() => authError = null);
+                },
+              ),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  labelText: 'Password (optional)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'WebView proxy: Android, Linux, Windows, iOS 17+, macOS 14+. Windows needs a restart after changes.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text('Cancel'.i18n),
+            ),
+            TextButton(
+              onPressed: () async {
+                settings.proxyAddress = null;
+                settings.proxyUsername = null;
+                settings.proxyPassword = null;
+                AppHttpProxy.configure(null);
+                try {
+                  await AppWebViewProxy.configure(null);
+                } on PlatformException catch (error) {
+                  Logger.root.warning(
+                    'WebView proxy reset failed: ${error.code}',
+                  );
+                } on MissingPluginException {
+                  Logger.root.warning('WebView proxy reset is unavailable');
+                }
+                await settings.save();
+                if (mounted) setState(() {});
+                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                if (Platform.isWindows) {
+                  Fluttertoast.showToast(
+                    msg: 'Restart Saturn to remove the WebView proxy.',
+                  );
+                }
+              },
+              child: Text('Reset'.i18n),
+            ),
+            TextButton(
+              onPressed: () async {
+                final address = AppHttpProxy.normalize(controller.text);
+                if (address == null) {
+                  setDialogState(() => error = 'Enter a valid host:port');
+                  return;
+                }
+                if (usernameController.text.trim().isEmpty &&
+                    passwordController.text.isNotEmpty) {
+                  setDialogState(
+                    () => authError = 'Username required with a password',
+                  );
+                  return;
+                }
+                settings.proxyAddress = address;
+                settings.proxyUsername = usernameController.text.trim().isEmpty
+                    ? null
+                    : usernameController.text.trim();
+                settings.proxyPassword = settings.proxyUsername == null
+                    ? null
+                    : passwordController.text;
+                AppHttpProxy.configure(
+                  address,
+                  username: settings.proxyUsername,
+                  password: settings.proxyPassword,
+                );
+                var webViewProxyAvailable = true;
+                try {
+                  await AppWebViewProxy.configure(
+                    address,
+                    username: settings.proxyUsername,
+                    password: settings.proxyPassword,
+                  );
+                } on PlatformException catch (error) {
+                  Logger.root.warning(
+                    'WebView proxy setup failed: ${error.code}',
+                  );
+                  webViewProxyAvailable = false;
+                } on MissingPluginException {
+                  webViewProxyAvailable = false;
+                }
+                await settings.save();
+                if (mounted) setState(() {});
+                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+                if (Platform.isWindows) {
+                  Fluttertoast.showToast(
+                    msg: 'Restart Saturn to apply the proxy to WebViews.',
+                  );
+                } else if (!webViewProxyAvailable) {
+                  Fluttertoast.showToast(
+                    msg: 'Proxy saved, but this WebView cannot use it.',
+                  );
+                }
+              },
+              child: Text('Save'.i18n),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    usernameController.dispose();
+    passwordController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('General'.i18n),
-      body: ListView(
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
         children: <Widget>[
           ListTile(
             title: Text('Offline mode'.i18n),
@@ -1425,64 +1626,49 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                   setState(() => settings.offlineMode = true);
                   return;
                 }
-                showDialog(
-                  context: context,
-                  builder: (context) {
-                    deezerAPI.authorize().then((v) async {
-                      if (v) {
-                        setState(() => settings.offlineMode = false);
-                      } else {
-                        Fluttertoast.showToast(
-                          msg:
-                              'Error logging in, check your internet connections.'
-                                  .i18n,
-                          gravity: ToastGravity.BOTTOM,
-                          toastLength: Toast.LENGTH_SHORT,
-                        );
-                      }
-                      if (context.mounted) Navigator.of(context).pop();
-                      if (context.mounted) Navigator.of(context).pop();
-                    });
-                    return AlertDialog(
-                      title: Text('Logging in...'.i18n),
-                      content: const Row(
-                        mainAxisSize: MainAxisSize.max,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[CircularProgressIndicator()],
-                      ),
+
+                // When disabling offline mode, check if we have any logged in platforms
+                PlatformRegistry.instance.loggedInPlatforms.then((loggedIn) {
+                  if (loggedIn.isNotEmpty) {
+                    setState(() => settings.offlineMode = false);
+                    unawaited(
+                      GetIt.I<AudioPlayerHandler>().retryPendingListenLogs(),
                     );
-                  },
-                );
+                  } else {
+                    Fluttertoast.showToast(
+                      msg:
+                          'No platforms connected. Please connect an account first.'
+                              .i18n,
+                      gravity: ToastGravity.BOTTOM,
+                      toastLength: Toast.LENGTH_SHORT,
+                    );
+                  }
+                });
               },
             ),
             leading: const Icon(Icons.lock),
           ),
+          if (Platform.isAndroid)
+            ListTile(
+              title: Text('Enable equalizer'.i18n),
+              subtitle: Text(
+                'Might enable some equalizer apps to work. Requires restart of Saturn'
+                    .i18n,
+              ),
+              leading: const Icon(Icons.equalizer),
+              trailing: Switch(
+                value: settings.enableEqualizer,
+                onChanged: (v) async {
+                  setState(() => settings.enableEqualizer = v);
+                  settings.save();
+                },
+              ),
+            ),
           ListTile(
-            title: Text('Copy ARL'.i18n),
-            subtitle: Text(
-              'Copy userToken/ARL Cookie for use in other apps.'.i18n,
-            ),
-            leading: const Icon(Icons.lock),
-            onTap: () async {
-              String url = settings.arl ?? '';
-              await Clipboard.setData(ClipboardData(text: url));
-              await Fluttertoast.showToast(msg: 'Copied'.i18n);
-            },
-          ),
-          ListTile(
-            title: Text('Enable equalizer'.i18n),
-            subtitle: Text(
-              'Might enable some equalizer apps to work. Requires restart of Saturn'
-                  .i18n,
-            ),
-            leading: const Icon(Icons.equalizer),
-            trailing: Switch(
-              value: settings.enableEqualizer,
-              onChanged: (v) async {
-                setState(() => settings.enableEqualizer = v);
-                settings.save();
-              },
-            ),
+            title: Text('Proxy'.i18n),
+            subtitle: Text(settings.proxyAddress ?? 'Not set'.i18n),
+            leading: const Icon(Icons.language),
+            onTap: _editProxy,
           ),
           if (!Platform.isAndroid && !Platform.isIOS)
             ListTile(
@@ -1593,7 +1779,6 @@ class _GeneralSettingsState extends State<GeneralSettings> {
               value: settings.eastereggsDisabled,
               onChanged: (bool v) async {
                 setState(() => settings.eastereggsDisabled = v);
-                settings.stopRainbowColorUpdates();
                 await settings.save();
               },
             ),
@@ -1620,9 +1805,6 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                 builder: (context) {
                   return AlertDialog(
                     title: Text('Log out'.i18n),
-                    // There was no Incompatability, cookies just needed to be cleared...
-                    // content: Text('Due to plugin incompatibility, login using browser is unavailable without restart.'.i18n),
-                    // content: Text('Restart of app is required to properly log out!'.i18n),
                     content: Text('Are you sure you want to log out?'.i18n),
                     actions: <Widget>[
                       TextButton(
@@ -1657,9 +1839,19 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                         //child: Text('(ARL ONLY) Continue'.i18n),
                         child: Text('Continue'.i18n),
                         onPressed: () async {
-                          await logOut();
-                          if (context.mounted) Navigator.of(context).pop();
-                          updateTheme();
+                          Navigator.of(context).pop();
+                          try {
+                            await logOut();
+                          } catch (error, stackTrace) {
+                            Logger.root.severe(
+                              'Logout failed from General settings',
+                              error,
+                              stackTrace,
+                            );
+                            await Fluttertoast.showToast(
+                              msg: 'Logout failed: $error',
+                            );
+                          }
                         },
                       ),
                     ],
@@ -1835,10 +2027,18 @@ Future<List<StorageInfo>> getStorageInfo() async {
 
     if (externalDirectories != null && externalDirectories.isNotEmpty) {
       for (var dir in externalDirectories) {
-        var availableMegaBytes =
-            (await DiskSpacePlus().getFreeDiskSpaceForPath(dir!.path)) ?? 0.0;
+        var availableMegaBytes = 0.0;
+        try {
+          availableMegaBytes =
+              (await disk_space_2.DiskSpace.getFreeDiskSpaceForPath(
+                dir!.path,
+              )) ??
+              0.0;
+        } catch (e) {
+          appLogger.warning('Error getting disk space for path', e);
+        }
 
-        if (dir.path.contains('s.s.saturn')) {
+        if (dir!.path.contains('s.s.saturn')) {
           //Skip app internal storage
           continue;
         }
@@ -1926,26 +2126,35 @@ class _DirectoryPickerState extends State<DirectoryPicker> {
                             ),
                           );
                         }
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            ...List.generate(snapshot.data?.length ?? 0, (i) {
-                              StorageInfo si = snapshot.data![i];
-                              return ListTile(
-                                title: Text(si.rootDir),
-                                leading: const Icon(Icons.sd_card),
-                                trailing: Text(filesize(si.availableBytes)),
-                                onTap: () {
-                                  setState(() {
-                                    _path = si.appFilesDir;
-                                    _root = si.rootDir;
-                                    if (i != 0) _root = si.appFilesDir;
-                                  });
-                                  Navigator.of(context).pop();
-                                },
-                              );
-                            }),
-                          ],
+                        final storages = snapshot.data ?? <StorageInfo>[];
+                        final maxListHeight =
+                            MediaQuery.sizeOf(context).height * 0.65;
+                        final listHeight = (storages.length * 56.0)
+                            .clamp(56.0, maxListHeight)
+                            .toDouble();
+                        return SizedBox(
+                          height: listHeight,
+                          child: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(storages.length, (i) {
+                                final si = storages[i];
+                                return ListTile(
+                                  title: Text(si.rootDir),
+                                  leading: const Icon(Icons.sd_card),
+                                  trailing: Text(filesize(si.availableBytes)),
+                                  onTap: () {
+                                    setState(() {
+                                      _path = si.appFilesDir;
+                                      _root = si.rootDir;
+                                      if (i != 0) _root = si.appFilesDir;
+                                    });
+                                    Navigator.of(context).pop();
+                                  },
+                                );
+                              }),
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -1986,7 +2195,8 @@ class _DirectoryPickerState extends State<DirectoryPicker> {
           }
 
           List<FileSystemEntity> data = snapshot.data;
-          return ListView(
+          return SilkyListView(
+            silkyConfig: silkyScrollConfig,
             children: <Widget>[
               ListTile(title: Text(_path)),
               ListTile(
@@ -2062,8 +2272,12 @@ class _CreditsScreenState extends State<CreditsScreen> {
   @override
   void initState() {
     PackageInfo.fromPlatform().then((info) {
+      final flavorSuffix =
+          appBuildFlavor != 'stable' && appBuildFlavor.isNotEmpty
+          ? ' ($appBuildFlavor)'
+          : '';
       setState(() {
-        _version = 'v${info.version}';
+        _version = 'v${info.version}$flavorSuffix';
       });
     });
     super.initState();
@@ -2073,7 +2287,8 @@ class _CreditsScreenState extends State<CreditsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar('About'.i18n),
-      body: ListView(
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
         children: [
           const FreezerTitle(),
           Text(
@@ -2393,7 +2608,8 @@ class _LicensesScreenState extends State<LicensesScreen> {
                 ],
               ),
             )
-          : ListView(
+          : SilkyListView(
+              silkyConfig: silkyScrollConfig,
               children: [
                 ...List.generate(
                   licenses.length,
@@ -2425,6 +2641,137 @@ class _LicensesScreenState extends State<LicensesScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class PlatformSettingsScreen extends StatefulWidget {
+  const PlatformSettingsScreen({super.key});
+
+  @override
+  State<PlatformSettingsScreen> createState() => _PlatformSettingsScreenState();
+}
+
+class _PlatformSettingsScreenState extends State<PlatformSettingsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: FreezerAppBar('Platforms'.i18n),
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
+        children: [
+          ListTile(
+            title: Text('Accounts & Platforms'.i18n),
+            subtitle: Text('Manage your streaming platform connections.'.i18n),
+            leading: const Icon(Icons.account_circle),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => PlatformLoginScreen(callback: null),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            title: Text('Log tracks'.i18n),
+            subtitle: Text(
+              'Send track listen logs to platforms, enable it for features like Flow to work properly'
+                  .i18n,
+            ),
+            trailing: Switch(
+              value: settings.logListen,
+              onChanged: (bool v) {
+                setState(() => settings.logListen = v);
+                settings.save();
+              },
+            ),
+            leading: const Icon(Icons.history_toggle_off),
+          ),
+          const Divider(),
+          ...PlatformRegistry.instance.allPlatforms.expand((platform) {
+            final settingsList = platform.settings;
+            if (settingsList.isEmpty) return <Widget>[];
+
+            return [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                child: Row(
+                  children: [
+                    platform.buildPlatformIcon(
+                      color: Theme.of(context).primaryColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      platform.platformName.toUpperCase(),
+                      style: TextStyle(
+                        color: Theme.of(context).primaryColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...settingsList.map((setting) {
+                if (setting is BooleanPlatformSetting) {
+                  return SwitchListTile(
+                    title: Text(setting.title),
+                    subtitle: Text(setting.description),
+                    secondary: Icon(setting.icon),
+                    value: setting.currentValue,
+                    onChanged: (val) async {
+                      await setting.onChanged(val);
+                      setState(() {});
+                    },
+                  );
+                } else if (setting is ChoicePlatformSetting) {
+                  return ListTile(
+                    title: Text(setting.title),
+                    subtitle: Text(setting.description),
+                    leading: Icon(setting.icon),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => SimpleDialog(
+                          title: Text(setting.title),
+                          children: setting.options.map((opt) {
+                            return ListTile(
+                              title: Text(opt.label),
+                              subtitle: opt.subtitle != null
+                                  ? Text(opt.subtitle!)
+                                  : null,
+                              onTap: () async {
+                                await setting.onChanged(opt.value);
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
+                                setState(() {});
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      );
+                    },
+                  );
+                } else if (setting is ActionPlatformSetting) {
+                  return ListTile(
+                    title: Text(setting.title),
+                    subtitle: Text(setting.description),
+                    leading: Icon(setting.icon),
+                    onTap: () async {
+                      await setting.onAction(context);
+                      setState(() {});
+                    },
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
+            ];
+          }),
+        ],
+      ),
     );
   }
 }

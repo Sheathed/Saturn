@@ -1,17 +1,24 @@
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:draggable_scrollbar/draggable_scrollbar.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:fluttericon/font_awesome5_icons.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:saturn/settings.dart';
+import 'package:visibility_detector/visibility_detector.dart';
+import 'package:silky_scroll/silky_scroll.dart';
+import 'package:saturn/ui/smooth_scroll_config.dart';
 
 import '../api/cache.dart';
-import '../api/deezer.dart';
+import '../platform/music_platform.dart';
+import '../platform/platform_manager.dart';
+import '../platform/platform_registry.dart';
 import '../api/definitions.dart';
 import '../api/download.dart';
+import 'login_screen.dart';
 import '../service/audio_service.dart';
 import 'toast.dart';
 import '../translations.i18n.dart';
@@ -21,6 +28,55 @@ import '../ui/error.dart';
 import '../ui/tiles.dart';
 import '../ui/local_playlists.dart';
 import 'menu.dart';
+import '../utils/logging.dart';
+import 'mobile_scrollbar.dart';
+
+class _LibraryEmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+
+  const _LibraryEmptyState({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final subtitle = this.subtitle;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 44, color: theme.colorScheme.primary),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
   const LibraryAppBar({super.key});
@@ -45,6 +101,7 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
             context.push('/settings');
           },
         ),
+        const PlatformToggleIcon(),
       ],
     );
   }
@@ -57,7 +114,8 @@ class LibraryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const LibraryAppBar(),
-      body: ListView(
+      body: SilkyListView(
+        silkyConfig: silkyScrollConfig,
         children: <Widget>[
           Container(height: 4.0),
           if (!downloadManager.running && downloadManager.queueSize > 0)
@@ -79,7 +137,8 @@ class LibraryScreen extends StatelessWidget {
             title: Text('Shuffle'.i18n),
             leading: const LeadingIcon(Icons.shuffle, color: Color(0xffeca704)),
             onTap: () async {
-              List<Track> tracks = await deezerAPI.libraryShuffle();
+              List<Track> tracks = await PlatformManager.instance.active
+                  .getLibraryShuffle();
               GetIt.I<AudioPlayerHandler>().playFromTrackList(
                 tracks,
                 tracks[0].id!,
@@ -92,39 +151,48 @@ class LibraryScreen extends StatelessWidget {
             },
           ),
           const FreezerDivider(),
-          ListTile(
-            title: Text('Tracks'.i18n),
-            leading: const LeadingIcon(
-              Icons.audiotrack,
-              color: Color(0xffbe3266),
+          if (PlatformManager.instance.active.capabilities.supportsLibrarySync)
+            ListTile(
+              title: Text('Tracks'.i18n),
+              leading: const LeadingIcon(
+                Icons.audiotrack,
+                color: Color(0xffbe3266),
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const LibraryTracks(),
+                  ),
+                );
+              },
             ),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const LibraryTracks()),
-              );
-            },
-          ),
-          ListTile(
-            title: Text('Albums'.i18n),
-            leading: const LeadingIcon(Icons.album, color: Color(0xff4b2e7e)),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const LibraryAlbums()),
-              );
-            },
-          ),
-          ListTile(
-            title: Text('Artists'.i18n),
-            leading: const LeadingIcon(
-              Icons.recent_actors,
-              color: Color(0xff384697),
+          if (PlatformManager.instance.active.capabilities.supportsAlbums)
+            ListTile(
+              title: Text('Albums'.i18n),
+              leading: const LeadingIcon(Icons.album, color: Color(0xff4b2e7e)),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const LibraryAlbums(),
+                  ),
+                );
+              },
             ),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const LibraryArtists()),
-              );
-            },
-          ),
+          if (PlatformManager.instance.active.capabilities.supportsArtists)
+            ListTile(
+              title: Text('Artists'.i18n),
+              leading: const LeadingIcon(
+                Icons.recent_actors,
+                color: Color(0xff384697),
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const LibraryArtists(),
+                  ),
+                );
+              },
+            ),
           ListTile(
             title: Text('Playlists'.i18n),
             leading: const LeadingIcon(
@@ -139,18 +207,19 @@ class LibraryScreen extends StatelessWidget {
               );
             },
           ),
-          ListTile(
-            title: Text('Podcasts'.i18n),
-            leading: const LeadingIcon(
-              Icons.podcasts,
-              color: Color.fromARGB(255, 181, 8, 172),
+          if (PlatformManager.instance.active.capabilities.supportsShows)
+            ListTile(
+              title: Text('Podcasts'.i18n),
+              leading: const LeadingIcon(
+                Icons.podcasts,
+                color: Color.fromARGB(255, 181, 8, 172),
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const LibraryShows()),
+                );
+              },
             ),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const LibraryShows()),
-              );
-            },
-          ),
           const FreezerDivider(),
           ListTile(
             title: Text('History'.i18n),
@@ -199,7 +268,7 @@ class LibraryScreen extends StatelessWidget {
                         trailing: Text(data[1]),
                       ),
                       ListTile(
-                        title: Text('Offline playlists'.i18n),
+                        title: Text('Local Playlists'.i18n),
                         leading: const Icon(Icons.playlist_add),
                         trailing: Text(data[2]),
                       ),
@@ -234,40 +303,31 @@ class LibraryTracks extends StatefulWidget {
 
 class _LibraryTracksState extends State<LibraryTracks> {
   bool _loading = false;
-  bool _loadingTracks = false;
+  bool _loadingAllOffline = true;
   final ScrollController _scrollController = ScrollController();
   List<Track> tracks = [];
   List<Track> allTracks = [];
   int? trackCount;
   Sorting _sort = Sorting(sourceType: SortSourceTypes.TRACKS);
+  int _sortVersion = 0;
 
-  Playlist get _playlist => Playlist(id: deezerAPI.favoritesPlaylistId);
-
-  List<Track> get _sorted {
-    List<Track> tcopy = List.from(tracks);
-    tcopy.sort((a, b) => a.addedDate!.compareTo(b.addedDate!));
-    switch (_sort.type) {
-      case SortType.ALPHABETIC:
-        tcopy.sort((a, b) => a.title!.compareTo(b.title!));
-        break;
-      case SortType.ARTIST:
-        tcopy.sort(
-          (a, b) => a.artists![0].name!.toLowerCase().compareTo(
-            b.artists![0].name!.toLowerCase(),
-          ),
-        );
-        break;
-      case SortType.DEFAULT:
-      default:
-        break;
-    }
-    //Reverse
-    if (_sort.reverse) return tcopy.reversed.toList();
-    return tcopy;
-  }
+  Playlist get _playlist => Playlist(
+    id: 'favorites_${PlatformManager.instance.active.platformId}',
+    title: 'Favorites'.i18n,
+    tracks: tracks,
+    trackCount: tracks.length,
+    platformId: PlatformManager.instance.active.platformId,
+  );
 
   Future _reverse() async {
-    if (mounted) setState(() => _sort.reverse = !_sort.reverse);
+    if (mounted) {
+      setState(() {
+        _sort.reverse = !_sort.reverse;
+        _sortVersion++;
+        tracks.clear();
+        trackCount = null;
+      });
+    }
     //Save sorting in cache
     int? index = Sorting.index(SortSourceTypes.TRACKS);
     if (index != null) {
@@ -276,23 +336,25 @@ class _LibraryTracksState extends State<LibraryTracks> {
       cache.sorts.add(_sort);
     }
     await cache.save();
-
-    //Preload for sorting
-    if (tracks.length < (trackCount ?? 0)) _loadFull();
+    _load();
   }
 
   Future _load() async {
+    if (_loading) return;
+    _loading = true;
+    final version = _sortVersion;
+
     //Already loaded
     if (trackCount != null && (tracks.length >= (trackCount ?? 0))) {
-      //Update favorite tracks cache when fully loaded
-      if (cache.libraryTracks?.length != trackCount) {
+      if (cache.activeLibraryTracks.length != trackCount) {
         if (mounted) {
           setState(() {
-            cache.libraryTracks = tracks.map((t) => t.id!).toList();
+            cache.activeLibraryTracks = tracks.map((t) => t.id!).toList();
           });
           await cache.save();
         }
       }
+      _loading = false;
       return;
     }
 
@@ -300,93 +362,85 @@ class _LibraryTracksState extends State<LibraryTracks> {
         .checkConnectivity();
     if (connectivity.isNotEmpty &&
         !connectivity.contains(ConnectivityResult.none)) {
-      if (mounted) setState(() => _loading = true);
-      int pos = tracks.length;
+      if (mounted) setState(() {});
 
-      if (tracks.isEmpty) {
-        //Load tracks as a playlist
-        Playlist? favPlaylist;
-        try {
-          favPlaylist = await deezerAPI.playlist(
-            deezerAPI.favoritesPlaylistId ?? '',
-          );
-        } catch (e) {
-          if (kDebugMode) {
-            print(e);
-          }
-        }
-        //Error loading
-        if (favPlaylist == null) {
-          if (mounted) setState(() => _loading = false);
-          return;
-        }
-        //Update
-        if (mounted) {
-          setState(() {
-            trackCount = favPlaylist!.trackCount;
-            if (tracks.isEmpty) tracks = favPlaylist.tracks!;
-            _makeFavorite();
-            _loading = false;
-          });
-        }
-        return;
-      }
-
-      //Load another page of tracks from deezer
-      if (_loadingTracks) return;
-      _loadingTracks = true;
-
-      List<Track>? t;
+      PaginatedTrackList? page;
+      final platform = PlatformManager.instance.active;
+      final start = tracks.length;
       try {
-        t = await deezerAPI.playlistTracksPage(
-          deezerAPI.favoritesPlaylistId ?? '',
-          pos,
+        page = await platform.getFavoriteTracks(
+          start: start,
+          limit: 100,
+          sort: _sort,
         );
-      } catch (e) {
-        if (kDebugMode) {
-          print(e);
-        }
+      } catch (error, stackTrace) {
+        appLogger.warning(
+          'Failed to load favorite tracks page: platform=${platform.platformId}, '
+          'start=$start, limit=100, sort=${_sort.type}, reverse=${_sort.reverse}',
+          error,
+          stackTrace,
+        );
       }
       //On error load offline
-      if (t == null) {
-        await _loadOffline();
+      if (page == null) {
+        if (version != _sortVersion) {
+          _loading = false;
+          _load();
+          return;
+        }
+        // Keep already loaded online favorites if a later page request fails.
+        // Replacing the list with the offline-only library here made tracks
+        // disappear during scroll pagination when that local list was empty.
+        if (tracks.isEmpty) await _loadOffline();
+        _loading = false;
+        return;
+      }
+      if (version != _sortVersion) {
+        _loading = false;
+        _load();
         return;
       }
       if (mounted) {
         setState(() {
-          tracks.addAll(t!);
+          tracks.addAll(page!.tracks);
+          if (page.hasMore) {
+            trackCount = tracks.length + 1;
+          } else {
+            trackCount = tracks.length;
+          }
           _makeFavorite();
+          final platformId = PlatformManager.instance.active.platformId;
+          final ids = tracks
+              .map((track) => track.id)
+              .whereType<String>()
+              .toList();
+          if (page.hasMore) {
+            final cached = cache.platformLibraryTracks.putIfAbsent(
+              platformId,
+              () => <String>[],
+            );
+            for (final id in ids) {
+              if (!cached.contains(id)) cached.add(id);
+            }
+          } else {
+            cache.platformLibraryTracks[platformId] = ids;
+          }
           _loading = false;
-          _loadingTracks = false;
         });
+        await cache.save();
+      } else {
+        _loading = false;
       }
-    }
-  }
-
-  //Load all tracks
-  Future _loadFull() async {
-    if (tracks.isEmpty || tracks.length < (trackCount ?? 0)) {
-      late Playlist p;
-      try {
-        p = await deezerAPI.fullPlaylist(deezerAPI.favoritesPlaylistId ?? '');
-      } catch (e) {
-        if (kDebugMode) {
-          print(e);
-        }
-      }
-      if (mounted) {
-        setState(() {
-          tracks = p.tracks!;
-          trackCount = p.trackCount;
-          _sort = _sort;
-        });
-      }
+    } else {
+      await _loadOffline();
+      _loading = false;
     }
   }
 
   Future _loadOffline() async {
     Playlist? p = await downloadManager.getOfflinePlaylist(
-      deezerAPI.favoritesPlaylistId ?? '',
+      'favorites_${PlatformManager.instance.active.platformId}',
+      platformId: PlatformManager.instance.active.platformId,
     );
     if (mounted) {
       setState(() {
@@ -396,12 +450,17 @@ class _LibraryTracksState extends State<LibraryTracks> {
   }
 
   Future _loadAllOffline() async {
-    List<Track> tracks = await downloadManager.allOfflineTracks();
-    if (mounted) {
-      setState(() {
-        allTracks = tracks;
-      });
+    List<Track> tracks = [];
+    try {
+      tracks = await downloadManager.allOfflineTracks();
+    } catch (error, stackTrace) {
+      appLogger.warning('Failed to load offline tracks', error, stackTrace);
     }
+    if (!mounted) return;
+    setState(() {
+      allTracks = tracks;
+      _loadingAllOffline = false;
+    });
   }
 
   //Update tracks with favorite true
@@ -413,23 +472,12 @@ class _LibraryTracksState extends State<LibraryTracks> {
 
   @override
   void initState() {
-    _scrollController.addListener(() {
-      //Load more tracks on scroll
-      double off = _scrollController.position.maxScrollExtent * 0.90;
-      if (_scrollController.position.pixels > off) _load();
-    });
-
+    // Restore the requested order before the first network page is fetched.
+    int? index = Sorting.index(SortSourceTypes.TRACKS);
+    if (index != null) _sort = cache.sorts[index];
     _load();
     //Load all offline tracks
     _loadAllOffline();
-
-    //Load sorting
-    int? index = Sorting.index(SortSourceTypes.TRACKS);
-    if (index != null) {
-      if (mounted) setState(() => _sort = cache.sorts[index]);
-    }
-
-    if (_sort.type != SortType.DEFAULT || _sort.reverse) _loadFull();
 
     super.initState();
   }
@@ -456,10 +504,14 @@ class _LibraryTracksState extends State<LibraryTracks> {
           PopupMenuButton(
             color: Theme.of(context).scaffoldBackgroundColor,
             onSelected: (SortType s) async {
-              //Preload for sorting
-              if (tracks.length < (trackCount ?? 0)) await _loadFull();
-
-              setState(() => _sort.type = s);
+              if (mounted) {
+                setState(() {
+                  _sort.type = s;
+                  _sortVersion++;
+                  tracks.clear();
+                  trackCount = null;
+                });
+              }
               //Save sorting in cache
               int? index = Sorting.index(SortSourceTypes.TRACKS);
               if (index != null) {
@@ -468,6 +520,7 @@ class _LibraryTracksState extends State<LibraryTracks> {
                 cache.sorts.add(_sort);
               }
               await cache.save();
+              _load();
             },
             itemBuilder: (context) => <PopupMenuEntry<SortType>>[
               PopupMenuItem(
@@ -488,17 +541,18 @@ class _LibraryTracksState extends State<LibraryTracks> {
           Container(width: 8.0),
         ],
       ),
-      body: DraggableScrollbar.rrect(
+      body: MobileScrollbar(
         controller: _scrollController,
         backgroundColor: Theme.of(context).primaryColor,
-        child: ListView(
-          controller: _scrollController,
+        childBuilder: (scrollController, scrollPhysics) => ListView(
+          controller: scrollController,
+          physics: scrollPhysics,
           children: <Widget>[
             Row(
               mainAxisSize: MainAxisSize.max,
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: <Widget>[
-                MakePlaylistOffline(_playlist),
+                MakePlaylistOffline(_playlist, size: 32.0),
                 TextButton(
                   style: ButtonStyle(
                     overlayColor: WidgetStateProperty.resolveWith<Color?>((
@@ -534,21 +588,16 @@ class _LibraryTracksState extends State<LibraryTracks> {
             const FreezerDivider(),
             //Loved tracks
             ...List.generate(tracks.length, (i) {
-              Track t = (tracks.length == (trackCount ?? 0))
-                  ? _sorted[i]
-                  : tracks[i];
+              Track t = tracks[i];
               return TrackTile(
                 t,
                 key: Key('track_${t.id}'),
                 onTap: () {
                   GetIt.I<AudioPlayerHandler>().playFromTrackList(
-                    (tracks.length == (trackCount ?? 0)) ? _sorted : tracks,
+                    tracks,
                     t.id!,
-                    QueueSource(
-                      id: deezerAPI.favoritesPlaylistId,
-                      text: 'Favorites'.i18n,
-                      source: 'playlist_page',
-                    ),
+                    (PlatformManager.instance.active.favoritesQueueSource
+                      ..sort = _sort),
                   );
                 },
                 onHold: () {
@@ -565,6 +614,16 @@ class _LibraryTracksState extends State<LibraryTracks> {
                 },
               );
             }),
+            if (trackCount != null && tracks.length < trackCount!)
+              VisibilityDetector(
+                key: ValueKey('favorite-tracks-page-${tracks.length}'),
+                onVisibilityChanged: (info) {
+                  if (info.visibleFraction > 0 && !_loading) {
+                    _load();
+                  }
+                },
+                child: const SizedBox(height: 1),
+              ),
             if (_loading)
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -577,6 +636,18 @@ class _LibraryTracksState extends State<LibraryTracks> {
                   ),
                 ],
               ),
+            if (tracks.isEmpty &&
+                allTracks.isEmpty &&
+                !_loading &&
+                !_loadingAllOffline)
+              SizedBox(
+                height: 230,
+                child: _LibraryEmptyState(
+                  icon: Icons.music_note_rounded,
+                  title: 'No tracks in your library yet'.i18n,
+                  subtitle: 'Add items to your library to see them here.'.i18n,
+                ),
+              ),
             const FreezerDivider(),
             Text(
               'All offline tracks'.i18n,
@@ -588,6 +659,7 @@ class _LibraryTracksState extends State<LibraryTracks> {
               Track t = allTracks[i];
               return TrackTile(
                 t,
+                showPlatformBadge: true,
                 key: Key('offline_track_${t.id}'),
                 onTap: () {
                   GetIt.I<AudioPlayerHandler>().playFromTrackList(
@@ -628,28 +700,35 @@ class _LibraryAlbumsState extends State<LibraryAlbums> {
   List<Album> get _sorted {
     List<Album> albums = List.from(_albums ?? []);
     if (albums.isNotEmpty) {
-      albums.sort((a, b) => a.favoriteDate!.compareTo(b.favoriteDate!));
+      if (!PlatformManager.instance.active.capabilities.preservesLibraryOrder &&
+          albums.every((album) => album.favoriteDate != null)) {
+        albums.sort((a, b) => a.favoriteDate!.compareTo(b.favoriteDate!));
+      }
       switch (_sort.type) {
         case SortType.DEFAULT:
           break;
         case SortType.ALPHABETIC:
           albums.sort(
-            (a, b) => a.title!.toLowerCase().compareTo(b.title!.toLowerCase()),
+            (a, b) => (a.title ?? '').toLowerCase().compareTo(
+              (b.title ?? '').toLowerCase(),
+            ),
           );
           break;
         case SortType.ARTIST:
           albums.sort(
-            (a, b) => a.artists![0].name!.toLowerCase().compareTo(
-              b.artists![0].name!.toLowerCase(),
-            ),
+            (a, b) => (a.artists?.firstOrNull?.name ?? '')
+                .toLowerCase()
+                .compareTo((b.artists?.firstOrNull?.name ?? '').toLowerCase()),
           );
           break;
         case SortType.RELEASE_DATE:
-          albums.sort(
-            (a, b) => DateTime.parse(
-              a.releaseDate!,
-            ).compareTo(DateTime.parse(b.releaseDate!)),
-          );
+          albums.sort((a, b) {
+            final left = DateTime.tryParse(a.releaseDate ?? '');
+            final right = DateTime.tryParse(b.releaseDate ?? '');
+            if (left == null) return right == null ? 0 : 1;
+            if (right == null) return -1;
+            return left.compareTo(right);
+          });
           break;
         default:
           break;
@@ -663,7 +742,8 @@ class _LibraryAlbumsState extends State<LibraryAlbums> {
   Future _load() async {
     if (settings.offlineMode) return;
     try {
-      List<Album> albums = await deezerAPI.getAlbums();
+      List<Album> albums = await PlatformManager.instance.active
+          .getUserAlbums();
       if (mounted) setState(() => _albums = albums);
     } catch (e) {
       Logger.root.severe('Error loading albums: $e', StackTrace);
@@ -747,11 +827,12 @@ class _LibraryAlbumsState extends State<LibraryAlbums> {
           Container(width: 8.0),
         ],
       ),
-      body: DraggableScrollbar.rrect(
+      body: MobileScrollbar(
         controller: _scrollController,
         backgroundColor: Theme.of(context).primaryColor,
-        child: ListView(
-          controller: _scrollController,
+        childBuilder: (scrollController, scrollPhysics) => ListView(
+          controller: scrollController,
+          physics: scrollPhysics,
           children: <Widget>[
             Container(height: 8.0),
             if (!settings.offlineMode && _albums == null)
@@ -764,50 +845,48 @@ class _LibraryAlbumsState extends State<LibraryAlbums> {
                 ],
               ),
             if (_albums != null)
-              ...List.generate(_albums?.length ?? 0, (int i) {
-                Album a = _sorted[i];
-                return AlbumTile(
-                  a,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => AlbumDetails(a)),
-                    );
-                  },
-                  onHold: () async {
-                    MenuSheet m = MenuSheet();
-                    m.defaultAlbumMenu(
-                      a,
-                      context: context,
-                      onRemove: () {
-                        setState(() => _albums?.remove(a));
+              Builder(
+                builder: (context) {
+                  final sortedAlbums = _sorted;
+                  if (sortedAlbums.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  if (MediaQuery.sizeOf(context).width >= 960) {
+                    return ResponsiveMediaGrid.builder(
+                      itemCount: sortedAlbums.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      extraTextHeight: 70,
+                      itemBuilder: (context, i) {
+                        final album = sortedAlbums[i];
+                        return LayoutBuilder(
+                          builder: (context, constraints) => AlbumCard(
+                            album,
+                            width: constraints.maxWidth,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => AlbumDetails(album),
+                              ),
+                            ),
+                            onHold: () => MenuSheet().defaultAlbumMenu(
+                              album,
+                              context: context,
+                              onRemove: () =>
+                                  setState(() => _albums?.remove(album)),
+                            ),
+                          ),
+                        );
                       },
                     );
-                  },
-                );
-              }),
-            FutureBuilder(
-              future: downloadManager.getOfflineAlbums(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError ||
-                    !snapshot.hasData ||
-                    snapshot.data!.isEmpty) {
-                  return const SizedBox(height: 0, width: 0);
-                }
-
-                List<Album> albums = snapshot.data!;
-                return Column(
-                  children: <Widget>[
-                    const FreezerDivider(),
-                    Text(
-                      'Offline albums'.i18n,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 24.0,
-                      ),
-                    ),
-                    ...List.generate(albums.length, (i) {
-                      Album a = albums[i];
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(sortedAlbums.length, (int i) {
+                      Album a = sortedAlbums[i];
                       return AlbumTile(
                         a,
                         onTap: () {
@@ -823,15 +902,98 @@ class _LibraryAlbumsState extends State<LibraryAlbums> {
                             a,
                             context: context,
                             onRemove: () {
-                              setState(() {
-                                albums.remove(a);
-                                _albums?.remove(a);
-                              });
+                              setState(() => _albums?.remove(a));
                             },
                           );
                         },
                       );
                     }),
+                  );
+                },
+              ),
+            FutureBuilder(
+              future: downloadManager.getOfflineAlbums(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return const SizedBox(height: 0, width: 0);
+                }
+                if (snapshot.data!.isEmpty) {
+                  if (settings.offlineMode || _albums?.isEmpty == true) {
+                    return SizedBox(
+                      height: 230,
+                      child: _LibraryEmptyState(
+                        icon: Icons.album_rounded,
+                        title: 'No albums in your library yet'.i18n,
+                        subtitle:
+                            'Add items to your library to see them here.'.i18n,
+                      ),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }
+
+                List<Album> albums = snapshot.data!;
+                return Column(
+                  children: <Widget>[
+                    const FreezerDivider(),
+                    Text(
+                      'Offline albums'.i18n,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 24.0,
+                      ),
+                    ),
+                    if (MediaQuery.sizeOf(context).width >= 960)
+                      ResponsiveMediaGrid.builder(
+                        itemCount: albums.length,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemBuilder: (context, i) {
+                          final album = albums[i];
+                          return LayoutBuilder(
+                            builder: (context, constraints) => AlbumCard(
+                              album,
+                              width: constraints.maxWidth,
+                              showPlatformBadge: true,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => AlbumDetails(album),
+                                ),
+                              ),
+                              onHold: () => MenuSheet().defaultAlbumMenu(
+                                album,
+                                context: context,
+                                onRemove: () => setState(() {
+                                  albums.remove(album);
+                                  _albums?.remove(album);
+                                }),
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    else
+                      ...List.generate(albums.length, (i) {
+                        final album = albums[i];
+                        return AlbumTile(
+                          album,
+                          showPlatformBadge: true,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => AlbumDetails(album),
+                            ),
+                          ),
+                          onHold: () => MenuSheet().defaultAlbumMenu(
+                            album,
+                            context: context,
+                            onRemove: () => setState(() {
+                              albums.remove(album);
+                              _albums?.remove(album);
+                            }),
+                          ),
+                        );
+                      }),
                   ],
                 );
               },
@@ -860,16 +1022,21 @@ class _LibraryArtistsState extends State<LibraryArtists> {
   List<Artist> get _sorted {
     List<Artist> artists = List.from(_artists);
     if (artists.isNotEmpty) {
-      artists.sort((a, b) => a.favoriteDate!.compareTo(b.favoriteDate!));
+      if (!PlatformManager.instance.active.capabilities.preservesLibraryOrder &&
+          artists.every((artist) => artist.favoriteDate != null)) {
+        artists.sort((a, b) => a.favoriteDate!.compareTo(b.favoriteDate!));
+      }
       switch (_sort.type) {
         case SortType.DEFAULT:
           break;
         case SortType.POPULARITY:
-          artists.sort((a, b) => b.fans! - a.fans!);
+          artists.sort((a, b) => (b.fans ?? 0) - (a.fans ?? 0));
           break;
         case SortType.ALPHABETIC:
           artists.sort(
-            (a, b) => a.name!.toLowerCase().compareTo(b.name!.toLowerCase()),
+            (a, b) => (a.name ?? '').toLowerCase().compareTo(
+              (b.name ?? '').toLowerCase(),
+            ),
           );
           break;
         default:
@@ -887,10 +1054,10 @@ class _LibraryArtistsState extends State<LibraryArtists> {
     //Fetch
     List<Artist>? data;
     try {
-      data = await deezerAPI.getArtists();
+      data = await PlatformManager.instance.active.getUserArtists();
     } catch (e) {
       if (kDebugMode) {
-        print(e);
+        appLogger.fine('Library item loading failed', e);
       }
     }
     //Update UI
@@ -979,11 +1146,12 @@ class _LibraryArtistsState extends State<LibraryArtists> {
           Container(width: 8.0),
         ],
       ),
-      body: DraggableScrollbar.rrect(
+      body: MobileScrollbar(
         controller: _scrollController,
         backgroundColor: Theme.of(context).primaryColor,
-        child: ListView(
-          controller: _scrollController,
+        childBuilder: (scrollController, scrollPhysics) => ListView(
+          controller: scrollController,
+          physics: scrollPhysics,
           children: <Widget>[
             if (_loading)
               Padding(
@@ -999,31 +1167,106 @@ class _LibraryArtistsState extends State<LibraryArtists> {
               ),
             if (_error) const Center(child: ErrorScreen()),
             if (!_loading && !_error)
-              ...List.generate(_artists.length, (i) {
-                Artist a = _sorted[i];
-                return ArtistHorizontalTile(
-                  a,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => ArtistDetails(a)),
+              Builder(
+                builder: (context) {
+                  final sortedArtists = _sorted;
+                  if (sortedArtists.isEmpty) {
+                    return SizedBox(
+                      height: 230,
+                      child: _LibraryEmptyState(
+                        icon: Icons.people_alt_rounded,
+                        title: 'No artists in your library yet'.i18n,
+                        subtitle:
+                            'Add items to your library to see them here.'.i18n,
+                      ),
                     );
-                  },
-                  onHold: () {
-                    MenuSheet m = MenuSheet();
-                    m.defaultArtistMenu(
-                      a,
-                      context: context,
-                      onRemove: () {
-                        setState(() {
-                          _artists.remove(a);
-                        });
+                  }
+                  if (MediaQuery.sizeOf(context).width >= 960) {
+                    return ResponsiveMediaGrid.builder(
+                      itemCount: sortedArtists.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      extraTextHeight: 58,
+                      itemBuilder: (context, i) {
+                        final artist = sortedArtists[i];
+                        return LayoutBuilder(
+                          builder: (context, constraints) => ArtistTile(
+                            artist,
+                            width: constraints.maxWidth,
+                            onTap: () {
+                              if (artist.id != null) {
+                                context.push(
+                                  '/artist/${Uri.encodeComponent(artist.id!)}',
+                                  extra: artist,
+                                );
+                              }
+                            },
+                            onHold: () => MenuSheet().defaultArtistMenu(
+                              artist,
+                              context: context,
+                              onRemove: () =>
+                                  setState(() => _artists.remove(artist)),
+                            ),
+                          ),
+                        );
                       },
                     );
-                  },
-                );
-              }),
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(sortedArtists.length, (i) {
+                      Artist a = sortedArtists[i];
+                      return ArtistHorizontalTile(
+                        a,
+                        onTap: () {
+                          if (a.id != null) {
+                            context.push(
+                              '/artist/${Uri.encodeComponent(a.id!)}',
+                              extra: a,
+                            );
+                          }
+                        },
+                        onHold: () {
+                          MenuSheet m = MenuSheet();
+                          m.defaultArtistMenu(
+                            a,
+                            context: context,
+                            onRemove: () {
+                              setState(() {
+                                _artists.remove(a);
+                              });
+                            },
+                          );
+                        },
+                      );
+                    }),
+                  );
+                },
+              ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class CreatePlaylistGridCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const CreatePlaylistGridCard({required this.onTap, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => PlaylistActionCard(
+        title: 'Create new playlist'.i18n,
+        icon: Icons.playlist_add,
+        width: constraints.maxWidth,
+        onTap: onTap,
       ),
     );
   }
@@ -1038,14 +1281,17 @@ class LibraryPlaylists extends StatefulWidget {
 
 class _LibraryPlaylistsState extends State<LibraryPlaylists> {
   List<Playlist>? _playlists;
+  bool _hasLocalOfflinePlaylists = true;
   Sorting _sort = Sorting(sourceType: SortSourceTypes.PLAYLISTS);
   final ScrollController _scrollController = ScrollController();
+  StreamSubscription<void>? _offlineLibrarySub;
+  late Future<List<Playlist>> _offlinePlaylistsFuture;
   String _filter = '';
 
   List<Playlist> get _sorted {
     List<Playlist> playlists = List.from(
       _playlists!.where(
-        (p) => p.title!.toLowerCase().contains(_filter.toLowerCase()),
+        (p) => (p.title ?? '').toLowerCase().contains(_filter.toLowerCase()),
       ),
     );
     switch (_sort.type) {
@@ -1053,17 +1299,19 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
         break;
       case SortType.USER:
         playlists.sort(
-          (a, b) => (a.user?.name ?? deezerAPI.userName!)
-              .toLowerCase()
-              .compareTo((b.user?.name ?? deezerAPI.userName!).toLowerCase()),
+          (a, b) => (a.user?.name ?? '').toLowerCase().compareTo(
+            (b.user?.name ?? '').toLowerCase(),
+          ),
         );
         break;
       case SortType.TRACK_COUNT:
-        playlists.sort((a, b) => b.trackCount! - a.trackCount!);
+        playlists.sort((a, b) => (b.trackCount ?? 0) - (a.trackCount ?? 0));
         break;
       case SortType.ALPHABETIC:
         playlists.sort(
-          (a, b) => a.title!.toLowerCase().compareTo(b.title!.toLowerCase()),
+          (a, b) => (a.title ?? '').toLowerCase().compareTo(
+            (b.title ?? '').toLowerCase(),
+          ),
         );
         break;
       default:
@@ -1076,10 +1324,26 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
   Future _load() async {
     if (!settings.offlineMode) {
       try {
-        List<Playlist> playlists = await deezerAPI.getPlaylists();
+        List<Playlist> playlists = await PlatformManager.instance.active
+            .getUserPlaylists();
+        // The API list belongs to the active platform, so keep its playlists
+        // visible even when a downloaded copy also appears below.
         if (mounted) setState(() => _playlists = playlists);
       } catch (e) {
         Logger.root.severe('Error loading playlists: $e');
+        if (mounted) setState(() => _playlists = []);
+      }
+    } else {
+      // Still list downloaded playlists from the selected platform in the
+      // regular platform section while offline mode is enabled.
+      final activePlatformId = PlatformManager.instance.activePlatformId;
+      final offlinePlaylists = await downloadManager.getOfflinePlaylists();
+      if (mounted) {
+        setState(
+          () => _playlists = offlinePlaylists
+              .where((playlist) => playlist.platformId == activePlatformId)
+              .toList(),
+        );
       }
     }
   }
@@ -1096,8 +1360,28 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
     await cache.save();
   }
 
+  Future<void> _createPlaylist() async {
+    if (settings.offlineMode) {
+      Fluttertoast.showToast(
+        msg: 'Cannot create playlists in offline mode'.i18n,
+        gravity: ToastGravity.BOTTOM,
+      );
+      return;
+    }
+    await MenuSheet().createPlaylist(context);
+    await _load();
+  }
+
   @override
   void initState() {
+    super.initState();
+    _offlinePlaylistsFuture = downloadManager.getOfflinePlaylists();
+    _offlineLibrarySub = downloadManager.offlineLibraryChanged.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _offlinePlaylistsFuture = downloadManager.getOfflinePlaylists();
+      });
+    });
     //Restore sort
     int? index = Sorting.index(SortSourceTypes.PLAYLISTS);
     if (index != null) {
@@ -1105,18 +1389,14 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
     }
 
     _load();
-    super.initState();
   }
 
-  Playlist get favoritesPlaylist => Playlist(
-    id: deezerAPI.favoritesPlaylistId ?? '0',
-    title: 'Favorites'.i18n,
-    user: User(name: deezerAPI.userName ?? 'Unavailable'),
-    image: ImageDetails(thumbUrl: 'assets/favorites_thumb.jpg'),
-    tracks: [],
-    trackCount: 1,
-    duration: const Duration(seconds: 0),
-  );
+  @override
+  void dispose() {
+    _offlineLibrarySub?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1172,11 +1452,12 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
           Container(width: 8.0),
         ],
       ),
-      body: DraggableScrollbar.rrect(
+      body: MobileScrollbar(
         controller: _scrollController,
         backgroundColor: Theme.of(context).primaryColor,
-        child: ListView(
-          controller: _scrollController,
+        childBuilder: (scrollController, scrollPhysics) => ListView(
+          controller: scrollController,
+          physics: scrollPhysics,
           children: <Widget>[
             //Search
             Padding(
@@ -1202,28 +1483,24 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
             ),
             LocalPlaylistsSection(
               onPlaylistsChanged: () => setState(() {}),
-            ),
-            const FreezerDivider(),
-            ListTile(
-              title: Text('Create new playlist'.i18n),
-              leading: const LeadingIcon(
-                Icons.playlist_add,
-                color: Color(0xff009a85),
-              ),
-              onTap: () async {
-                if (settings.offlineMode) {
-                  Fluttertoast.showToast(
-                    msg: 'Cannot create playlists in offline mode'.i18n,
-                    gravity: ToastGravity.BOTTOM,
-                  );
-                  return;
+              onHasPlaylistsChanged: (hasPlaylists) {
+                if (_hasLocalOfflinePlaylists != hasPlaylists) {
+                  setState(() => _hasLocalOfflinePlaylists = hasPlaylists);
                 }
-                MenuSheet m = MenuSheet();
-                await m.createPlaylist(context);
-                await _load();
               },
             ),
-            const FreezerDivider(),
+            if (MediaQuery.sizeOf(context).width < 960) ...[
+              const FreezerDivider(),
+              ListTile(
+                title: Text('Create new playlist'.i18n),
+                leading: const LeadingIcon(
+                  Icons.playlist_add,
+                  color: Color(0xff009a85),
+                ),
+                onTap: _createPlaylist,
+              ),
+              const FreezerDivider(),
+            ],
 
             if (!settings.offlineMode && _playlists == null)
               Row(
@@ -1235,71 +1512,94 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
                 ],
               ),
 
-            //Favorites playlist
-            PlaylistTile(
-              favoritesPlaylist,
-              onTap: () async {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => PlaylistDetails(favoritesPlaylist),
+            if (MediaQuery.sizeOf(context).width >= 960)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                child: Text(
+                  'Playlists'.i18n,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                );
-              },
-              onHold: () {
-                MenuSheet m = MenuSheet();
-                favoritesPlaylist.library = true;
-                m.defaultPlaylistMenu(favoritesPlaylist, context: context);
-              },
-            ),
+                ),
+              ),
 
             if (_playlists != null)
-              ...List.generate(_sorted.length, (int i) {
-                Playlist p = (_sorted)[i];
-                return PlaylistTile(
-                  p,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => PlaylistDetails(p)),
-                  ),
-                  onHold: () {
-                    MenuSheet m = MenuSheet();
-                    m.defaultPlaylistMenu(
-                      p,
-                      context: context,
-                      onRemove: () {
-                        setState(() => _playlists!.remove(p));
-                      },
-                      onUpdate: () {
-                        _load();
+              Builder(
+                builder: (context) {
+                  final sortedPlaylists = _sorted;
+                  if (sortedPlaylists.isEmpty && !_hasLocalOfflinePlaylists) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (MediaQuery.sizeOf(context).width >= 960)
+                          ResponsiveMediaGrid.builder(
+                            itemCount: 1,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            itemBuilder: (context, index) =>
+                                CreatePlaylistGridCard(onTap: _createPlaylist),
+                          ),
+                        SizedBox(
+                          height: 230,
+                          child: _LibraryEmptyState(
+                            icon: Icons.queue_music_rounded,
+                            title: 'No playlists found'.i18n,
+                            subtitle:
+                                'Add items to your library to see them here.'
+                                    .i18n,
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  if (MediaQuery.sizeOf(context).width >= 960) {
+                    return ResponsiveMediaGrid.builder(
+                      itemCount: sortedPlaylists.length + 1,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      extraTextHeight: 70,
+                      itemBuilder: (context, i) {
+                        if (i == 0) {
+                          return CreatePlaylistGridCard(
+                            onTap: _createPlaylist,
+                          );
+                        }
+                        final playlist = sortedPlaylists[i - 1];
+                        return LayoutBuilder(
+                          builder: (context, constraints) => PlaylistCardTile(
+                            playlist,
+                            width: constraints.maxWidth,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => PlaylistDetails(playlist),
+                              ),
+                            ),
+                            onHold: () => MenuSheet().defaultPlaylistMenu(
+                              playlist,
+                              context: context,
+                              onRemove: () => setState(
+                                () => _playlists!.remove(playlist),
+                              ),
+                              onUpdate: _load,
+                            ),
+                          ),
+                        );
                       },
                     );
-                  },
-                );
-              }),
-
-            FutureBuilder(
-              future: downloadManager.getOfflinePlaylists(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError || !snapshot.hasData) {
-                  return const SizedBox(height: 0, width: 0);
-                }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const SizedBox(height: 0, width: 0);
-                }
-
-                List<Playlist> playlists = snapshot.data!;
-                return Column(
-                  children: <Widget>[
-                    const FreezerDivider(),
-                    Text(
-                      'Offline playlists'.i18n,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 24.0,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    ...List.generate(playlists.length, (i) {
-                      Playlist p = playlists[i];
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(sortedPlaylists.length, (int i) {
+                      Playlist p = sortedPlaylists[i];
                       return PlaylistTile(
                         p,
                         onTap: () => Navigator.of(context).push(
@@ -1313,19 +1613,121 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
                             p,
                             context: context,
                             onRemove: () {
-                              setState(() {
-                                playlists.remove(p);
-                                _playlists!.remove(p);
-                              });
+                              setState(() => _playlists!.remove(p));
+                            },
+                            onUpdate: () {
+                              _load();
                             },
                           );
                         },
                       );
                     }),
+                  );
+                },
+              ),
+
+            FutureBuilder(
+              future: _offlinePlaylistsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return const SizedBox(height: 0, width: 0);
+                }
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const SizedBox(height: 0, width: 0);
+                }
+
+                List<Playlist> playlists = snapshot.data!;
+                if (playlists.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const FreezerDivider(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                      child: Text(
+                        'Offline playlists'.i18n,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    if (MediaQuery.sizeOf(context).width >= 960)
+                      ResponsiveMediaGrid.builder(
+                        itemCount: playlists.length,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        extraTextHeight: 70,
+                        itemBuilder: (context, i) {
+                          final playlist = playlists[i];
+                          return LayoutBuilder(
+                            builder: (context, constraints) => PlaylistCardTile(
+                              playlist,
+                              showPlatformBadge: true,
+                              subtitleOverride:
+                                  '${playlist.trackCount ?? playlist.tracks?.length ?? 0} ${'Tracks'.i18n}',
+                              width: constraints.maxWidth,
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      PlaylistDetails(playlist),
+                                ),
+                              ),
+                              onHold: () => MenuSheet().defaultPlaylistMenu(
+                                playlist,
+                                context: context,
+                                onRemove: () => setState(() {
+                                  playlists.remove(playlist);
+                                  _playlists!.remove(playlist);
+                                }),
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    else
+                      ...List.generate(playlists.length, (i) {
+                        final playlist = playlists[i];
+                        return PlaylistTile(
+                          playlist,
+                          showPlatformBadge: true,
+                          subtitleOverride:
+                              '${playlist.trackCount ?? playlist.tracks?.length ?? 0} ${'Tracks'.i18n}',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => PlaylistDetails(playlist),
+                            ),
+                          ),
+                          onHold: () => MenuSheet().defaultPlaylistMenu(
+                            playlist,
+                            context: context,
+                            onRemove: () => setState(() {
+                              playlists.remove(playlist);
+                              _playlists!.remove(playlist);
+                            }),
+                          ),
+                        );
+                      }),
                   ],
                 );
               },
             ),
+            if (MediaQuery.sizeOf(context).width >= 960 &&
+                !_hasLocalOfflinePlaylists)
+              LocalPlaylistsSection(
+                actionsOnly: true,
+                onHasPlaylistsChanged: (hasPlaylists) {
+                  if (_hasLocalOfflinePlaylists != hasPlaylists) {
+                    setState(() => _hasLocalOfflinePlaylists = hasPlaylists);
+                  }
+                },
+              ),
           ],
         ),
       ),
@@ -1370,7 +1772,7 @@ class _LibraryShowsState extends State<LibraryShows> {
   Future _load() async {
     if (!settings.offlineMode) {
       try {
-        List<Show> shows = await deezerAPI.getShows();
+        List<Show> shows = await PlatformManager.instance.active.getUserShows();
         if (mounted) setState(() => _shows = shows);
       } catch (e) {
         Logger.root.severe('Error loading shows: $e');
@@ -1448,11 +1850,12 @@ class _LibraryShowsState extends State<LibraryShows> {
           Container(width: 8.0),
         ],
       ),
-      body: DraggableScrollbar.rrect(
+      body: MobileScrollbar(
         controller: _scrollController,
         backgroundColor: Theme.of(context).primaryColor,
-        child: ListView(
-          controller: _scrollController,
+        childBuilder: (scrollController, scrollPhysics) => ListView(
+          controller: scrollController,
+          physics: scrollPhysics,
           children: <Widget>[
             //Search
             Padding(
@@ -1489,28 +1892,107 @@ class _LibraryShowsState extends State<LibraryShows> {
               ),
 
             if (_shows != null)
-              ...List.generate(_sorted.length, (int i) {
-                Show s = (_sorted)[i];
-                return ShowTile(
-                  s,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => ShowScreen(s)),
-                  ),
-                  onHold: () {
-                    MenuSheet m = MenuSheet();
-                    m.defaultShowMenu(
-                      s,
-                      context: context,
-                      onRemove: () {
-                        setState(() => _shows!.remove(s));
-                      },
-                      onUpdate: () {
-                        _load();
+              Builder(
+                builder: (context) {
+                  final sortedShows = _sorted;
+                  if (sortedShows.isEmpty) {
+                    return SizedBox(
+                      height: 230,
+                      child: _LibraryEmptyState(
+                        icon: Icons.podcasts_rounded,
+                        title: 'No podcasts found'.i18n,
+                        subtitle:
+                            'Add items to your library to see them here.'.i18n,
+                      ),
+                    );
+                  }
+                  if (MediaQuery.sizeOf(context).width >= 960) {
+                    return ResponsiveMediaGrid.builder(
+                      itemCount: sortedShows.length,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      extraTextHeight: 64,
+                      itemBuilder: (context, i) {
+                        final show = sortedShows[i];
+                        return LayoutBuilder(
+                          builder: (context, constraints) => ShowCard(
+                            show,
+                            width: constraints.maxWidth,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => ShowScreen(show),
+                              ),
+                            ),
+                            onHold: () => MenuSheet().defaultShowMenu(
+                              show,
+                              context: context,
+                              onRemove: () =>
+                                  setState(() => _shows!.remove(show)),
+                              onUpdate: _load,
+                            ),
+                          ),
+                        );
                       },
                     );
-                  },
-                );
-              }),
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(sortedShows.length, (int i) {
+                      Show s = sortedShows[i];
+                      return ShowTile(
+                        s,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => ShowScreen(s),
+                          ),
+                        ),
+                        onHold: () {
+                          MenuSheet m = MenuSheet();
+                          m.defaultShowMenu(
+                            s,
+                            context: context,
+                            onRemove: () {
+                              setState(() => _shows!.remove(s));
+                            },
+                            onUpdate: () {
+                              _load();
+                            },
+                          );
+                        },
+                        trailing: IconButton(
+                          icon: const Icon(Icons.more_vert),
+                          onPressed: () {
+                            MenuSheet m = MenuSheet();
+                            m.defaultShowMenu(
+                              s,
+                              context: context,
+                              onRemove: () {
+                                setState(() => _shows!.remove(s));
+                              },
+                              onUpdate: () {
+                                _load();
+                              },
+                            );
+                          },
+                        ),
+                      );
+                    }),
+                  );
+                },
+              ),
+            if (settings.offlineMode && _shows == null)
+              SizedBox(
+                height: 230,
+                child: _LibraryEmptyState(
+                  icon: Icons.podcasts_rounded,
+                  title: 'No podcasts found'.i18n,
+                  subtitle: 'Add items to your library to see them here.'.i18n,
+                ),
+              ),
           ],
         ),
       ),
@@ -1525,51 +2007,435 @@ class HistoryScreen extends StatefulWidget {
   _HistoryScreenState createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  late final List<MusicPlatform> _historyPlatforms;
   final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _historyPlatforms = PlatformRegistry.instance.allPlatforms
+        .where((p) => p.capabilities.supportsHistory)
+        .toList();
+
+    final activeIndex = _historyPlatforms.indexWhere(
+      (p) => p.platformId == PlatformManager.instance.activePlatformId,
+    );
+    final initialIndex = activeIndex >= 0 ? activeIndex + 1 : 0;
+    _tabController = TabController(
+      length: 1 + _historyPlatforms.length,
+      vsync: this,
+      initialIndex: initialIndex,
+    );
+    _tabController.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Widget _trackTile(
+    Track track,
+    List<Track> tracks,
+    String source,
+    int index,
+  ) => TrackTile(
+    track,
+    showPlatformBadge: true,
+    key: Key('${source}_track_${track.id}_$index'),
+    onTap: () {
+      GetIt.I<AudioPlayerHandler>().playFromTrackList(
+        tracks,
+        track.id!,
+        QueueSource(id: null, text: 'History'.i18n, source: source),
+      );
+    },
+    onHold: () {
+      MenuSheet().defaultTrackMenu(track, context: context);
+    },
+  );
+
+  Widget _localHistory() {
+    final seen = <String>{};
+    final tracks = cache.history.reversed
+        .where((t) => t.id == null || seen.add(t.id!))
+        .toList();
+    if (tracks.isEmpty) {
+      return _LibraryEmptyState(
+        icon: Icons.history_rounded,
+        title: 'No listening history yet.'.i18n,
+      );
+    }
+    return MobileScrollbar(
+      controller: _scrollController,
+      backgroundColor: Theme.of(context).primaryColor,
+      childBuilder: (scrollController, scrollPhysics) => ListView.builder(
+        controller: scrollController,
+        physics: scrollPhysics,
+        itemCount: tracks.length,
+        itemBuilder: (context, index) =>
+            _trackTile(tracks[index], tracks, 'history_page', index),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasPlatformTabs = _historyPlatforms.isNotEmpty;
     return Scaffold(
       appBar: FreezerAppBar(
         'History'.i18n,
+        height: hasPlatformTabs ? 104 : 56,
+        bottom: hasPlatformTabs
+            ? TabBar(
+                controller: _tabController,
+                isScrollable: _historyPlatforms.length > 1,
+                tabAlignment: _historyPlatforms.length > 1
+                    ? TabAlignment.start
+                    : null,
+                tabs: [
+                  Tab(text: 'On this device'.i18n),
+                  for (final p in _historyPlatforms) Tab(text: p.platformName),
+                ],
+              )
+            : null,
         actions: [
-          IconButton(
-            icon: Icon(Icons.delete_sweep, semanticLabel: 'Clear all'.i18n),
-            onPressed: () {
-              setState(() => cache.history = []);
-              cache.save();
-            },
-          ),
+          if (_tabController.index == 0)
+            IconButton(
+              tooltip: 'Clear local history',
+              icon: Icon(Icons.delete_sweep, semanticLabel: 'Clear all'.i18n),
+              onPressed: () {
+                setState(() => cache.history = []);
+                cache.save();
+              },
+            ),
         ],
       ),
-      body: DraggableScrollbar.rrect(
-        controller: _scrollController,
-        backgroundColor: Theme.of(context).primaryColor,
-        child: ListView.builder(
+      body: hasPlatformTabs
+          ? TabBarView(
+              controller: _tabController,
+              children: [
+                _localHistory(),
+                for (final p in _historyPlatforms)
+                  _PlatformHistoryView(
+                    key: ValueKey(p.platformId),
+                    platform: p,
+                  ),
+              ],
+            )
+          : _localHistory(),
+    );
+  }
+}
+
+class _PlatformHistoryView extends StatefulWidget {
+  final MusicPlatform platform;
+
+  const _PlatformHistoryView({super.key, required this.platform});
+
+  @override
+  State<_PlatformHistoryView> createState() => _PlatformHistoryViewState();
+}
+
+class _PlatformHistoryViewState extends State<_PlatformHistoryView>
+    with AutomaticKeepAliveClientMixin {
+  final ScrollController _scrollController = ScrollController();
+  List<Track> _tracks = [];
+  String? _error;
+  bool _loading = false;
+  bool _loadingMore = false;
+  bool _signedIn = true;
+  String? _nextCursor;
+  int _request = 0;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _loadHistory();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlatformHistoryView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.platform.platformId != widget.platform.platformId) {
+      _loadHistory();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients ||
+        _loading ||
+        _loadingMore ||
+        _nextCursor == null) {
+      return;
+    }
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 400) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    if (_loading) return;
+    final platform = widget.platform;
+    final request = ++_request;
+    setState(() {
+      _loading = true;
+      _error = null;
+      _nextCursor = null;
+    });
+    try {
+      if (!await platform.isLoggedIn()) {
+        if (mounted && request == _request) {
+          setState(() {
+            _signedIn = false;
+            _tracks = [];
+          });
+        }
+        return;
+      }
+      final page = await platform.getHistoryTracks();
+      if (!mounted || request != _request) return;
+      final seen = <String>{};
+      final uniqueTracks = page.tracks
+          .where((t) => t.id == null || seen.add(t.id!))
+          .toList();
+      appLogger.info(
+        '[_PlatformHistoryView] _loadHistory(${platform.platformId}) loaded '
+        '${uniqueTracks.length} tracks, nextCursor=${page.nextCursor}',
+      );
+      setState(() {
+        _signedIn = true;
+        _tracks = uniqueTracks;
+        _nextCursor = page.nextCursor;
+      });
+    } catch (error, stackTrace) {
+      appLogger.warning(
+        'Could not load history for ${platform.platformId}',
+        error,
+        stackTrace,
+      );
+      if (mounted && request == _request) {
+        setState(() => _error = error.toString());
+      }
+    } finally {
+      if (mounted && request == _request) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || _nextCursor == null) return;
+    final platform = widget.platform;
+    final request = _request;
+    var cursor = _nextCursor;
+    setState(() {
+      _loadingMore = true;
+    });
+    try {
+      final existingIds = _tracks.map((t) => t.id).whereType<String>().toSet();
+      final newUniqueTracks = <Track>[];
+      var nextCursor = cursor;
+
+      // Loop in case a page contains only duplicates of tracks already seen
+      while (newUniqueTracks.isEmpty && nextCursor != null) {
+        final page = await platform.getHistoryTracks(cursor: nextCursor);
+        if (!mounted || request != _request) return;
+        nextCursor = page.nextCursor;
+        final additional = page.tracks
+            .where((t) => t.id == null || existingIds.add(t.id!))
+            .toList();
+        newUniqueTracks.addAll(additional);
+      }
+
+      appLogger.info(
+        '[_PlatformHistoryView] _loadMore(${platform.platformId}) loaded '
+        '${newUniqueTracks.length} new unique tracks, nextCursor=$nextCursor',
+      );
+      setState(() {
+        _tracks.addAll(newUniqueTracks);
+        _nextCursor = nextCursor;
+      });
+    } catch (error, stackTrace) {
+      appLogger.warning(
+        'Could not load more history for ${platform.platformId}',
+        error,
+        stackTrace,
+      );
+    } finally {
+      if (mounted && request == _request) {
+        setState(() => _loadingMore = false);
+      }
+    }
+  }
+
+  Widget _trackTile(Track track, List<Track> tracks, int index) => TrackTile(
+    track,
+    key: Key('${widget.platform.platformId}_history_track_${track.id}_$index'),
+    onTap: () {
+      GetIt.I<AudioPlayerHandler>().playFromTrackList(
+        tracks,
+        track.id!,
+        QueueSource(
+          id: widget.platform.platformId,
+          text: 'History'.i18n,
+          source: 'platform_history_page',
+        ),
+      );
+    },
+    onHold: () {
+      MenuSheet().defaultTrackMenu(track, context: context);
+    },
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    if (!_signedIn) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                'Sign in to view your ${widget.platform.platformName} listening history.'
+                    .i18n,
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const PlatformLoginScreen(callback: null),
+                      ),
+                    );
+                    if (mounted) _loadHistory();
+                  },
+                  child: Text('Sign in'.i18n),
+                ),
+                const SizedBox(width: 8),
+                TextButton(onPressed: _loadHistory, child: Text('Retry'.i18n)),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    if (_tracks.isEmpty && _loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_tracks.isEmpty && _error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 8),
+            TextButton(onPressed: _loadHistory, child: Text('Retry'.i18n)),
+          ],
+        ),
+      );
+    }
+    if (_tracks.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadHistory,
+        child: SilkyListView(
+          silkyConfig: silkyScrollConfig,
           controller: _scrollController,
-          itemCount: (cache.history).length,
-          itemBuilder: (BuildContext context, int i) {
-            Track t = cache.history[cache.history.length - i - 1];
-            return TrackTile(
-              t,
-              key: Key('history_track_${t.id}'),
-              onTap: () {
-                GetIt.I<AudioPlayerHandler>().playFromTrackList(
-                  cache.history.reversed.toList(),
-                  t.id!,
-                  QueueSource(
-                    id: null,
-                    text: 'History'.i18n,
-                    source: 'history_page',
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.5,
+              child: _LibraryEmptyState(
+                icon: Icons.history_rounded,
+                title: 'No listening history yet.'.i18n,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final showFooter = _nextCursor != null || _loadingMore;
+    final totalCount = _tracks.length + (showFooter ? 1 : 0);
+    return RefreshIndicator(
+      onRefresh: _loadHistory,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (scrollInfo) {
+          if (scrollInfo.metrics.extentAfter < 500) {
+            _loadMore();
+          }
+          return false;
+        },
+        child: MobileScrollbar(
+          controller: _scrollController,
+          backgroundColor: Theme.of(context).primaryColor,
+          childBuilder: (scrollController, scrollPhysics) => ListView.builder(
+            controller: scrollController,
+            physics: scrollPhysics == null
+                ? const AlwaysScrollableScrollPhysics()
+                : AlwaysScrollableScrollPhysics(parent: scrollPhysics),
+            itemCount: totalCount,
+            itemBuilder: (context, index) {
+              if (index >= _tracks.length) {
+                return VisibilityDetector(
+                  key: ValueKey(
+                    '${widget.platform.platformId}-history-footer-${_tracks.length}',
+                  ),
+                  onVisibilityChanged: (info) {
+                    if (info.visibleFraction > 0 &&
+                        !_loadingMore &&
+                        !_loading) {
+                      _loadMore();
+                    }
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: CircularProgressIndicator()),
                   ),
                 );
-              },
-              onHold: () {
-                MenuSheet m = MenuSheet();
-                m.defaultTrackMenu(t, context: context);
-              },
-            );
-          },
+              }
+              if (index >= _tracks.length - 3 &&
+                  !_loadingMore &&
+                  _nextCursor != null) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _loadMore();
+                });
+              }
+              return _trackTile(_tracks[index], _tracks, index);
+            },
+          ),
         ),
       ),
     );

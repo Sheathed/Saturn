@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:sqflite/sqflite.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../api/download_isolate.dart';
 import '../api/download_log.dart';
+import '../platform/stream_proxy_server.dart';
+import '../platform/youtube_music/youtube_music_javascript.dart';
 import '../settings.dart';
 import '../service/download_background_service.dart';
 
@@ -26,6 +29,7 @@ class DownloadServiceDart {
   Database? _db;
   DownloadLog? _logger;
   DownloadIsolateManager? _isolateManager;
+  YouTubeMusicSignatureSolver? _youtubeMusicSignatureSolver;
 
   // Notifications and background service
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -74,10 +78,14 @@ class DownloadServiceDart {
     // Initialize isolate manager
     _logger!.log('[DownloadService] Initializing isolate manager...');
     _isolateManager = DownloadIsolateManager();
+    final streamProxyPort = StreamProxyServer.instance.port;
+    if (streamProxyPort == null) {
+      throw StateError('Stream proxy must be started before downloads');
+    }
     await _isolateManager!.start(
-      settings.arl ?? '',
       _db!.path,
       settings.toJson(),
+      streamProxyPort: streamProxyPort,
     );
     _logger!.log('[DownloadService] Isolate manager started');
 
@@ -182,6 +190,10 @@ class DownloadServiceDart {
     );
 
     switch (response.type) {
+      case 'youtubeJavaScriptRequest':
+        unawaited(_executeYouTubeJavaScriptRequest(response.data!));
+        break;
+
       case 'stateChange':
         running = response.data!['running'] as bool;
         queueSize = response.data!['queueSize'] as int;
@@ -263,7 +275,12 @@ class DownloadServiceDart {
         // Update downloads cache
         final index = _downloads.indexWhere((d) => d['id'] == id);
         if (index != -1) {
-          _downloads[index]['state'] = DownloadStateDart.DONE.index;
+          final download = response.data!['download'];
+          if (download is Map) {
+            _downloads[index] = Map<String, dynamic>.from(download);
+          } else {
+            _downloads[index]['state'] = DownloadStateDart.DONE.index;
+          }
 
           // Show completion notification
           if (_notificationsInitialized) {
@@ -275,6 +292,7 @@ class DownloadServiceDart {
           'type': 'downloadComplete',
           'id': id,
           'trackId': trackId,
+          'download': response.data!['download'],
         });
         break;
 
@@ -304,6 +322,30 @@ class DownloadServiceDart {
           'state': state,
         });
         break;
+    }
+  }
+
+  Future<void> _executeYouTubeJavaScriptRequest(
+    Map<String, dynamic> data,
+  ) async {
+    final requestId = data['requestId'];
+    final jsCode = data['jsCode'];
+    final replyPort = data['replyPort'];
+    if (requestId is! int || jsCode is! String || replyPort is! SendPort) {
+      _logger?.error('Received malformed YouTube JavaScript request');
+      return;
+    }
+
+    try {
+      final solver = _youtubeMusicSignatureSolver ??=
+          YouTubeMusicSignatureSolver();
+      final result = await solver.executeJavaScript(jsCode);
+      replyPort.send({'requestId': requestId, 'result': result});
+    } catch (error, stackTrace) {
+      _logger?.error(
+        'YouTube JavaScript challenge failed: $error\n$stackTrace',
+      );
+      replyPort.send({'requestId': requestId, 'error': error.toString()});
     }
   }
 
@@ -376,7 +418,7 @@ class DownloadServiceDart {
         '[DownloadService] addDownloads[$i] - trackId: ${d['trackId']}, title: ${d['title']}, path: ${d['path']}',
       );
       _logger?.log(
-        '[DownloadService] addDownloads[$i] - md5origin: ${d['md5origin']}, quality: ${d['quality']}',
+        '[DownloadService] addDownloads[$i] - platform: ${d['platformId']}, quality: ${d['quality']}',
       );
     }
 
@@ -584,8 +626,8 @@ class DownloadServiceDart {
 
     // Determine error message based on state
     String errorMessage = 'Download failed';
-    if (state == DownloadStateDart.DEEZER_ERROR.index) {
-      errorMessage = 'Deezer error';
+    if (state == DownloadStateDart.PLATFORM_ERROR.index) {
+      errorMessage = 'Platform error';
     }
 
     if (Platform.isAndroid) {

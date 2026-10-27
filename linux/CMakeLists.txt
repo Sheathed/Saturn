@@ -53,6 +53,22 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+set(WINDOW_TITLE "Saturn")
+set(APP_ICON_ASSET "assets/icon.png")
+
+# Set application ID, window title, and icon asset based on flavor if specified
+if(DEFINED FLUTTER_APP_FLAVOR)
+  if(FLUTTER_APP_FLAVOR STREQUAL "canary")
+    set(APPLICATION_ID "s.s.saturn.canary")
+    set(WINDOW_TITLE "Saturn Canary")
+    set(APP_ICON_ASSET "assets/icon-canary.png")
+  elseif(FLUTTER_APP_FLAVOR STREQUAL "dev")
+    set(APPLICATION_ID "s.s.saturn.dev")
+    set(WINDOW_TITLE "Saturn Dev")
+    set(APP_ICON_ASSET "assets/icon-dev.png")
+  endif()
+endif()
+
 # System-level dependencies.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
@@ -129,3 +145,7 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Installed by launcher_icons: freedesktop icons + desktop entry from linux/share/.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/share/icons" DESTINATION "share" COMPONENT Runtime)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/share/applications" DESTINATION "share" COMPONENT Runtime)

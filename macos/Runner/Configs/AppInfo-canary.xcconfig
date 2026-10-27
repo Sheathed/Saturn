@@ -1,0 +1,4 @@
+#include "AppInfo.xcconfig"
+
+APP_DISPLAY_NAME = Saturn Canary
+PRODUCT_BUNDLE_IDENTIFIER = s.s.saturn.canary

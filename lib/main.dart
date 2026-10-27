@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart' hide GlobalMaterialLocalizations;
 import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get_it/get_it.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 import 'package:logging/logging.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -15,31 +17,87 @@ import 'package:quick_actions/quick_actions.dart';
 import 'package:saturn/utils/rpc_service.dart';
 import 'package:saturn/utils/single_instance.dart';
 import 'package:saturn/utils/tray_service.dart';
-import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:windows_taskbar/windows_taskbar.dart';
-
 import 'api/cache.dart';
-import 'api/deezer.dart';
 import 'api/definitions.dart';
 import 'api/download.dart';
-import 'api/stream_server_dart.dart';
+import 'platform/deezer/deezer_platform.dart';
+import 'platform/stream_proxy_server.dart';
+import 'platform/platform_manager.dart';
+import 'platform/platform_registry.dart';
+import 'platform/neurokaraoke/neurokaraoke_platform.dart';
+import 'platform/soundcloud/soundcloud_platform.dart';
+import 'platform/youtube_music/youtube_music_platform.dart';
+
 import 'router/app_router.dart';
 import 'service/audio_service.dart';
 import 'service/service_locator.dart';
 import 'settings.dart';
 import 'translations.i18n.dart';
 import 'ui/restartable.dart';
-import 'ui/search.dart';
+import 'ui/music_link_navigation.dart';
 import 'ui/toast.dart';
+import 'utils/app_config.dart';
 import 'utils/directory_migration.dart';
 import 'utils/logging.dart';
+import 'utils/app_http_proxy.dart';
+import 'utils/app_webview_proxy.dart';
 
 late Function updateTheme;
-late Function logOut;
+late Future<void> Function() logOut;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Set up global error handling
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    Logger.root.severe(
+      'Flutter Error: ${details.exception}',
+      details.exception,
+      details.stack,
+    );
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    Logger.root.severe('PlatformDispatcher Error: $error', error, stack);
+    return true;
+  };
+
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: Material(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error, color: Colors.red, size: 64.0),
+                const SizedBox(height: 16.0),
+                const Text(
+                  'An unexpected error occurred.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8.0),
+                Text(
+                  details.exceptionAsString(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 12.0),
+                ),
+                const SizedBox(height: 16.0),
+                const Text(
+                  'Please check the logs for more details.',
+                  style: TextStyle(fontSize: 12.0),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  };
 
   // Initialize single instance service
   final singleInstanceService = await SingleInstanceService.getInstance();
@@ -54,28 +112,67 @@ void main() async {
     }
   }
 
-  // Request notification permissions on all platforms
-  try {
-    // Android, iOS, Windows support permission_handler
-    if (Platform.isAndroid || Platform.isIOS || Platform.isWindows) {
-      final status = await Permission.notification.status;
-      if (status.isDenied || status.isPermanentlyDenied) {
-        await Permission.notification.request();
-      }
-    }
-    // macOS and Linux notification permissions are typically handled at app level
-    // or during notification initialization
-  } catch (e) {
-    // Silently fail if permission handler doesn't support this platform
-    // probably log this one
-    if (kDebugMode) {
-      print('Notification permission request error: $e');
-    }
-  }
+  // Register the media-session callbacks before any filesystem migration,
+  // settings load, or permission prompt. Android may send the resume click as
+  // soon as its service process starts; the handler holds player startup until
+  // prepareRun has populated the globals and started the proxy.
+  if (Platform.isAndroid) await setupServiceLocator();
 
   await prepareRun();
 
   runApp(const Restartable(child: SaturnApp()));
+
+  // Permission UI belongs to an attached app window. A cold Android media
+  // resumption starts this same Dart entry point without an Activity, and must
+  // not wait for a permission dialog before it can prepare playback.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_configureDesktopWindow());
+    if (PlatformDispatcher.instance.views.isNotEmpty) {
+      unawaited(_requestNotificationPermission());
+    }
+  });
+
+  // Restoring the saved playlist creates every audio source and can perform
+  // platform/filesystem work. Let Flutter paint the app before doing that so a
+  // broken restored queue cannot hold the user on a blank launch screen.
+  if (Platform.isAndroid) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(() async {
+        final handler = GetIt.I<AudioPlayerHandler>();
+        await handler.waitForPlayerInitialization();
+        await handler.loadQueueFromFile();
+      }());
+    });
+  }
+}
+
+Future<void> _configureDesktopWindow() async {
+  if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) return;
+
+  try {
+    await windowManager.ensureInitialized();
+    await windowManager.setTitle(appTitle);
+  } catch (error, stackTrace) {
+    Logger.root.warning(
+      'Could not configure desktop window: $error',
+      error,
+      stackTrace,
+    );
+  }
+}
+
+Future<void> _requestNotificationPermission() async {
+  if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;
+  try {
+    final status = await Permission.notification.status;
+    if (status.isDenied || status.isPermanentlyDenied) {
+      await Permission.notification.request();
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      appLogger.warning('Notification permission request error', e);
+    }
+  }
 }
 
 Future<void> prepareRun() async {
@@ -92,7 +189,46 @@ Future<void> prepareRun() async {
   }
 
   settings = await Settings().loadSettings();
+  AppHttpProxy.configure(
+    settings.proxyAddress,
+    username: settings.proxyUsername,
+    password: settings.proxyPassword,
+  );
+  try {
+    await AppWebViewProxy.configure(
+      settings.proxyAddress,
+      username: settings.proxyUsername,
+      password: settings.proxyPassword,
+    );
+  } on MissingPluginException {
+    // A background media-resumption engine has no Activity or WebView.
+  } on PlatformException catch (error) {
+    Logger.root.warning('WebView proxy configuration failed: ${error.code}');
+  }
   cache = await Cache.load();
+
+  // Register compiled-in platform plugins
+  Logger.root.info('Registering platform plugins...');
+  PlatformRegistry.instance.register(DeezerPlatform());
+  PlatformRegistry.instance.register(NeuroKaraokePlatform());
+  PlatformRegistry.instance.register(SoundCloudPlatform());
+  PlatformRegistry.instance.register(YouTubeMusicPlatform());
+
+  // Move old global Deezer credentials into Deezer's own platform config
+  // before any service or download worker reads settings.
+  await DeezerPlatform.instance.migrateLegacyArlIfNeeded();
+
+  // Initialize the active platform from saved settings
+  PlatformManager.instance.initialize(platformId: settings.activePlatformId);
+  Logger.root.info(
+    'Active platform: ${PlatformManager.instance.activePlatformId}',
+  );
+
+  // Every platform uses the local stream proxy. Binding to port zero keeps
+  // separate app installs/processes from contending for the same loopback port.
+  await StreamProxyServer.instance.start();
+
+  if (Platform.isAndroid) AudioPlayerHandler.markAndroidRuntimeReady();
 }
 
 class SaturnApp extends StatefulWidget {
@@ -145,26 +281,32 @@ class _SaturnAppState extends State<SaturnApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Saturn',
-      shortcuts: <ShortcutActivator, Intent>{
-        ...WidgetsApp.defaultShortcuts,
-        LogicalKeySet(LogicalKeyboardKey.select):
-            const ActivateIntent(), // DPAD center key, for remote controls
-      },
-      theme: settings.themeData,
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: supportedLocales,
-      routerConfig: appRouter,
-      debugShowCheckedModeBanner: false,
-      builder: (context, child) {
-        return I18n(
-          initialLocale: _locale(),
-          child: child ?? const SizedBox.shrink(),
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        settings.dynamicLightScheme = lightDynamic;
+        settings.dynamicDarkScheme = darkDynamic;
+        return MaterialApp.router(
+          title: appTitle,
+          shortcuts: <ShortcutActivator, Intent>{
+            ...WidgetsApp.defaultShortcuts,
+            LogicalKeySet(LogicalKeyboardKey.select):
+                const ActivateIntent(), // DPAD center key, for remote controls
+          },
+          theme: settings.themeData,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: supportedLocales,
+          routerConfig: appRouter,
+          debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            return I18n(
+              initialLocale: _locale(),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
         );
       },
     );
@@ -193,11 +335,23 @@ class _AppInitializerState extends State<AppInitializer> {
       onStateChange: _onLifeCycleChanged,
     );
 
-    //Load token on background
-    deezerAPI.arl = settings.arl;
+    // Load token on background via the connected platforms
     settings.offlineMode = true;
-    deezerAPI.authorize().then((b) async {
-      if (b) setState(() => settings.offlineMode = false);
+    PlatformRegistry.instance.loggedInPlatforms.then((loggedIn) async {
+      await PlatformManager.instance.refreshLoggedInStatus();
+      if (loggedIn.isNotEmpty) {
+        if (!loggedIn.any(
+          (p) => p.platformId == PlatformManager.instance.activePlatformId,
+        )) {
+          PlatformManager.instance.switchPlatform(loggedIn.first.platformId);
+        }
+        if (mounted) setState(() => settings.offlineMode = false);
+        if (GetIt.I.isRegistered<AudioPlayerHandler>()) {
+          unawaited(
+            GetIt.I<AudioPlayerHandler>().retryPendingListenLogs(),
+          );
+        }
+      }
     });
 
     //Global logOut function
@@ -221,9 +375,10 @@ class _AppInitializerState extends State<AppInitializer> {
 
     _preloadFavoriteTracksToCache();
     _initDownloadManager();
-    String arl = settings.arl ?? '';
-    await StreamServerDart.instance.start(arl);
     await _setupServiceLocator();
+    if (settings.useArtColor) {
+      settings.initArtColorListener();
+    }
 
     //Do on BG
     GetIt.I<AudioPlayerHandler>().authorizeLastFM();
@@ -231,10 +386,10 @@ class _AppInitializerState extends State<AppInitializer> {
     //Start with parameters
     _setupDeepLinks();
     if (Platform.isAndroid) {
-      _loadPreloadInfo();
+      unawaited(_loadPreloadInfo());
     }
     if (Platform.isAndroid || Platform.isIOS) {
-      _prepareQuickActions();
+      unawaited(_prepareQuickActions());
     }
 
     if (!Platform.isAndroid && !Platform.isIOS) {
@@ -245,17 +400,21 @@ class _AppInitializerState extends State<AppInitializer> {
       final rpc = await DiscordRPCService.getInstance();
       rpc.discordRPCController();
     }
-
-    //Restore saved queue
-    _loadSavedQueue();
   }
 
   void _preloadFavoriteTracksToCache() async {
     try {
-      cache.libraryTracks = await deezerAPI.getFavoriteTrackIds();
-      Logger.root.info(
-        'Cached favorite trackIds: ${cache.libraryTracks?.length}',
-      );
+      if (PlatformManager.instance.active.capabilities.supportsLibrarySync) {
+        cache.activeLibraryTracks =
+            (await PlatformManager.instance.active.getFavoriteTrackIds()) ?? [];
+        cache.activeLibraryPlaylists =
+            (await PlatformManager.instance.active.getFavoritePlaylistIds()) ??
+            [];
+        await cache.save();
+        Logger.root.info(
+          'Cached favorite trackIds: ${cache.activeLibraryTracks.length}',
+        );
+      }
     } catch (e, st) {
       Logger.root.severe('Error loading favorite trackIds!', e, st);
     }
@@ -263,12 +422,34 @@ class _AppInitializerState extends State<AppInitializer> {
 
   void _initDownloadManager() async {
     await downloadManager.init();
+    try {
+      if (GetIt.I.isRegistered<AudioPlayerHandler>()) {
+        final handler = GetIt.I<AudioPlayerHandler>();
+        handler.notifyChildrenChanged('playlists');
+        handler.notifyChildrenChanged('offline');
+        handler.notifyChildrenChanged('offline_playlists');
+        for (final p in PlatformRegistry.instance.allPlatforms) {
+          handler.notifyChildrenChanged('playlists_${p.platformId}');
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _setupServiceLocator() async {
     await setupServiceLocator();
     // Wait for the player to be initialized
     await GetIt.I<AudioPlayerHandler>().waitForPlayerInitialization();
+    if (!GetIt.I<AudioPlayerHandler>().isQueueReady) {
+      // Restoring builds every audio source; let the first frames paint first.
+      // Anything needing the queue earlier calls loadQueueFromFile itself.
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 600), () {
+          if (!GetIt.I<AudioPlayerHandler>().isQueueReady) {
+            return GetIt.I<AudioPlayerHandler>().loadQueueFromFile();
+          }
+        }),
+      );
+    }
     if (Platform.isWindows) {
       GetIt.I<AudioPlayerHandler>().player.playingStream.listen((
         playing,
@@ -307,76 +488,37 @@ class _AppInitializerState extends State<AppInitializer> {
           ),
         ]);
 
-        Menu menu = Menu(
-          items: [
-            MenuItem(
-              label: 'Restore',
-              onClick: (_) async {
-                await windowManager.show();
-                await windowManager.focus();
-              },
-            ),
-            if (playing) ...[
-              MenuItem(
-                label: 'Pause',
-                onClick: (_) async {
-                  GetIt.I<AudioPlayerHandler>().pause();
-                },
-              ),
-            ] else ...[
-              MenuItem(
-                label: 'Play',
-                onClick: (_) async {
-                  GetIt.I<AudioPlayerHandler>().play();
-                },
-              ),
-            ],
-            MenuItem(
-              label: 'Next',
-              onClick: (_) async {
-                GetIt.I<AudioPlayerHandler>().skipToNext();
-              },
-            ),
-            MenuItem(
-              label: 'Previous',
-              onClick: (_) async {
-                GetIt.I<AudioPlayerHandler>().skipToPrevious();
-              },
-            ),
-            MenuItem(
-              label: 'Exit',
-              onClick: (_) async {
-                await trayManager.destroy();
-                exit(0);
-              },
-            ),
-          ],
-        );
-
-        await trayManager.setContextMenu(menu);
       });
     }
   }
 
-  void _prepareQuickActions() {
-    const QuickActions quickActions = QuickActions();
-    quickActions.initialize((type) {
-      _startPreload(type);
-    });
-
-    //Actions
-    quickActions.setShortcutItems([
-      ShortcutItem(
-        type: 'favorites',
-        localizedTitle: 'Favorites'.i18n,
-        icon: 'ic_favorites',
-      ),
-      ShortcutItem(type: 'flow', localizedTitle: 'Flow'.i18n, icon: 'ic_flow'),
-    ]);
+  Future<void> _prepareQuickActions() async {
+    try {
+      const quickActions = QuickActions();
+      await quickActions.initialize((type) {
+        _startPreload(type);
+      });
+      await quickActions.setShortcutItems([
+        ShortcutItem(
+          type: 'favorites',
+          localizedTitle: 'Favorites'.i18n,
+          icon: 'ic_favorites',
+        ),
+        ShortcutItem(
+          type: 'flow',
+          localizedTitle: 'Flow'.i18n,
+          icon: 'ic_flow',
+        ),
+      ]);
+    } on MissingPluginException {
+      // The media-resumption engine has no Activity for this UI plugin.
+    } on PlatformException catch (error) {
+      Logger.root.info('Quick actions unavailable during startup: $error');
+    }
   }
 
   void _startPreload(String type) async {
-    await deezerAPI.authorize();
+    if (!await PlatformManager.instance.active.isLoggedIn()) return;
     if (type == 'flow') {
       await GetIt.I<AudioPlayerHandler>().playFromSmartTrackList(
         SmartTrackList(id: 'flow'),
@@ -384,22 +526,35 @@ class _AppInitializerState extends State<AppInitializer> {
       return;
     }
     if (type == 'favorites') {
-      Playlist p = await deezerAPI.fullPlaylist(
-        deezerAPI.favoritesPlaylistId.toString(),
-      );
-      GetIt.I<AudioPlayerHandler>().playFromPlaylist(p, p.tracks?[0].id ?? '');
+      try {
+        final platform = PlatformManager.instance.active;
+        // Use the first available user playlist as a fallback for platforms
+        // that do not expose a dedicated favorites playlist.
+        final playlists = await platform.getUserPlaylists();
+        if (playlists.isNotEmpty) {
+          Playlist p = await platform.getFullPlaylist(playlists.first.id!);
+          final firstTrackId = p.tracks?.isNotEmpty == true
+              ? (p.tracks!.first.id ?? '')
+              : '';
+          GetIt.I<AudioPlayerHandler>().playFromPlaylist(p, firstTrackId);
+        }
+      } catch (e) {
+        Logger.root.severe('Error preloading favorites', e);
+      }
     }
   }
 
-  void _loadPreloadInfo() async {
-    String info =
-        await DownloadManager.platform.invokeMethod('getPreloadInfo') ?? '';
-    if (info.isEmpty) return;
-    _startPreload(info);
-  }
-
-  Future<void> _loadSavedQueue() async {
-    GetIt.I<AudioPlayerHandler>().loadQueueFromFile();
+  Future<void> _loadPreloadInfo() async {
+    try {
+      final info =
+          await DownloadManager.platform.invokeMethod<String>(
+            'getPreloadInfo',
+          ) ??
+          '';
+      if (info.isNotEmpty) _startPreload(info);
+    } on MissingPluginException {
+      // A background media engine can start before the Activity channel exists.
+    }
   }
 
   void _setupDeepLinks() async {
@@ -437,11 +592,12 @@ class _AppInitializerState extends State<AppInitializer> {
     }
   }
 
-  Future _logOut() async {
+  Future<void> _logOut() async {
     try {
-      GetIt.I<AudioPlayerHandler>().stop();
-      GetIt.I<AudioPlayerHandler>().updateQueue([]);
-      GetIt.I<AudioPlayerHandler>().removeSavedQueueFile();
+      final audioHandler = GetIt.I<AudioPlayerHandler>();
+      await audioHandler.stop();
+      await audioHandler.updateQueue([]);
+      await audioHandler.removeSavedQueueFile();
     } catch (e, st) {
       Logger.root.severe(
         'Error stopping and clearing audio service before logout',
@@ -450,23 +606,34 @@ class _AppInitializerState extends State<AppInitializer> {
       );
     }
     await downloadManager.stop();
-    await StreamServerDart.instance.stop();
     // Avoid calling setState if this State has been disposed. If we're no
     // longer mounted apply the assignments directly.
     if (mounted) {
       setState(() {
-        settings.arl = null;
         settings.offlineMode = false;
-        deezerAPI = DeezerAPI();
       });
     } else {
-      settings.arl = null;
       settings.offlineMode = false;
-      deezerAPI = DeezerAPI();
+    }
+    Object? logoutError;
+    for (final platform in PlatformRegistry.instance.allPlatforms) {
+      try {
+        await platform.logout();
+      } catch (error, stackTrace) {
+        logoutError ??= error;
+        Logger.root.severe(
+          'Failed to log out of ${platform.platformName}',
+          error,
+          stackTrace,
+        );
+      }
     }
     await settings.save();
     await Cache.wipe();
     Restartable.restart();
+    if (logoutError != null) {
+      throw StateError('One or more platforms could not be logged out.');
+    }
   }
 
   @override

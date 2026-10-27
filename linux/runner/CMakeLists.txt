@@ -16,11 +16,15 @@ add_executable(${BINARY_NAME}
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
 
-# Add preprocessor definitions for the application ID.
+# Add preprocessor definitions for the application ID, window title, and icon.
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
+add_definitions(-DWINDOW_TITLE="${WINDOW_TITLE}")
+add_definitions(-DAPP_ICON_ASSET="${APP_ICON_ASSET}")
 
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
+pkg_check_modules(WEBKIT REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
+target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::WEBKIT)
 
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")

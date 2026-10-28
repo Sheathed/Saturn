@@ -69,7 +69,10 @@ class PlayerBarState extends State<PlayerBar> {
     if (!settings.colorGradientBackground && !settings.blurPlayerBackground) {
       return;
     }
-    final source = item.extras?['thumb'] ?? item.artUri?.toString();
+    final source =
+        item.extras?['saturnOriginalArtUri'] ??
+        item.artUri?.toString() ??
+        item.extras?['thumb'];
     if (source == null || source.isEmpty || source == _lastPaletteSource) {
       return;
     }
@@ -119,7 +122,10 @@ class PlayerBarState extends State<PlayerBar> {
     _focusNode.addListener(_handleFocusChange);
     _mediaItemSub = audioHandler.mediaItem.listen((event) {
       if (event == null) return;
-      final source = event.extras?['thumb'] ?? event.artUri?.toString();
+      final source =
+          event.extras?['saturnOriginalArtUri'] ??
+          event.artUri?.toString() ??
+          event.extras?['thumb'];
       if (source != _lastPaletteSource) updateBackground();
     });
 
@@ -301,9 +307,11 @@ class PlayerBarState extends State<PlayerBar> {
                                 audioHandler
                                     .mediaItem
                                     .value
-                                    ?.extras?['thumb'] ??
-                                audioHandler.mediaItem.value?.artUri
-                                    ?.toString() ??
+                                    ?.extras?['saturnOriginalArtUri'] ??
+                                audioHandler.mediaItem.value?.artUri?.toString() ??
+                                audioHandler.mediaItem.value?.extras?[
+                                    'thumb'
+                                  ] ??
                                 '',
                           ),
                         ),
@@ -412,8 +420,9 @@ class PlayerBarState extends State<PlayerBar> {
                           width: 48,
                           height: 48,
                           url:
-                              item.extras?['thumb'] ??
+                              item.extras?['saturnOriginalArtUri'] ??
                               item.artUri?.toString() ??
+                              item.extras?['thumb'] ??
                               '',
                         ),
                       ),
@@ -639,9 +648,7 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
 
   void _paintChristmasLights(Canvas canvas, Size size) {
     final droops = (size.width / 380).ceil().clamp(1, 6).toInt();
-    final layoutSeed =
-        (size.width.round() * 31 + size.height.round()) & 0x7fffffff;
-    final layoutRandom = math.Random(layoutSeed);
+    final layoutRandom = math.Random(0xC417);
     final baseBulbs = (size.width / 105).round().clamp(4, 18).toInt();
     final bulbs = (baseBulbs - 1 + layoutRandom.nextInt(3))
         .clamp(4, 18)
@@ -666,7 +673,10 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
       Paint()
         ..color = const Color(0xFF52705B).withValues(alpha: 0.42)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = 2.0
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..isAntiAlias = true,
     );
     const colors = [
       Color(0xFFFF626B),
@@ -697,13 +707,15 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
       final glowStrength = 0.12 + 0.88 * phase * phase;
       final color = colors[i % colors.length];
       final bulb = Path()
-        ..moveTo(x - 2, y + 2)
-        ..quadraticBezierTo(x - 3.5, y + 5, x, y + 8)
-        ..quadraticBezierTo(x + 3.5, y + 5, x + 2, y + 2)
+        ..moveTo(x - 3.2, y + 2)
+        ..quadraticBezierTo(x - 4.8, y + 6, x, y + 12)
+        ..quadraticBezierTo(x + 4.8, y + 6, x + 3.2, y + 2)
         ..close();
       canvas.drawPath(
         bulb,
-        Paint()..color = color.withValues(alpha: 0.30 + 0.60 * glowStrength),
+        Paint()
+          ..isAntiAlias = true
+          ..color = color.withValues(alpha: 0.30 + 0.60 * glowStrength),
       );
       final glow = Rect.fromCircle(
         center: Offset(x, y + 5),
@@ -712,6 +724,7 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
       canvas.drawRect(
         glow,
         Paint()
+          ..isAntiAlias = true
           ..shader = RadialGradient(
             colors: [
               color.withValues(alpha: 0.30 * glowStrength),
@@ -730,11 +743,9 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
     _paintCobweb(canvas, Offset(size.width, 0), webRadius, flipX: true);
     final batPaint = Paint()
       ..color = const Color(0xFF28182B).withValues(alpha: 0.34);
-    final layoutSeed = size.width.round() * 31 + size.height.round();
-    final random = math.Random(layoutSeed & 0x7fffffff);
-    final baseCount = (size.width / 180).round().clamp(5, 10).toInt();
-    final count = (baseCount + random.nextInt(3)).clamp(5, 12).toInt();
+    final count = (size.width / 24).ceil().clamp(5, 50).toInt();
     for (var i = 0; i < count; i++) {
+      final random = math.Random(0xA110 + i * 104729);
       final xSeed = random.nextDouble();
       final ySeed = random.nextDouble();
       final swayPhase = random.nextDouble() * math.pi * 2;
@@ -743,12 +754,11 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
       final scale = 0.30 + random.nextDouble() * 0.25;
       final kind = random.nextDouble();
       const verticalMargin = 18.0;
-      final fallDistance = size.height + verticalMargin * 2;
+      const fallDistance = 140.0;
       final x =
-          (xSeed * size.width +
-              math.sin(timeSeconds * 0.62 + swayPhase) * swayAmplitude +
-              size.width) %
-          size.width;
+          i * 24.0 +
+          xSeed * 24.0 +
+          math.sin(timeSeconds * 0.62 + swayPhase) * swayAmplitude;
       final y =
           ((ySeed + timeSeconds / fallDuration) % 1).toDouble() * fallDistance -
           verticalMargin;
@@ -807,16 +817,13 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
   }
 
   void _paintSnow(Canvas canvas, Size size) {
-    final layoutSeed =
-        (size.width.round() * 31 + size.height.round()) & 0x7fffffff;
-    final random = math.Random(layoutSeed);
-    final baseCount = (size.width / 52).ceil().clamp(8, 24).toInt();
-    final count = (baseCount - 1 + random.nextInt(3)).clamp(8, 24).toInt();
+    final count = (size.width / 12).ceil().clamp(8, 64).toInt();
     final snowPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.30)
       ..strokeWidth = 0.8
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < count; i++) {
+      final random = math.Random(0x51A0 + i * 104729);
       final xSeed = random.nextDouble();
       final ySeed = random.nextDouble();
       final swayPhase = random.nextDouble() * math.pi * 2;
@@ -824,9 +831,9 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
       final fallDuration = 4 + random.nextDouble() * 10;
       final radius = 0.7 + random.nextDouble() * 1.05;
       const verticalMargin = 5.0;
-      final fallDistance = size.height + verticalMargin * 2;
+      const fallDistance = 140.0;
       final sway = math.sin(timeSeconds * 0.7 + swayPhase) * swayAmplitude;
-      final x = (xSeed * size.width + sway + size.width) % size.width;
+      final x = i * 12.0 + xSeed * 12.0 + sway;
       final y =
           ((ySeed + timeSeconds / fallDuration) % 1).toDouble() * fallDistance -
           verticalMargin;

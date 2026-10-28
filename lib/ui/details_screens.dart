@@ -27,6 +27,18 @@ import 'toast.dart';
 import 'mobile_scrollbar.dart';
 export 'track_details.dart';
 
+String? _playlistArtworkCredit(Playlist playlist) {
+  if (playlist.mosaicImages?.isNotEmpty == true) {
+    final credits = playlist.mosaicImageCaptions
+        ?.whereType<String>()
+        .map((credit) => credit.trim())
+        .where((credit) => credit.isNotEmpty)
+        .toSet();
+    if (credits?.isNotEmpty == true) return credits!.join(', ');
+  }
+  return playlist.image?.caption;
+}
+
 class AlbumDetails extends StatefulWidget {
   final Album album;
   const AlbumDetails(this.album, {super.key});
@@ -2233,6 +2245,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
 
   @override
   Widget build(BuildContext context) {
+    final artworkCredit = _playlistArtworkCredit(playlist);
     return Scaffold(
       appBar: FreezerAppBar(
         playlist.title ?? 'Playlist'.i18n,
@@ -2317,12 +2330,11 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                     ),
                                   ),
                                 ],
-                                if (playlist.image?.caption?.isNotEmpty ==
-                                    true) ...[
+                                if (artworkCredit?.isNotEmpty == true) ...[
                                   const SizedBox(height: 4.0),
                                   Text(
                                     'Artwork by'.i18n +
-                                        ' ${playlist.image!.caption!}',
+                                        ' $artworkCredit',
                                     textAlign: TextAlign.left,
                                     style: TextStyle(
                                       fontSize: 14.0,
@@ -2682,7 +2694,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                             ),
                           ),
                         ],
-                        if (playlist.image?.caption?.isNotEmpty == true) ...[
+                        if (artworkCredit?.isNotEmpty == true) ...[
                           Container(height: 2.0),
                           Padding(
                             padding: const EdgeInsets.symmetric(
@@ -2690,10 +2702,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                             ),
                             child: Text(
                               'Artwork by'.i18n +
-                                  ' ${playlist.image!.caption!}',
+                                  ' $artworkCredit',
                               textAlign: TextAlign.center,
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 2,
                               style: TextStyle(
                                 fontSize: 13.0,
                                 color: Theme.of(context).disabledColor,

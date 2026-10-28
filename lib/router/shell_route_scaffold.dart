@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -56,6 +57,8 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
   final GlobalKey _searchBarKey = GlobalKey();
   bool _isClickingSuggestion = false;
   static const Key _playerBarKey = ValueKey('player_bar');
+  final GlobalKey _pageViewportKey = GlobalKey();
+  ScrollPosition? _pageScrollPosition;
 
   @override
   void didChangeDependencies() {
@@ -75,14 +78,18 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
         .toString();
     if (location == null || location == _observedLocation) return;
     _observedLocation = location;
+    _pageScrollPosition = null;
     _resetPageScrollUnder();
   }
 
   @override
   void didUpdateWidget(covariant ShellRouteScaffold oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.child.key != widget.child.key && _isPageScrolledUnder) {
-      setState(() => _isPageScrolledUnder = false);
+    if (oldWidget.child.key != widget.child.key) {
+      _pageScrollPosition = null;
+      if (_isPageScrolledUnder) {
+        setState(() => _isPageScrolledUnder = false);
+      }
     }
   }
 
@@ -92,7 +99,30 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
     }
   }
 
+  bool _handlePageMetricsNotification(ScrollMetricsNotification notification) {
+    if (notification.depth == 0) {
+      _pageScrollPosition = Scrollable.maybeOf(notification.context)?.position;
+    }
+    return false;
+  }
+
+  void _forwardScrollToPage(Offset globalPosition, double deltaY) {
+    if (deltaY == 0) return;
+    final viewport = _pageViewportKey.currentContext?.findRenderObject();
+    if (viewport is! RenderBox || !viewport.hasSize) return;
+
+    final bounds = viewport.localToGlobal(Offset.zero) & viewport.size;
+    if (bounds.contains(globalPosition)) return;
+
+    final position = _pageScrollPosition;
+    if (position == null || !position.hasContentDimensions) return;
+    position.pointerScroll(deltaY);
+  }
+
   bool _handlePageScrollNotification(ScrollNotification notification) {
+    if (notification.depth == 0 && notification.context != null) {
+      _pageScrollPosition = Scrollable.maybeOf(notification.context!)?.position;
+    }
     if (notification is! ScrollUpdateNotification) return false;
     final direction = notification.metrics.axisDirection;
     if (direction != AxisDirection.down && direction != AxisDirection.up) {
@@ -884,6 +914,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
                       FocusScope(
                         node: _navigationBarFocusNode,
                         child: NavigationRail(
+                          scrollable: true,
                           extended: isExtended,
                           minExtendedWidth: isDesktop
                               ? settings.sidebarExpandedWidth
@@ -974,75 +1005,110 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
                                   duration: const Duration(milliseconds: 180),
                                   curve: Curves.linear,
                                   color: _isPageScrolledUnder
-                                      ? Theme.of(context)
-                                            .colorScheme
-                                            .surfaceContainerLow
-                                      : Theme.of(context)
-                                            .scaffoldBackgroundColor,
+                                      ? Theme.of(
+                                          context,
+                                        ).colorScheme.surfaceContainerLow
+                                      : Theme.of(
+                                          context,
+                                        ).scaffoldBackgroundColor,
                                 ),
                               ),
-                              LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final screenWidth = MediaQuery.sizeOf(
-                                    context,
-                                  ).width;
-                                  double? maxWidth;
-                                  if (screenWidth >= 1904) {
-                                    maxWidth = 1785;
-                                  } else if (screenWidth >= 1264) {
-                                    maxWidth = 1185;
-                                  } else if (screenWidth >= 960) {
-                                    maxWidth = 900;
-                                  }
-
-                                  if (maxWidth != null) {
-                                    final constrainedWidth = math.min(
-                                      maxWidth,
-                                      constraints.maxWidth,
-                                    );
-                                    return Align(
-                                      alignment: Alignment.topCenter,
-                                      child: SizedBox(
-                                        width: constrainedWidth,
-                                        height: constraints.maxHeight,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12.0,
-                                          ),
-                                          child: ScrollUnderScope(
-                                            scrolledUnder: _isPageScrolledUnder,
-                                            onReset: _resetPageScrollUnder,
-                                            child:
-                                                NotificationListener<
-                                                  ScrollNotification
-                                                >(
-                                                  onNotification:
-                                                      _handlePageScrollNotification,
-                                                  child: widget.child,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
+                              Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerSignal: (event) {
+                                  if (event is PointerScrollEvent) {
+                                    _forwardScrollToPage(
+                                      event.position,
+                                      event.scrollDelta.dy,
                                     );
                                   }
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12.0,
-                                    ),
-                                    child: ScrollUnderScope(
-                                      scrolledUnder: _isPageScrolledUnder,
-                                      onReset: _resetPageScrollUnder,
-                                      child:
-                                          NotificationListener<
-                                            ScrollNotification
-                                          >(
-                                            onNotification:
-                                                _handlePageScrollNotification,
-                                            child: widget.child,
-                                          ),
-                                    ),
+                                },
+                                onPointerPanZoomUpdate: (event) {
+                                  _forwardScrollToPage(
+                                    event.position,
+                                    event.panDelta.dy,
                                   );
                                 },
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final screenWidth = MediaQuery.sizeOf(
+                                      context,
+                                    ).width;
+                                    double? maxWidth;
+                                    if (screenWidth >= 1904) {
+                                      maxWidth = 1785;
+                                    } else if (screenWidth >= 1264) {
+                                      maxWidth = 1185;
+                                    } else if (screenWidth >= 960) {
+                                      maxWidth = 900;
+                                    }
+
+                                    if (maxWidth != null) {
+                                      final constrainedWidth = math.min(
+                                        maxWidth,
+                                        constraints.maxWidth,
+                                      );
+                                      return Align(
+                                        alignment: Alignment.topCenter,
+                                        child: SizedBox(
+                                          key: _pageViewportKey,
+                                          width: constrainedWidth,
+                                          height: constraints.maxHeight,
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12.0,
+                                            ),
+                                            child: ScrollUnderScope(
+                                              scrolledUnder:
+                                                  _isPageScrolledUnder,
+                                              onReset: _resetPageScrollUnder,
+                                              child:
+                                                  NotificationListener<
+                                                    ScrollMetricsNotification
+                                                  >(
+                                                    onNotification:
+                                                        _handlePageMetricsNotification,
+                                                    child:
+                                                        NotificationListener<
+                                                          ScrollNotification
+                                                        >(
+                                                          onNotification:
+                                                              _handlePageScrollNotification,
+                                                          child: widget.child,
+                                                        ),
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return Padding(
+                                      key: _pageViewportKey,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12.0,
+                                      ),
+                                      child: ScrollUnderScope(
+                                        scrolledUnder: _isPageScrolledUnder,
+                                        onReset: _resetPageScrollUnder,
+                                        child:
+                                            NotificationListener<
+                                              ScrollMetricsNotification
+                                            >(
+                                              onNotification:
+                                                  _handlePageMetricsNotification,
+                                              child:
+                                                  NotificationListener<
+                                                    ScrollNotification
+                                                  >(
+                                                    onNotification:
+                                                        _handlePageScrollNotification,
+                                                    child: widget.child,
+                                                  ),
+                                            ),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
                               Positioned.fill(
                                 child: ValueListenableBuilder<bool>(

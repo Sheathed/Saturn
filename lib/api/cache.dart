@@ -1,10 +1,10 @@
+import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../api/definitions.dart';
 import '../platform/platform_manager.dart';
@@ -174,10 +174,7 @@ class Cache {
 
   //Save, load
   static Future<String> getPath() async {
-    return p.join(
-      (await getApplicationSupportDirectory()).path,
-      'metacache.json',
-    );
+    return p.join((await getFlavorSupportDirectory()).path, 'metacache.json');
   }
 
   static Future wipe() async {

@@ -1,8 +1,9 @@
+import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart' show getTemporaryDirectory;
 import 'package:audio_service/audio_service.dart';
-import 'package:path_provider/path_provider.dart';
 import '../api/download_log.dart';
 import '../api/definitions.dart';
 import '../settings.dart';
@@ -104,7 +105,7 @@ class StreamProxyServer {
     await _logger!.open();
 
     try {
-      final appDirectory = await getApplicationSupportDirectory();
+      final appDirectory = await getFlavorSupportDirectory();
       _stateFile = File('${appDirectory.path}/stream_proxy_state.json');
       final savedState = await _readSavedState();
 
@@ -282,9 +283,7 @@ class StreamProxyServer {
       await request.response.close();
       return;
     }
-    final item = MediaItemConverter.mediaItemFromMap(
-      itemData,
-    );
+    final item = MediaItemConverter.mediaItemFromMap(itemData);
     if (item.id.isEmpty || item.extras?['platformId'] is! String) {
       request.response.statusCode = HttpStatus.badRequest;
       await request.response.close();
@@ -431,7 +430,9 @@ class StreamProxyServer {
     final platformId = item.extras?['platformId'] as String? ?? 'deezer';
     final platform = PlatformRegistry.instance.get(platformId);
     if (platform == null) {
-      _logger?.log('No registered platform "$platformId" for stream ${item.id}');
+      _logger?.log(
+        'No registered platform "$platformId" for stream ${item.id}',
+      );
       request.response.statusCode = HttpStatus.badGateway;
       await request.response.close();
       return;
@@ -844,7 +845,9 @@ class StreamProxyServer {
     final platformId = item.extras?['platformId'] as String? ?? 'deezer';
     final platform = PlatformRegistry.instance.get(platformId);
     if (platform == null) {
-      _logger?.log('No registered platform "$platformId" for stream ${item.id}');
+      _logger?.log(
+        'No registered platform "$platformId" for stream ${item.id}',
+      );
       request.response.statusCode = HttpStatus.badGateway;
       await request.response.close();
       return;

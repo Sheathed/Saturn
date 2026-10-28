@@ -1,3 +1,4 @@
+import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -59,6 +60,7 @@ class DownloadManager {
 
   // Local playlist manager
   late LocalPlaylistManager localPlaylistManager;
+  bool _localPlaylistManagerInitialized = false;
 
   String _offlineTable(String platformId, String entity) {
     final safeId = platformId.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
@@ -100,13 +102,11 @@ class DownloadManager {
       picture TEXT, fans INTEGER, albumCount INTEGER, offline INTEGER DEFAULT 0,
       library INTEGER DEFAULT 0, radio INTEGER DEFAULT 0, platformId TEXT NOT NULL)''',
     );
-    batch.execute(
-      '''CREATE TABLE IF NOT EXISTS $playlists (
+    batch.execute('''CREATE TABLE IF NOT EXISTS $playlists (
       id TEXT PRIMARY KEY, title TEXT, tracks TEXT DEFAULT '', image TEXT,
       duration INTEGER DEFAULT 0, userId TEXT, userName TEXT, fans INTEGER,
       library INTEGER DEFAULT 0, description TEXT, offline INTEGER DEFAULT 0,
-      platformId TEXT NOT NULL, mosaicImages TEXT)''',
-    );
+      platformId TEXT NOT NULL, mosaicImages TEXT)''');
     batch.insert('OfflinePlatforms', {
       'platformId': platformId,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -205,7 +205,7 @@ class DownloadManager {
   /// tables. Keep the source as a recovery copy and record completion in the
   /// destination so this only runs once.
   Future<void> _importLegacyOfflineDatabase(Database destination) async {
-    final legacyPath = p.join(await getDatabasesPath(), 'offline.db');
+    final legacyPath = p.join(await getFlavorDatabaseDirectory(), 'offline.db');
     final legacyFile = File(legacyPath);
     if (!await legacyFile.exists()) return;
 
@@ -247,7 +247,8 @@ class DownloadManager {
           final targetColumns = (await txn.rawQuery(
             'PRAGMA table_info($to)',
           )).map((row) => row['name'] as String).toSet();
-          final commonColumns = sourceColumns.intersection(targetColumns)
+          final commonColumns = sourceColumns
+              .intersection(targetColumns)
               .where((column) => !(regenerateId && column == 'id'))
               .toList();
           if (commonColumns.isEmpty) return;
@@ -270,7 +271,12 @@ class DownloadManager {
           }
         }
 
-        for (final entity in const ['Tracks', 'Albums', 'Artists', 'Playlists']) {
+        for (final entity in const [
+          'Tracks',
+          'Albums',
+          'Artists',
+          'Playlists',
+        ]) {
           await copyRows(
             entity,
             _offlineTable('deezer', entity),
@@ -323,7 +329,8 @@ class DownloadManager {
         // desktop Downloads directory to Application Support.
         try {
           if (!await destination.exists()) await entity.copy(destination.path);
-          moved = await destination.exists() &&
+          moved =
+              await destination.exists() &&
               await destination.length() == await entity.length();
           if (moved) await entity.delete();
         } catch (error, stack) {
@@ -395,7 +402,7 @@ class DownloadManager {
       databaseFactory = databaseFactoryFfi;
     }
 
-    String dbPath = p.join((await getDatabasesPath()), 'offline2.db');
+    String dbPath = p.join(await getFlavorDatabaseDirectory(), 'offline2.db');
     //Open db
     db = await openDatabase(
       dbPath,
@@ -441,9 +448,9 @@ class DownloadManager {
     if (Platform.isAndroid || Platform.isIOS) {
       directory = await getExternalStorageDirectory();
     } else {
-      directory = await getApplicationSupportDirectory();
+      directory = await getFlavorSupportDirectory();
     }
-    offlinePath = p.join((await getDatabasesPath()), 'offline/');
+    offlinePath = p.join(await getFlavorDatabaseDirectory(), 'offline/');
     await Directory(offlinePath!).create(recursive: true);
     if (directory != null) {
       offlinePath = p.join(directory.path, 'offline/');
@@ -485,9 +492,7 @@ class DownloadManager {
       );
     } catch (_) {}
     try {
-      await db!.execute(
-        'ALTER TABLE Downloads ADD COLUMN resolvedFormat TEXT',
-      );
+      await db!.execute('ALTER TABLE Downloads ADD COLUMN resolvedFormat TEXT');
     } catch (_) {}
     try {
       await db!.execute(
@@ -516,6 +521,7 @@ class DownloadManager {
     );
     localPlaylistManager = LocalPlaylistManager();
     await localPlaylistManager.init(db!);
+    _localPlaylistManagerInitialized = true;
     _downloadLog!.log('[DownloadManager] Local playlist manager initialized');
     _downloadLog!.log('[DownloadManager] Download manager fully initialized');
 
@@ -595,7 +601,8 @@ class DownloadManager {
     if (platformId == 'youtube_music' ||
         qualityFormat == null ||
         qualityFormat.isEmpty ||
-        qualityBitrate is! num || qualityBitrate <= 0) {
+        qualityBitrate is! num ||
+        qualityBitrate <= 0) {
       int? durationSeconds;
       final trackRows = await db!.query(
         _offlineTable(platformId, 'Tracks'),
@@ -616,17 +623,20 @@ class DownloadManager {
       );
       final detectedFormat = fileInfo['format'] as String?;
       final formatDetected = fileInfo['formatDetected'] == true;
-      if (detectedFormat != null && formatDetected &&
+      if (detectedFormat != null &&
+          formatDetected &&
           (platformId == 'youtube_music' ||
               qualityFormat == null ||
               qualityFormat.isEmpty)) {
-        qualityFormat = platformId == 'youtube_music' &&
+        qualityFormat =
+            platformId == 'youtube_music' &&
                 (detectedFormat == 'OGG' || detectedFormat == 'WEBM')
             ? 'OPUS'
             : detectedFormat;
       }
       final detectedBitrate = fileInfo['bitrate'];
-      if (detectedBitrate is num && detectedBitrate > 0 &&
+      if (detectedBitrate is num &&
+          detectedBitrate > 0 &&
           (platformId == 'youtube_music' ||
               qualityBitrate is! num ||
               qualityBitrate <= 0)) {
@@ -710,7 +720,7 @@ class DownloadManager {
     }
 
     // Process local playlists
-    if (localPlaylistManager.db != null) {
+    if (_localPlaylistManagerInitialized && localPlaylistManager.db != null) {
       final localPlaylists = await localPlaylistManager.getAllPlaylists();
       for (final lp in localPlaylists) {
         if (lp.trackIds.isEmpty) {
@@ -771,11 +781,7 @@ class DownloadManager {
         'Downloads',
         columns: ['id'],
         where: 'platformId = ? AND trackId = ? AND private = 1 AND state = ?',
-        whereArgs: [
-          platformId,
-          id,
-          DownloadState.UNAVAILABLE.index,
-        ],
+        whereArgs: [platformId, id, DownloadState.UNAVAILABLE.index],
         limit: 1,
       );
       if (skippedDownloads.isNotEmpty) count++;
@@ -1128,12 +1134,7 @@ class DownloadManager {
     //Add to DB
     if (private) {
       Batch b = db!.batch();
-      b = await _addTrackToDB(
-        b,
-        track,
-        true,
-        downloaded: false,
-      );
+      b = await _addTrackToDB(b, track, true, downloaded: false);
       await b.commit();
 
       //Cache art
@@ -1575,9 +1576,19 @@ class DownloadManager {
     );
     if (tracks.isEmpty) return null;
     Track track = Track.fromSQL(tracks[0]);
-    if (!await _offlineFileExists(sourceId, id) &&
-        !(includeUnavailable && track.unavailable == true)) {
+    final hasOfflineFile = await _offlineFileExists(sourceId, id);
+    if (!hasOfflineFile && !(includeUnavailable && track.unavailable == true)) {
       return null;
+    }
+    if (hasOfflineFile && track.offline != true) {
+      track.offline = true;
+      await db!.update(
+        tracksTable,
+        {'offline': 1},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      _offlineTrackCache.remove('$sourceId:$id');
     }
 
     //Get album
@@ -1615,10 +1626,39 @@ class DownloadManager {
     return track;
   }
 
+  /// Recreates the offline-library row when playback finds a downloaded file
+  /// whose metadata row was lost (for example after an interrupted upgrade).
+  Future<void> recoverOfflineTrackMetadata(Track track) async {
+    final id = track.id;
+    if (id == null || id.isEmpty) return;
+    if (_initFuture != null) await _initFuture;
+    final database = db;
+    if (database == null) return;
+
+    final batch = database.batch();
+    await _addTrackToDB(batch, track, false, downloaded: true);
+    await batch.commit();
+    await database.update(
+      _offlineTable(track.platformId, 'Tracks'),
+      {'offline': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    _offlineTrackCache.remove('${track.platformId}:$id');
+    if (_localPlaylistManagerInitialized) {
+      await _refreshOfflineContainers(track.platformId);
+    }
+    _offlineLibraryChanged.add(null);
+    _downloadLog?.log(
+      '[DownloadManager] Recovered offline track metadata for ${track.platformId}:$id',
+    );
+  }
+
   //Get offline library tracks
   Future<List<Track>> getOfflineTracks() async {
     List<Track> out = [];
     for (final platformId in await _offlinePlatformIds()) {
+      await _repairOfflineTrackFlags(platformId);
       final rawTracks = await db!.query(
         _offlineTable(platformId, 'Tracks'),
         where: 'favorite == 1 AND offline == 1',
@@ -1639,6 +1679,7 @@ class DownloadManager {
   Future<List<Track>> allOfflineTracks() async {
     List<Track> out = [];
     for (final platformId in await _offlinePlatformIds()) {
+      await _repairOfflineTrackFlags(platformId);
       final rawTracks = await db!.query(
         _offlineTable(platformId, 'Tracks'),
         where: 'offline == 1',
@@ -1923,9 +1964,10 @@ class DownloadManager {
       );
       _offlineLibraryChanged.add(null);
 
-      final otherOfflinePlaylists = (await localPlaylistManager
-              .getAllPlaylists())
-          .where((p) => p.id != localPlaylist.id && p.offline);
+      final otherOfflinePlaylists =
+          (await localPlaylistManager.getAllPlaylists()).where(
+            (p) => p.id != localPlaylist.id && p.offline,
+          );
       final tracksInOtherLocalOffline = <String>{};
       for (final other in otherOfflinePlaylists) {
         for (final idStr in other.trackIds) {
@@ -1967,6 +2009,46 @@ class DownloadManager {
     await removeOfflineTracks(playlist.tracks!);
   }
 
+  /// Repairs stale track flags from older versions using the actual offline
+  /// files as the source of truth. A file may be playable even when an older
+  /// download completion callback failed to update its metadata row.
+  Future<void> _repairOfflineTrackFlags(String platformId) async {
+    final database = db;
+    if (database == null) return;
+    final table = _offlineTable(platformId, 'Tracks');
+    final rows = await database.query(
+      table,
+      columns: ['id'],
+      where: 'offline != 1',
+    );
+    if (rows.isEmpty) return;
+
+    final batch = database.batch();
+    var repaired = 0;
+    const chunkSize = 32;
+    for (var start = 0; start < rows.length; start += chunkSize) {
+      final chunk = rows.skip(start).take(chunkSize).toList();
+      final ids = chunk.map((row) => row['id'] as String?).toList();
+      final fileResults = await Future.wait(
+        ids.map(
+          (id) => id == null
+              ? Future<bool>.value(false)
+              : _offlineFileExists(platformId, id),
+        ),
+      );
+      for (var index = 0; index < ids.length; index++) {
+        final id = ids[index];
+        if (id == null || !fileResults[index]) continue;
+        batch.update(table, {'offline': 1}, where: 'id = ?', whereArgs: [id]);
+        repaired++;
+      }
+    }
+    if (repaired > 0) {
+      await batch.commit(noResult: true);
+      _offlineTrackCache.clear();
+    }
+  }
+
   //Check if album, track or playlist is offline
   Future<bool> checkOffline({
     Album? album,
@@ -1980,15 +2062,25 @@ class DownloadManager {
       if (cached != null) return cached;
       if (db == null) return false;
 
-      //Track
-      List res = await db!.query(
+      // Playback already treats the local file as authoritative. Match that
+      // behavior here so stale metadata does not hide a real download.
+      final rows = await db!.query(
         _offlineTable(track.platformId, 'Tracks'),
-        where: 'id == ? AND offline == 1',
+        columns: ['offline'],
+        where: 'id = ?',
         whereArgs: [track.id],
+        limit: 1,
       );
-      bool isOffline = false;
-      if (res.isNotEmpty) {
-        isOffline = await _offlineFileExists(track.platformId, track.id);
+      final isOffline =
+          rows.isNotEmpty &&
+          await _offlineFileExists(track.platformId, track.id);
+      if (isOffline && rows.first['offline'] != 1) {
+        await db!.update(
+          _offlineTable(track.platformId, 'Tracks'),
+          {'offline': 1},
+          where: 'id = ?',
+          whereArgs: [track.id],
+        );
       }
       _offlineTrackCache[key] = isOffline;
       if (_offlineTrackCache.length > 2048) {

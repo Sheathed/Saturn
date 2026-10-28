@@ -184,8 +184,8 @@ Win32Window::MessageHandler(HWND hwnd,
       const UINT dpi = FlutterDesktopGetDpiForMonitor(
           MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST));
       const double scale_factor = dpi / 96.0;
-      min_max_info->ptMinTrackSize.x = Scale(450, scale_factor);
-      min_max_info->ptMinTrackSize.y = Scale(670, scale_factor);
+      min_max_info->ptMinTrackSize.x = Scale(350, scale_factor);
+      min_max_info->ptMinTrackSize.y = Scale(500, scale_factor);
       return 0;
     }
 

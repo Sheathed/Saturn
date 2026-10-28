@@ -271,6 +271,27 @@ class SoundCloudPlatform extends MusicPlatform {
   }
 
   @override
+  List<PlatformAppShortcut> get appShortcuts => [
+    PlatformAppShortcut(
+      id: 'stream',
+      title: 'Stream'.i18n,
+      icon: 'shortcut_stream',
+    ),
+  ];
+
+  @override
+  Future<void> handleAppShortcut(String id) async {
+    if (id != 'stream') return;
+    final tracks = await getFlow();
+    if (tracks.isEmpty) return;
+    await GetIt.I<AudioPlayerHandler>().playFromTrackList(
+      tracks,
+      tracks.first.id ?? '',
+      QueueSource(id: 'stream:soundcloud', text: 'Stream'.i18n, source: 'flow'),
+    );
+  }
+
+  @override
   Future<AuthResult> login(Map<String, dynamic> credentials) async {
     _lastExpiredToken = null;
     _lastRecoveredToken = null;

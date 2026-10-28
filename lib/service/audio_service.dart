@@ -1,13 +1,17 @@
+import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_service_platform_interface/audio_service_platform_interface.dart';
 import 'package:audio_service_mpris/audio_service_mpris.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_discord_rpc/flutter_discord_rpc.dart';
@@ -521,6 +525,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   /// Keep a duration already learned for an item when later queue/source
   /// metadata for that same ID omits it or carries a zero placeholder.
   void _publishMediaItem(MediaItem? item) {
+    final generation = ++_publishedMediaGeneration;
     if (item == null) {
       mediaItem.add(null);
       return;
@@ -551,7 +556,145 @@ class AudioPlayerHandler extends BaseAudioHandler
         currentQueue[currentIndex] = published;
       }
     }
+    if (settings.cropMediaArtwork && published.artUri != null) {
+      unawaited(_publishItemWithCroppedArtwork(published, generation));
+      return;
+    }
     mediaItem.add(published);
+  }
+
+  Future<void> _publishItemWithCroppedArtwork(
+    MediaItem item,
+    int generation,
+  ) async {
+    try {
+      final sourceUri = item.artUri!;
+      final cacheKey = sourceUri.toString();
+      final cropRequest = _croppedArtworkUris.putIfAbsent(
+        cacheKey,
+        () => _createSquareArtwork(sourceUri, item.artHeaders),
+      );
+      final croppedUri = await cropRequest;
+      if (_croppedArtworkUris.length > 64) {
+        _croppedArtworkUris.remove(_croppedArtworkUris.keys.first);
+      }
+      if (generation != _publishedMediaGeneration) return;
+      // audio_service publishes this item both to native media controls and
+      // to Saturn's own player UI. Keep the source URI in extras so the app
+      // can continue showing the original artwork while the platform receives
+      // its square-cropped copy.
+      mediaItem.add(
+        item.copyWith(
+          artUri: croppedUri,
+          extras: {
+            ...?item.extras,
+            'saturnOriginalArtUri': sourceUri.toString(),
+          },
+        ),
+      );
+    } catch (error, stackTrace) {
+      _croppedArtworkUris.remove(item.artUri!.toString());
+      Logger.root.warning(
+        'Could not crop artwork for media controls; using the original image.',
+        error,
+        stackTrace,
+      );
+      if (generation == _publishedMediaGeneration) mediaItem.add(item);
+    }
+  }
+
+  Future<Uri> _createSquareArtwork(
+    Uri sourceUri,
+    Map<String, String>? headers,
+  ) async {
+    final appDirectory = await getTemporaryDirectory();
+    final cacheDirectory = Directory(
+      p.join(appDirectory.path, 'media_artwork'),
+    );
+    await cacheDirectory.create(recursive: true);
+    final digest = sha256.convert(utf8.encode(sourceUri.toString()));
+    // v2 stores a true center crop. v1 decoded non-square inputs into a square
+    // first, which stretched the artwork before the crop was applied.
+    final output = File(p.join(cacheDirectory.path, 'square-v2-$digest.png'));
+    if (await output.exists() && await output.length() > 0) {
+      return output.uri;
+    }
+
+    final sourceFile = sourceUri.scheme == 'file'
+        ? File.fromUri(sourceUri)
+        : await DefaultCacheManager().getSingleFile(
+            sourceUri.toString(),
+            headers: headers,
+          );
+    final encodedImage = await ui.ImmutableBuffer.fromUint8List(
+      await sourceFile.readAsBytes(),
+    );
+    try {
+      final descriptor = await ui.ImageDescriptor.encoded(encodedImage);
+      try {
+        // Decode with the shorter edge at 512px while letting the other edge
+        // follow the original aspect ratio. This preserves enough pixels for
+        // the square crop without stretching the source.
+        final codec = await descriptor.instantiateCodec(
+          targetWidth: descriptor.width <= descriptor.height ? 512 : null,
+          targetHeight: descriptor.height < descriptor.width ? 512 : null,
+        );
+        try {
+          final frame = await codec.getNextFrame();
+          final sourceImage = frame.image;
+          try {
+            final side = math
+                .min(sourceImage.width, sourceImage.height)
+                .toDouble();
+            final sourceRect = ui.Rect.fromLTWH(
+              (sourceImage.width - side) / 2,
+              (sourceImage.height - side) / 2,
+              side,
+              side,
+            );
+            final recorder = ui.PictureRecorder();
+            final canvas = ui.Canvas(recorder);
+            canvas.drawImageRect(
+              sourceImage,
+              sourceRect,
+              ui.Rect.fromLTWH(0, 0, 512, 512),
+              ui.Paint()..filterQuality = ui.FilterQuality.high,
+            );
+            final squareImage = await recorder.endRecording().toImage(512, 512);
+            try {
+              final png = await squareImage.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              if (png == null) {
+                throw const FormatException('Artwork encode failed');
+              }
+              await output.writeAsBytes(
+                png.buffer.asUint8List(png.offsetInBytes, png.lengthInBytes),
+                flush: true,
+              );
+            } finally {
+              squareImage.dispose();
+            }
+          } finally {
+            sourceImage.dispose();
+          }
+        } finally {
+          codec.dispose();
+        }
+      } finally {
+        descriptor.dispose();
+      }
+    } finally {
+      encodedImage.dispose();
+    }
+    return output.uri;
+  }
+
+  /// Re-publish the original queued item after the artwork preference changes.
+  void refreshMediaMetadata() {
+    if (currentIndex >= 0 && currentIndex < currentQueue.length) {
+      _publishMediaItem(currentQueue[currentIndex]);
+    }
   }
 
   /// Start playing a live radio station using platform-generic endpoints.
@@ -815,6 +958,8 @@ class AudioPlayerHandler extends BaseAudioHandler
   bool _rearranging = false;
   bool _recoveringPlayerError = false;
   bool _playbackRequested = false;
+  int _publishedMediaGeneration = 0;
+  final Map<String, Future<Uri>> _croppedArtworkUris = {};
 
   String? _lastRpcTrackId;
   bool? _lastRpcPlaying;
@@ -1084,23 +1229,23 @@ class AudioPlayerHandler extends BaseAudioHandler
   }
 
   void _schedulePlaybackSpeedForCurrentItem() {
-    _playbackSpeedUpdateTail = _playbackSpeedUpdateTail
-        .catchError((_) {})
-        .then((_) async {
-          // Read after prior updates complete: if the active item changed
-          // while setSpeed was in flight, the newest item's preference wins.
-          final activeItem = currentIndex >= 0 &&
-                  currentIndex < currentQueue.length
-              ? currentQueue[currentIndex]
-              : mediaItem.value;
-          final isPodcast =
-              activeItem?.extras?['show'] != null ||
-              activeItem?.extras?['showUrl'] != null;
-          final targetSpeed = isPodcast ? cache.podcastPlaybackSpeed : 1.0;
-          if ((_player.speed - targetSpeed).abs() > 0.001) {
-            await _player.setSpeed(targetSpeed);
-          }
-        });
+    _playbackSpeedUpdateTail = _playbackSpeedUpdateTail.catchError((_) {}).then(
+      (_) async {
+        // Read after prior updates complete: if the active item changed
+        // while setSpeed was in flight, the newest item's preference wins.
+        final activeItem =
+            currentIndex >= 0 && currentIndex < currentQueue.length
+            ? currentQueue[currentIndex]
+            : mediaItem.value;
+        final isPodcast =
+            activeItem?.extras?['show'] != null ||
+            activeItem?.extras?['showUrl'] != null;
+        final targetSpeed = isPodcast ? cache.podcastPlaybackSpeed : 1.0;
+        if ((_player.speed - targetSpeed).abs() > 0.001) {
+          await _player.setSpeed(targetSpeed);
+        }
+      },
+    );
   }
 
   bool _isHandlingCompletion = false;
@@ -1859,19 +2004,21 @@ class AudioPlayerHandler extends BaseAudioHandler
     _childrenSubjects[parentMediaId]?.add(<String, dynamic>{});
     try {
       unawaited(
-        AudioServicePlatform.instance.notifyChildrenChanged(
-          NotifyChildrenChangedRequest(
-            parentMediaId: parentMediaId,
-            options: const <String, dynamic>{},
-          ),
-        ).catchError((Object error, StackTrace stackTrace) {
-          if (error is UnimplementedError) return;
-          Logger.root.warning(
-            'Failed to notify children changed for $parentMediaId',
-            error,
-            stackTrace,
-          );
-        }),
+        AudioServicePlatform.instance
+            .notifyChildrenChanged(
+              NotifyChildrenChangedRequest(
+                parentMediaId: parentMediaId,
+                options: const <String, dynamic>{},
+              ),
+            )
+            .catchError((Object error, StackTrace stackTrace) {
+              if (error is UnimplementedError) return;
+              Logger.root.warning(
+                'Failed to notify children changed for $parentMediaId',
+                error,
+                stackTrace,
+              );
+            }),
       );
     } catch (e) {
       if (e is UnimplementedError) return;
@@ -2072,7 +2219,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     // lookups instead of sending one storage and connectivity call per item.
     final storageDirectory = Platform.isAndroid || Platform.isIOS
         ? getExternalStorageDirectory()
-        : getApplicationSupportDirectory();
+        : getFlavorSupportDirectory();
     Future<int>? cachedQualityCode;
     Future<int> qualityCode() => cachedQualityCode ??= _preferredQualityCode();
     // Resolve in chunks and yield between them. Firing hundreds of file
@@ -2122,7 +2269,7 @@ class AudioPlayerHandler extends BaseAudioHandler
         await (storageDirectory ??
             (Platform.isAndroid || Platform.isIOS
                 ? getExternalStorageDirectory()
-                : getApplicationSupportDirectory()));
+                : getFlavorSupportDirectory()));
     offlinePath = p.join(directory!.path, 'offline/');
 
     final platformId = Track.fromMediaItem(mediaItem).platformId;
@@ -2135,6 +2282,17 @@ class AudioPlayerHandler extends BaseAudioHandler
     }
     if (offlineExists) {
       // Offline stream
+      try {
+        await downloadManager.recoverOfflineTrackMetadata(
+          Track.fromMediaItem(mediaItem),
+        );
+      } catch (error, stackTrace) {
+        Logger('AudioPlayerHandler').warning(
+          'Could not repair offline metadata for ${mediaItem.id}: $error',
+          error,
+          stackTrace,
+        );
+      }
       final currentExtras = Map<String, dynamic>.from(mediaItem.extras ?? {});
       currentExtras['streamUrl'] = Uri.file(f.path).toString();
       final fileInfo = await FormatUtils.resolveStreamInfo(
@@ -2154,7 +2312,8 @@ class AudioPlayerHandler extends BaseAudioHandler
       final storedBitrate =
           downloadedQuality?['resolvedBitrate'] ??
           currentExtras['qualityBitrate'];
-      final fileCodec = platformId == 'youtube_music' &&
+      final fileCodec =
+          platformId == 'youtube_music' &&
               (fileFormat == 'OGG' || fileFormat == 'WEBM')
           ? 'OPUS'
           : fileFormat;
@@ -2177,7 +2336,8 @@ class AudioPlayerHandler extends BaseAudioHandler
         }
       } else {
         final qualityIndex = downloadedQuality?['quality'];
-        final selectedQuality = qualityIndex is int &&
+        final selectedQuality =
+            qualityIndex is int &&
                 qualityIndex >= 0 &&
                 qualityIndex < AudioQuality.values.length
             ? AudioQuality.values[qualityIndex]
@@ -2270,7 +2430,9 @@ class AudioPlayerHandler extends BaseAudioHandler
         Track.fromMediaItem(sourceItem),
       );
       if (directUri != null) {
-        final currentExtras = Map<String, dynamic>.from(sourceItem.extras ?? {});
+        final currentExtras = Map<String, dynamic>.from(
+          sourceItem.extras ?? {},
+        );
         currentExtras['streamUrl'] = directUri.toString();
         final path = directUri.path.toLowerCase();
         if (path.endsWith('.opus') || path.endsWith('.ogg')) {
@@ -2465,8 +2627,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       );
       final knownFormat =
           currentQueue[index].extras?['qualityFormat'] as String?;
-      if (metadata.format?.isNotEmpty == true &&
-          knownFormat != 'FLAC 24-bit') {
+      if (metadata.format?.isNotEmpty == true && knownFormat != 'FLAC 24-bit') {
         extras['qualityFormat'] = metadata.format;
       }
       if (metadata.bitrate != null && metadata.bitrate! > 0) {
@@ -3323,8 +3484,7 @@ class AudioPlayerHandler extends BaseAudioHandler
           final retrySources = List<AudioSource>.of(_player.audioSources);
           if (isRadioItem(mediaItem.value)) {
             _resetRadioStreamClock();
-          } else if (failedIndex >= 0 &&
-              failedIndex < currentQueue.length) {
+          } else if (failedIndex >= 0 && failedIndex < currentQueue.length) {
             final failedItem = currentQueue[failedIndex];
             final oldUri = Uri.tryParse(
               failedItem.extras?['streamUrl'] as String? ?? '',
@@ -3358,8 +3518,7 @@ class AudioPlayerHandler extends BaseAudioHandler
             }
             if (refreshedSource is UriAudioSource &&
                 refreshedSource.tag is MediaItem) {
-              currentQueue[failedIndex] =
-                  refreshedSource.tag as MediaItem;
+              currentQueue[failedIndex] = refreshedSource.tag as MediaItem;
               queue.add(List.unmodifiable(currentQueue));
             }
           }
@@ -3485,7 +3644,7 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   // Get queue save file path
   Future<String> _getQueueFilePath() async {
-    Directory? directory = await getApplicationSupportDirectory();
+    Directory? directory = await getFlavorSupportDirectory();
     return p.join(directory.path, 'playback.json');
   }
 
@@ -3493,10 +3652,8 @@ class AudioPlayerHandler extends BaseAudioHandler
   bool _queueSaveDirty = false;
   final Expando<String> _queueItemJsonCache = Expando<String>('queueItemJson');
 
-  String _encodedQueueItem(MediaItem item) =>
-      _queueItemJsonCache[item] ??= jsonEncode(
-        MediaItemConverter.mediaItemToMap(item),
-      );
+  String _encodedQueueItem(MediaItem item) => _queueItemJsonCache[item] ??=
+      jsonEncode(MediaItemConverter.mediaItemToMap(item));
 
   //Export queue to JSON. Requests are coalesced: skips, metadata updates and
   //position ticks can fire many saves, but only one write runs at a time and
@@ -4180,9 +4337,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       );
 
   Duration? _durationFromListenLog(dynamic milliseconds) =>
-      milliseconds is num
-      ? Duration(milliseconds: milliseconds.round())
-      : null;
+      milliseconds is num ? Duration(milliseconds: milliseconds.round()) : null;
 
   Future<void> _submitOrQueueListenLog(Map<String, dynamic> record) async {
     var online = false;
@@ -4190,7 +4345,9 @@ class AudioPlayerHandler extends BaseAudioHandler
       final results = await Connectivity().checkConnectivity();
       online = results.any((result) => result != ConnectivityResult.none);
     } catch (error) {
-      Logger.root.fine('Could not check connectivity before listen log: $error');
+      Logger.root.fine(
+        'Could not check connectivity before listen log: $error',
+      );
     }
     if (!online || settings.offlineMode) {
       cache.pendingListenLogs.add(record);
@@ -4224,7 +4381,9 @@ class AudioPlayerHandler extends BaseAudioHandler
     try {
       results = await Connectivity().checkConnectivity();
     } catch (error) {
-      Logger.root.fine('Could not check connectivity for listen log retry: $error');
+      Logger.root.fine(
+        'Could not check connectivity for listen log retry: $error',
+      );
       return;
     }
     if (!results.any((result) => result != ConnectivityResult.none)) return;

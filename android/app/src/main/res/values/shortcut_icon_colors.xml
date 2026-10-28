@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="shortcut_favorites_background">#1565C0</color>
+    <color name="shortcut_flow_background">#7C4DFF</color>
+    <color name="shortcut_radio_background">#E53935</color>
+    <color name="shortcut_stream_background">#FF5500</color>
+    <color name="shortcut_trending_background">#8250DF</color>
+</resources>

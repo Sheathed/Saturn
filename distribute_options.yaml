@@ -7,26 +7,36 @@ releases:
         package:
           platform: linux
           target: rpm
+          build_args:
+            flavor: stable
       - name: release-release-linux-appimage
         package:
           platform: linux
           target: appimage
+          build_args:
+            flavor: stable
       - name: release-release-linux-deb
         package:
           platform: linux
           target: deb
+          build_args:
+            flavor: stable
   - name: windows
     jobs:
       - name: release-release-windows-exe
         package:
           platform: windows
           target: exe
+          build_args:
+            flavor: stable
   - name: macos
     jobs:
       - name: release-release-mac-dmg
         package:
           platform: macos
           target: dmg
+          build_args:
+            flavor: stable
 
   - name: linux-dev
     jobs:
@@ -36,18 +46,27 @@ releases:
           target: rpm
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/dev/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-dev-linux-appimage
         package:
           platform: linux
           target: appimage
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/dev/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-dev-linux-deb
         package:
           platform: linux
           target: deb
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/dev/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
   - name: linux-canary
     jobs:
       - name: release-canary-linux-rpm
@@ -56,18 +75,27 @@ releases:
           target: rpm
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/canary/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-canary-linux-appimage
         package:
           platform: linux
           target: appimage
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/canary/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-canary-linux-deb
         package:
           platform: linux
           target: deb
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/canary/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
 
   - name: windows-dev
     jobs:
@@ -77,6 +105,9 @@ releases:
           target: exe
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && mkdir -p "$BUILD_OUTPUT_DIRECTORY" && cp -R "$(pwd)/build/windows/x64/dev/runner/Release/." "$BUILD_OUTPUT_DIRECTORY/"
   - name: windows-canary
     jobs:
       - name: release-canary-windows-exe
@@ -85,6 +116,9 @@ releases:
           target: exe
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && mkdir -p "$BUILD_OUTPUT_DIRECTORY" && cp -R "$(pwd)/build/windows/x64/canary/runner/Release/." "$BUILD_OUTPUT_DIRECTORY/"
 
   - name: macos-dev
     jobs:

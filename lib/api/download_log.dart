@@ -1,8 +1,8 @@
+import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 
 class DownloadLog {
   IOSink? _writer;
@@ -14,7 +14,7 @@ class DownloadLog {
   /// Open/Create file
   Future<void> open() async {
     try {
-      Directory? directory = await getApplicationSupportDirectory();
+      Directory? directory = await getFlavorSupportDirectory();
 
       _logFile = File('${directory.path}/download.log');
 
@@ -32,13 +32,13 @@ class DownloadLog {
   Future<void> close() async {
     if (_isClosed) return; // Already closed
     _isClosed = true;
-    
+
     try {
       // Wait for any pending writes to complete
       while (_isWriting || _writeQueue.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 50));
       }
-      
+
       // Now close the writer
       await _writer?.flush();
       await _writer?.close();
@@ -103,7 +103,9 @@ class DownloadLog {
 
   /// Process the write queue sequentially
   Future<void> _processQueue() async {
-    if (_isWriting || _writeQueue.isEmpty || _writer == null || _isClosed) return;
+    if (_isWriting || _writeQueue.isEmpty || _writer == null || _isClosed) {
+      return;
+    }
 
     _isWriting = true;
 

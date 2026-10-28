@@ -7,8 +7,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'app_config.dart';
 
 class UpdateService extends ChangeNotifier {
   UpdateService._();
@@ -16,6 +17,8 @@ class UpdateService extends ChangeNotifier {
   static final UpdateService instance = UpdateService._();
   static const _releaseUrl =
       'https://api.github.com/repos/Sheathed/Saturn/releases/latest';
+  static const _releasesUrl =
+      'https://api.github.com/repos/Sheathed/Saturn/releases?per_page=100';
   static const _notificationChannelId = 'saturn_updates';
   static const _notificationChannelName = 'Updates';
   static const _notificationId = 7401;
@@ -57,21 +60,48 @@ class UpdateService extends ChangeNotifier {
   Future<void> _performCheck() async {
     try {
       final info = await PackageInfo.fromPlatform();
+      final isPrereleaseBuild =
+          appBuildFlavor == 'canary' || appBuildFlavor == 'dev';
       final response = await http
           .get(
-            Uri.parse(_releaseUrl),
+            Uri.parse(isPrereleaseBuild ? _releasesUrl : _releaseUrl),
             headers: const {'Accept': 'application/vnd.github+json'},
           )
           .timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) {
         throw HttpException('GitHub returned HTTP ${response.statusCode}');
       }
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final decoded = jsonDecode(response.body);
+      final Map<String, dynamic> data;
+      if (isPrereleaseBuild) {
+        final releases = decoded as List<dynamic>;
+        final prerelease = releases
+            .cast<Map<String, dynamic>>()
+            .where(
+              (release) =>
+                  release['prerelease'] == true && release['draft'] != true,
+            )
+            .toList();
+        if (prerelease.isEmpty) {
+          throw const FormatException('No prerelease was found.');
+        }
+        data = prerelease.first;
+      } else {
+        data = decoded as Map<String, dynamic>;
+      }
       final tag = data['tag_name'] as String?;
       if (tag == null || tag.trim().isEmpty) {
         throw const FormatException('Release response had no version tag.');
       }
-      currentVersion = info.version;
+      final installedVersion = info.version.split('+').first;
+      final existingFlavorSuffix = RegExp(
+        r'-(?:canary|dev)\.\d+$',
+        caseSensitive: false,
+      );
+      currentVersion = isPrereleaseBuild &&
+              !existingFlavorSuffix.hasMatch(installedVersion)
+          ? '$installedVersion-$appBuildFlavor.${info.buildNumber}'
+          : installedVersion;
       latestVersion = tag.replaceFirst(RegExp(r'^v'), '');
       changelog = data['body'] as String?;
       releasePageUrl = data['html_url'] as String?;
@@ -166,7 +196,7 @@ class UpdateService extends ChangeNotifier {
 
   Future<void> _notifyNewVersion(String version) async {
     try {
-      final supportDirectory = await getApplicationSupportDirectory();
+      final supportDirectory = await getFlavorSupportDirectory();
       final marker = File(
         '${supportDirectory.path}${Platform.pathSeparator}update-notified-version.txt',
       );

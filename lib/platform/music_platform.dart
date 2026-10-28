@@ -45,6 +45,19 @@ class QuickAccessItem {
   });
 }
 
+/// An app-icon shortcut that a platform can expose on mobile launchers.
+class PlatformAppShortcut {
+  final String id;
+  final String title;
+  final String icon;
+
+  const PlatformAppShortcut({
+    required this.id,
+    required this.title,
+    required this.icon,
+  });
+}
+
 enum ArtistPageSectionPosition {
   top,
   beforeTracks,
@@ -230,6 +243,13 @@ abstract class MusicPlatform {
 
   /// Quick access items to display on the search screen for this platform.
   List<QuickAccessItem> get searchQuickAccessItems => [];
+
+  /// Platform-specific app-icon shortcuts. The app reserves one of two slots
+  /// for the generic Favorites shortcut when library sync is supported.
+  List<PlatformAppShortcut> get appShortcuts => const [];
+
+  /// Handles an [appShortcuts] action selected from the app icon.
+  Future<void> handleAppShortcut(String id) async {}
 
   /// Extra entries a platform wants appended to the default context menus
   /// (track, album, artist, playlist, show). [item] is the model object the

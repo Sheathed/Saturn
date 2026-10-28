@@ -1,0 +1,11 @@
+# Saturn Windows installer configuration.
+app_id: saturn-music-player
+publisher: Sheathed
+publisher_url: https://saturn.kim
+display_name: Saturn
+create_desktop_icon: true
+# The Inno template defaults fresh installs to Fastforge's 64-bit Program Files path.
+# It also keeps the previous path selected and leaves the directory page editable.
+setup_icon_file: assets/icon.ico
+locales:
+  - en

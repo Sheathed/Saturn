@@ -15,6 +15,7 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       ..ignoreInterruptions = json['ignoreInterruptions'] as bool? ?? false
       ..enableEqualizer = json['enableEqualizer'] as bool? ?? false
       ..eastereggsDisabled = json['eastereggsDisabled'] as bool? ?? false
+      ..spacebarPlaybackToggle = json['spacebarPlaybackToggle'] as bool? ?? true
       ..wifiQuality =
           $enumDecodeNullable(_$AudioQualityEnumMap, json['wifiQuality']) ??
           AudioQuality.MP3_320
@@ -86,6 +87,7 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
         (json['primaryColor'] as num?)?.toInt(),
       )
       ..useArtColor = json['useArtColor'] as bool? ?? true
+      ..cropMediaArtwork = json['cropMediaArtwork'] as bool? ?? true
       ..deezerLanguage = json['deezerLanguage'] as String? ?? 'en'
       ..deezerCountry = json['deezerCountry'] as String? ?? 'US'
       ..logListen = json['logListen'] as bool? ?? true
@@ -105,6 +107,16 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
           (json['lyricsChoices'] as Map<String, dynamic>?)?.map(
             (k, e) => MapEntry(k, e as String),
           ) ??
+          {}
+      ..lyricsTranslationVisibility =
+          (json['lyricsTranslationVisibility'] as Map<String, dynamic>?)?.map(
+            (k, e) => MapEntry(k, e as bool),
+          ) ??
+          {}
+      ..lyricsRomanizationVisibility =
+          (json['lyricsRomanizationVisibility'] as Map<String, dynamic>?)?.map(
+            (k, e) => MapEntry(k, e as bool),
+          ) ??
           {};
 
 Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
@@ -112,6 +124,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'ignoreInterruptions': instance.ignoreInterruptions,
   'enableEqualizer': instance.enableEqualizer,
   'eastereggsDisabled': instance.eastereggsDisabled,
+  'spacebarPlaybackToggle': instance.spacebarPlaybackToggle,
   'wifiQuality': _$AudioQualityEnumMap[instance.wifiQuality]!,
   'mobileQuality': _$AudioQualityEnumMap[instance.mobileQuality]!,
   'offlineQuality': _$AudioQualityEnumMap[instance.offlineQuality]!,
@@ -147,6 +160,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'displayMode': instance.displayMode,
   'primaryColor': Settings._colorToJson(instance.primaryColor),
   'useArtColor': instance.useArtColor,
+  'cropMediaArtwork': instance.cropMediaArtwork,
   'deezerLanguage': instance.deezerLanguage,
   'deezerCountry': instance.deezerCountry,
   'logListen': instance.logListen,
@@ -163,6 +177,8 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'activePlatformId': instance.activePlatformId,
   'platformConfigs': instance.platformConfigs,
   'lyricsChoices': instance.lyricsChoices,
+  'lyricsTranslationVisibility': instance.lyricsTranslationVisibility,
+  'lyricsRomanizationVisibility': instance.lyricsRomanizationVisibility,
 };
 
 const _$AudioQualityEnumMap = {

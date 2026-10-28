@@ -96,10 +96,7 @@ class _LoginTextFieldState extends State<LoginTextField> {
 
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(
-        color: theme.colorScheme.primary,
-        width: 1.8,
-      ),
+      borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.8),
     );
 
     final suffixActions = <Widget>[
@@ -110,10 +107,12 @@ class _LoginTextFieldState extends State<LoginTextField> {
           onPressed: _handleClear,
         ),
       if (widget.showPasteButton && widget.enabled)
-        IconButton(
-          icon: const Icon(Icons.paste, size: 20),
-          tooltip: 'Paste from clipboard'.i18n,
-          onPressed: _handlePaste,
+        ExcludeFocus(
+          child: IconButton(
+            icon: const Icon(Icons.paste, size: 20),
+            tooltip: 'Paste from clipboard'.i18n,
+            onPressed: _handlePaste,
+          ),
         ),
       if (widget.isPassword)
         IconButton(
@@ -143,10 +142,7 @@ class _LoginTextFieldState extends State<LoginTextField> {
         hintText: widget.hintText,
         prefixIcon: widget.prefixIcon,
         suffixIcon: suffixActions.isNotEmpty
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: suffixActions,
-              )
+            ? Row(mainAxisSize: MainAxisSize.min, children: suffixActions)
             : null,
         filled: true,
         fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
@@ -186,28 +182,27 @@ class LoginPrimaryButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: height,
-      child: FilledButton.icon(
-        style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+      child: ExcludeFocus(
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
-        ),
-        onPressed: isLoading ? null : onPressed,
-        icon: isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  color: Colors.white,
-                ),
-              )
-            : Icon(icon, size: 20),
-        label: Text(
-          isLoading ? 'Verifying...'.i18n : label,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
+          onPressed: isLoading ? null : onPressed,
+          icon: isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                )
+              : Icon(icon, size: 20),
+          label: Text(
+            isLoading ? 'Verifying...'.i18n : label,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
         ),
       ),
@@ -318,11 +313,7 @@ class LoginSecondaryButton extends StatelessWidget {
 
 /// Standardized error banner across all login screens and widgets.
 class LoginErrorBanner extends StatelessWidget {
-  const LoginErrorBanner({
-    required this.message,
-    this.onDismiss,
-    super.key,
-  });
+  const LoginErrorBanner({required this.message, this.onDismiss, super.key});
 
   final String message;
   final VoidCallback? onDismiss;
@@ -337,16 +328,18 @@ class LoginErrorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.error.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(
-          color: colorScheme.error.withValues(alpha: 0.35),
-        ),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2.0),
-            child: Icon(Icons.error_outline, color: colorScheme.error, size: 20),
+            child: Icon(
+              Icons.error_outline,
+              color: colorScheme.error,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -467,9 +460,7 @@ class LoginDivider extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Divider(
-              color: theme.dividerColor.withValues(alpha: 0.3),
-            ),
+            child: Divider(color: theme.dividerColor.withValues(alpha: 0.3)),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0),
@@ -482,9 +473,7 @@ class LoginDivider extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Divider(
-              color: theme.dividerColor.withValues(alpha: 0.3),
-            ),
+            child: Divider(color: theme.dividerColor.withValues(alpha: 0.3)),
           ),
         ],
       ),

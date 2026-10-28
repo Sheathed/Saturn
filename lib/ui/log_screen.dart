@@ -1,3 +1,4 @@
+import '../utils/app_config.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,7 +6,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:silky_scroll/silky_scroll.dart';
 import 'package:saturn/ui/smooth_scroll_config.dart';
 
@@ -61,7 +61,7 @@ class _ApplicationLogViewerState extends State<ApplicationLogViewer> {
 
   //Load log from file
   Future _load() async {
-    Directory? directory = await getApplicationSupportDirectory();
+    Directory? directory = await getFlavorSupportDirectory();
     String path = p.join(directory.path, 'saturn.log');
     File file = File(path);
     if (await file.exists()) {

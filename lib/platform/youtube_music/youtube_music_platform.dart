@@ -359,6 +359,26 @@ class YouTubeMusicPlatform extends MusicPlatform {
       _api.client.isAuthenticated || (_isGuest && !_sessionExpired);
 
   @override
+  List<PlatformAppShortcut> get appShortcuts => [
+    PlatformAppShortcut(
+      id: 'radio',
+      title: 'Radio'.i18n,
+      icon: 'shortcut_radio',
+    ),
+  ];
+
+  @override
+  Future<void> handleAppShortcut(String id) async {
+    if (id == 'radio') {
+      await GetIt.I<AudioPlayerHandler>().playMix(
+        'RDMM',
+        'Radio'.i18n,
+        platformId: platformId,
+      );
+    }
+  }
+
+  @override
   Future<AuthResult> login(Map<String, dynamic> credentials) async {
     if (credentials['guest'] == true || credentials['isGuest'] == true) {
       _isGuest = true;
@@ -1227,9 +1247,7 @@ class YouTubeMusicPlatform extends MusicPlatform {
   @override
   Future<PlatformDownloadMetadata> getDownloadMetadata(String trackId) async {
     if (trackId.startsWith('radio:')) {
-      throw UnsupportedError(
-        'YouTube Music livestreams cannot be downloaded',
-      );
+      throw UnsupportedError('YouTube Music livestreams cannot be downloaded');
     }
     final track = await getTrack(trackId);
     // The selected YouTube stream may be Opus/WebM or AAC/M4A. Let the

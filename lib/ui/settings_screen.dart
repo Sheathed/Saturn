@@ -90,13 +90,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     3 => Icons.high_quality,
     4 => Icons.extension,
     5 => Icons.language,
-    6 => UpdateService.instance.updateAvailable
-        ? Icons.system_update_alt
-        : UpdateService.instance.latestVersion != null
-        ? Icons.check_circle_outline
-        : UpdateService.instance.errorMessage != null
-        ? Icons.cloud_off_outlined
-        : Icons.update,
+    6 =>
+      UpdateService.instance.updateAvailable
+          ? Icons.system_update_alt
+          : UpdateService.instance.latestVersion != null
+          ? Icons.check_circle_outline
+          : UpdateService.instance.errorMessage != null
+          ? Icons.cloud_off_outlined
+          : Icons.update,
     _ => Icons.info,
   };
 
@@ -1706,6 +1707,40 @@ class _GeneralSettingsState extends State<GeneralSettings> {
               ),
             ),
           ListTile(
+            title: Text('Crop artwork for media controls'.i18n),
+            subtitle: Text(
+              'Crops cover art to a square before sending it to platform media controls.'
+                  .i18n,
+            ),
+            leading: const Icon(Icons.crop),
+            trailing: Switch(
+              value: settings.cropMediaArtwork,
+              onChanged: (value) async {
+                setState(() => settings.cropMediaArtwork = value);
+                await settings.save();
+                if (GetIt.I.isRegistered<AudioPlayerHandler>()) {
+                  GetIt.I<AudioPlayerHandler>().refreshMediaMetadata();
+                }
+              },
+            ),
+          ),
+          if (Platform.isLinux || Platform.isWindows || Platform.isMacOS)
+            ListTile(
+              title: Text('Spacebar playback control'.i18n),
+              subtitle: Text(
+                'Press Space to play or pause when no text field is selected.'
+                    .i18n,
+              ),
+              leading: const Icon(Icons.space_bar),
+              trailing: Switch(
+                value: settings.spacebarPlaybackToggle,
+                onChanged: (value) async {
+                  setState(() => settings.spacebarPlaybackToggle = value);
+                  await settings.save();
+                },
+              ),
+            ),
+          ListTile(
             title: Text('LastFM'.i18n),
             subtitle: Text(
               (settings.lastFMUsername != null)
@@ -2737,90 +2772,92 @@ class _PlatformSettingsScreenState extends State<PlatformSettingsScreen> {
           ),
           const Divider(),
           ...PlatformRegistry.instance.allPlatforms
-              .where((platform) =>
-                  _loggedInPlatformIds.contains(platform.platformId))
+              .where(
+                (platform) =>
+                    _loggedInPlatformIds.contains(platform.platformId),
+              )
               .expand((platform) {
-            final settingsList = platform.settings;
-            if (settingsList.isEmpty) return <Widget>[];
+                final settingsList = platform.settings;
+                if (settingsList.isEmpty) return <Widget>[];
 
-            return [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                child: Row(
-                  children: [
-                    platform.buildPlatformIcon(
-                      color: Theme.of(context).primaryColor,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      platform.platformName.toUpperCase(),
-                      style: TextStyle(
-                        color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              ...settingsList.map((setting) {
-                if (setting is BooleanPlatformSetting) {
-                  return SwitchListTile(
-                    title: Text(setting.title),
-                    subtitle: Text(setting.description),
-                    secondary: Icon(setting.icon),
-                    value: setting.currentValue,
-                    onChanged: (val) async {
-                      await setting.onChanged(val);
-                      setState(() {});
-                    },
-                  );
-                } else if (setting is ChoicePlatformSetting) {
-                  return ListTile(
-                    title: Text(setting.title),
-                    subtitle: Text(setting.description),
-                    leading: Icon(setting.icon),
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => SimpleDialog(
-                          title: Text(setting.title),
-                          children: setting.options.map((opt) {
-                            return ListTile(
-                              title: Text(opt.label),
-                              subtitle: opt.subtitle != null
-                                  ? Text(opt.subtitle!)
-                                  : null,
-                              onTap: () async {
-                                await setting.onChanged(opt.value);
-                                if (context.mounted) {
-                                  Navigator.of(context).pop();
-                                }
-                                setState(() {});
-                              },
-                            );
-                          }).toList(),
+                return [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                    child: Row(
+                      children: [
+                        platform.buildPlatformIcon(
+                          color: Theme.of(context).primaryColor,
+                          size: 20,
                         ),
+                        const SizedBox(width: 12),
+                        Text(
+                          platform.platformName.toUpperCase(),
+                          style: TextStyle(
+                            color: Theme.of(context).primaryColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...settingsList.map((setting) {
+                    if (setting is BooleanPlatformSetting) {
+                      return SwitchListTile(
+                        title: Text(setting.title),
+                        subtitle: Text(setting.description),
+                        secondary: Icon(setting.icon),
+                        value: setting.currentValue,
+                        onChanged: (val) async {
+                          await setting.onChanged(val);
+                          setState(() {});
+                        },
                       );
-                    },
-                  );
-                } else if (setting is ActionPlatformSetting) {
-                  return ListTile(
-                    title: Text(setting.title),
-                    subtitle: Text(setting.description),
-                    leading: Icon(setting.icon),
-                    onTap: () async {
-                      await setting.onAction(context);
-                      setState(() {});
-                    },
-                  );
-                }
-                return const SizedBox.shrink();
+                    } else if (setting is ChoicePlatformSetting) {
+                      return ListTile(
+                        title: Text(setting.title),
+                        subtitle: Text(setting.description),
+                        leading: Icon(setting.icon),
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => SimpleDialog(
+                              title: Text(setting.title),
+                              children: setting.options.map((opt) {
+                                return ListTile(
+                                  title: Text(opt.label),
+                                  subtitle: opt.subtitle != null
+                                      ? Text(opt.subtitle!)
+                                      : null,
+                                  onTap: () async {
+                                    await setting.onChanged(opt.value);
+                                    if (context.mounted) {
+                                      Navigator.of(context).pop();
+                                    }
+                                    setState(() {});
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        },
+                      );
+                    } else if (setting is ActionPlatformSetting) {
+                      return ListTile(
+                        title: Text(setting.title),
+                        subtitle: Text(setting.description),
+                        leading: Icon(setting.icon),
+                        onTap: () async {
+                          await setting.onAction(context);
+                          setState(() {});
+                        },
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
+                ];
               }),
-            ];
-          }),
         ],
       ),
     );

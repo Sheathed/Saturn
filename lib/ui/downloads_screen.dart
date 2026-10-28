@@ -1,3 +1,4 @@
+import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -6,7 +7,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:silky_scroll/silky_scroll.dart';
 import 'package:saturn/ui/smooth_scroll_config.dart';
 
@@ -82,9 +82,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             d.state == DownloadState.PLATFORM_ERROR,
       )
       .toList();
-  List<Download> get unavailable => downloads
-      .where((d) => d.state == DownloadState.UNAVAILABLE)
-      .toList();
+  List<Download> get unavailable =>
+      downloads.where((d) => d.state == DownloadState.UNAVAILABLE).toList();
   List<Download> get finished =>
       downloads.where((d) => d.state == DownloadState.DONE).toList();
 
@@ -135,7 +134,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         // Just update data and UI together
         setState(() {
           for (Map su in e['data']) {
-            _log.info('UI received progress for id ${su['id']}: received=${su['received']}, total=${su['filesize']}, state=${su['state']}');
+            _log.info(
+              'UI received progress for id ${su['id']}: received=${su['received']}, total=${su['filesize']}, state=${su['state']}',
+            );
             final id = su['id'];
             if (id is int &&
                 (su['state'] == DownloadState.DOWNLOADING.index ||
@@ -206,9 +207,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               );
               await downloadManager.removeDownloads(DownloadState.DONE);
               await downloadManager.removeDownloads(DownloadState.NONE);
-              await downloadManager.removeDownloads(
-                DownloadState.UNAVAILABLE,
-              );
+              await downloadManager.removeDownloads(DownloadState.UNAVAILABLE);
               await _load();
             },
           ),
@@ -269,7 +268,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 Column(
                   children: List.generate(
                     queued.length,
-                    (int i) => DownloadTile(queued[i], updateCallback: () => _load()),
+                    (int i) =>
+                        DownloadTile(queued[i], updateCallback: () => _load()),
                   ),
                 ),
                 if (queued.isNotEmpty)
@@ -316,7 +316,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 Column(
                   children: List.generate(
                     failed.length,
-                    (int i) => DownloadTile(failed[i], updateCallback: () => _load()),
+                    (int i) =>
+                        DownloadTile(failed[i], updateCallback: () => _load()),
                   ),
                 ),
                 //Restart failed
@@ -334,7 +335,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     title: Text('Clear failed'.i18n),
                     leading: const Icon(Icons.delete),
                     onTap: () async {
-                      await downloadManager.removeDownloads(DownloadState.ERROR);
+                      await downloadManager.removeDownloads(
+                        DownloadState.ERROR,
+                      );
                       await downloadManager.removeDownloads(
                         DownloadState.PLATFORM_ERROR,
                       );
@@ -355,8 +358,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 Column(
                   children: List.generate(
                     finished.length,
-                    (int i) =>
-                        DownloadTile(finished[i], updateCallback: () => _load()),
+                    (int i) => DownloadTile(
+                      finished[i],
+                      updateCallback: () => _load(),
+                    ),
                   ),
                 ),
                 if (finished.isNotEmpty)
@@ -396,8 +401,7 @@ class DownloadTile extends StatelessWidget {
     if (download.state == DownloadState.POST) {
       return 'Post processing...'.i18n;
     }
-    if (download.state == DownloadState.UNAVAILABLE ||
-        download.unavailable) {
+    if (download.state == DownloadState.UNAVAILABLE || download.unavailable) {
       return 'Track is unavailable'.i18n;
     }
 
@@ -587,7 +591,7 @@ class _DownloadLogViewerState extends State<DownloadLogViewer> {
 
   //Load log from file
   Future _load() async {
-    Directory? directory = await getApplicationSupportDirectory();
+    Directory? directory = await getFlavorSupportDirectory();
     String path = p.join(directory.path, 'download.log');
     File file = File(path);
     if (await file.exists()) {
@@ -612,7 +616,7 @@ class _DownloadLogViewerState extends State<DownloadLogViewer> {
   }
 
   Future<void> _clearLog() async {
-    Directory? directory = await getApplicationSupportDirectory();
+    Directory? directory = await getFlavorSupportDirectory();
     String path = p.join(directory.path, 'download.log');
     File file = File(path);
     if (await file.exists()) {

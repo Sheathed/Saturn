@@ -1,3 +1,4 @@
+import 'app_config.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:developer';
@@ -6,7 +7,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 final Logger appLogger = () {
   _ensureLoggingConfigured();
@@ -26,7 +26,6 @@ void _ensureLoggingConfigured() {
     final logMessage = _formatLogMessage(record);
     // ignore: avoid_print
     print(logMessage.trimRight());
-    debugPrint(logMessage.trimRight());
     _globalLogQueueManager?.enqueue(logMessage);
   });
 }
@@ -66,7 +65,7 @@ Future<void> initializeLogging() async {
   _ensureLoggingConfigured();
 
   final String path = p.join(
-    (await getApplicationSupportDirectory()).path,
+    (await getFlavorSupportDirectory()).path,
     'saturn.log',
   );
   final File logFile = File(path);

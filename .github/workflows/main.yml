@@ -7,6 +7,10 @@ on:
         description: Build and publish a canary prerelease
         type: boolean
         default: false
+      dev:
+        description: Build and publish a development prerelease
+        type: boolean
+        default: false
   push:
     branches:
       - "**"
@@ -18,8 +22,8 @@ env:
   FLUTTER_VERSION: "3.47.0"
   FASTFORGE_VERSION: "0.6.12"
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  BUILD_FLAVOR: ${{ inputs.canary && 'canary' || 'stable' }}
-  RELEASE_SUFFIX: ${{ inputs.canary && '-canary' || '' }}
+  BUILD_FLAVOR: ${{ inputs.dev && 'dev' || inputs.canary && 'canary' || 'stable' }}
+  RELEASE_SUFFIX: ${{ inputs.dev && '-dev' || inputs.canary && '-canary' || '' }}
 
 concurrency:
   group: saturn-release-${{ github.ref }}
@@ -34,6 +38,7 @@ jobs:
     outputs:
       commit: ${{ steps.build_metadata.outputs.commit }}
       release_version: ${{ steps.build_metadata.outputs.release_version }}
+      package_version: ${{ steps.build_metadata.outputs.package_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,9 +46,13 @@ jobs:
       - name: Check if version bump should be skipped
         id: check_skip
         run: |
+          if [[ "$BUILD_FLAVOR" == "dev" && "${{ inputs.canary }}" == "true" ]]; then
+            echo "Choose either the dev or canary flavor, not both."
+            exit 1
+          fi
           COMMIT_MSG=$(git log -1 --pretty=%B)
           echo "Commit message: $COMMIT_MSG"
-          if [[ "$BUILD_FLAVOR" == "canary" || "$COMMIT_MSG" == *"--no-bump"* ]]; then
+          if [[ "$BUILD_FLAVOR" != "stable" || "$COMMIT_MSG" == *"--no-bump"* ]]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Skipping version bump"
           else
@@ -78,11 +87,14 @@ jobs:
         id: build_metadata
         run: |
           VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d'+' -f1 | tr -d '\r')
-          if [[ "$BUILD_FLAVOR" == "canary" ]]; then
-            VERSION="${VERSION}-canary.${GITHUB_RUN_NUMBER}"
+          RELEASE_VERSION="$VERSION"
+          if [[ "$BUILD_FLAVOR" != "stable" ]]; then
+            RELEASE_VERSION="${VERSION}-${BUILD_FLAVOR}.${GITHUB_RUN_NUMBER}"
           fi
+          PACKAGE_VERSION="${VERSION}+${GITHUB_RUN_NUMBER}"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "release_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
 
   LINUX:
     name: Linux
@@ -94,6 +106,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
+
+      - name: Set package version for this release
+        run: |
+          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
 
       - name: Install Linux dependencies
         run: |
@@ -150,9 +166,15 @@ jobs:
       - name: Install Fastforge
         run: dart pub global activate fastforge "$FASTFORGE_VERSION"
 
+      - name: Select Linux packaging flavor
+        run: |
+          for maker in appimage deb rpm; do
+            cp "linux/packaging/$maker/flavors/$BUILD_FLAVOR.yaml" "linux/packaging/$maker/make_config.yaml"
+          done
+
       - name: Build and release
         # These names select the matching release entries in distribute_options.yaml.
-        run: dart pub global run fastforge:main release --name "${{ inputs.canary && 'linux-canary' || 'linux' }}"
+        run: dart pub global run fastforge:main release --name "${{ inputs.dev && 'linux-dev' || inputs.canary && 'linux-canary' || 'linux' }}"
 
       - name: Replace AppRun
         run: |
@@ -180,6 +202,18 @@ jobs:
           if [ ! -d squashfs-root ]; then
             echo "Error: AppImage extraction failed"
             exit 1
+          fi
+
+          # Keep the generated AppImage launcher aligned with Saturn's window class.
+          DESKTOP_FILE=$(find squashfs-root -type f -name "*.desktop" -print -quit)
+          if [ -n "$DESKTOP_FILE" ]; then
+            if grep -q '^StartupWMClass=' "$DESKTOP_FILE"; then
+              sed -i 's/^StartupWMClass=.*/StartupWMClass=S.s.saturn/' "$DESKTOP_FILE"
+            else
+              sed -i '/^\[Desktop Entry\]/a StartupWMClass=S.s.saturn' "$DESKTOP_FILE"
+            fi
+          else
+            echo "Warning: no AppImage desktop entry found"
           fi
 
           # Replace the AppRun script with our distro-agnostic version
@@ -214,6 +248,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
+
+      - name: Set package version for this release
+        run: |
+          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
 
       - name: Install Linux dependencies for Dart hooks
         run: |
@@ -314,6 +352,10 @@ jobs:
         with:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
+      - name: Set package version for this release
+        run: |
+          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -348,9 +390,12 @@ jobs:
       - name: Install Fastforge
         run: dart pub global activate fastforge "$FASTFORGE_VERSION"
 
+      - name: Select macOS packaging flavor
+        run: cp "macos/packaging/dmg/flavors/$BUILD_FLAVOR.yaml" macos/packaging/dmg/make_config.yaml
+
       - name: Build and release
         # These names select the matching release entries in distribute_options.yaml.
-        run: dart pub global run fastforge:main release --name "${{ inputs.canary && 'macos-canary' || 'macos' }}"
+        run: dart pub global run fastforge:main release --name "${{ inputs.dev && 'macos-dev' || inputs.canary && 'macos-canary' || 'macos' }}"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -369,6 +414,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
+
+      - name: Set package version for this release
+        run: |
+          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -439,6 +488,11 @@ jobs:
         with:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
+      - name: Set package version for this release
+        shell: pwsh
+        run: |
+          (Get-Content pubspec.yaml) -replace '^version:.*$', 'version: ${{ needs.VERSION_BUMP.outputs.package_version }}' | Set-Content pubspec.yaml
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -459,9 +513,12 @@ jobs:
       - name: Install Fastforge
         run: dart pub global activate fastforge "$env:FASTFORGE_VERSION"
 
+      - name: Select Windows installer flavor
+        run: Copy-Item "windows/packaging/exe/flavors/$($env:BUILD_FLAVOR).yaml" windows/packaging/exe/make_config.yaml -Force
+
       - name: Build and release
         # These names select the matching release entries in distribute_options.yaml.
-        run: dart pub global run fastforge:main release --name "${{ inputs.canary && 'windows-canary' || 'windows' }}"
+        run: dart pub global run fastforge:main release --name "${{ inputs.dev && 'windows-dev' || inputs.canary && 'windows-canary' || 'windows' }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -494,8 +551,11 @@ jobs:
           # Publish installers only; Fastforge also emits metadata files.
           while IFS= read -r -d '' asset; do
             filename=$(basename "$asset" | tr -d '\r\n')
-            if [[ "$BUILD_FLAVOR" == "canary" ]]; then
-              filename="${filename%.*}-canary.${GITHUB_RUN_NUMBER}.${filename##*.}"
+            if [[ "$BUILD_FLAVOR" != "stable" ]]; then
+              release_suffix="-${BUILD_FLAVOR}.${GITHUB_RUN_NUMBER}"
+              if [[ "$filename" != *"${release_suffix}-"* && "$filename" != *"${release_suffix}."* && "$filename" != *"${release_suffix}_"* ]]; then
+                filename="${filename%.*}${release_suffix}.${filename##*.}"
+              fi
             fi
             cp "$asset" "release_assets/$filename"
           done < <(find artifacts -type f \( -name '*.apk' -o -name '*.ipa' -o -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -print0)
@@ -514,6 +574,6 @@ jobs:
             Changes: ${{ github.server_url }}/${{ github.repository }}/commit/${{ needs.VERSION_BUMP.outputs.commit }}
           files: release_assets/*
           draft: false
-          prerelease: ${{ inputs.canary == true }}
-          make_latest: ${{ inputs.canary && 'false' || 'true' }}
+          prerelease: ${{ inputs.canary == true || inputs.dev == true }}
+          make_latest: ${{ (inputs.canary || inputs.dev) && 'false' || 'true' }}
           fail_on_unmatched_files: true

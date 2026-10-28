@@ -1,13 +1,13 @@
-import 'dart:convert';
+import 'dart:async';
 
-import 'package:http/http.dart' as http;
 import 'package:material_ui/material_ui.dart';
-import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:silky_scroll/silky_scroll.dart';
 import 'package:saturn/ui/smooth_scroll_config.dart';
 
 import 'elements.dart';
+import '../utils/update_service.dart';
 
 class UpdaterScreen extends StatefulWidget {
   const UpdaterScreen({super.key});
@@ -17,80 +17,39 @@ class UpdaterScreen extends StatefulWidget {
 }
 
 class _UpdaterScreenState extends State<UpdaterScreen> {
-  bool _loading = true;
-  String? _errorMessage;
-  String? _latestVersion;
-  String? _changelog;
-  String? _updateUrl;
-  String? _currentVersion;
-
-  bool get _updateAvailable =>
-      _latestVersion != null &&
-      _currentVersion != null &&
-      _compareVersions(_latestVersion!, _currentVersion!) > 0;
+  UpdateService get _updates => UpdateService.instance;
+  bool get _loading => _updates.isChecking;
+  String? get _errorMessage => _updates.errorMessage;
+  String? get _latestVersion => _updates.latestVersion;
+  String? get _changelog => _updates.changelog;
+  String? get _updateUrl => _updates.releasePageUrl;
+  String? get _currentVersion => _updates.currentVersion;
+  bool get _updateAvailable => _updates.updateAvailable;
 
   @override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _errorMessage = null;
+    _updates.addListener(_onUpdateChanged);
+    // checkForUpdates notifies listeners immediately when it starts. This page
+    // can be mounted inside SettingsScreen's Builder, whose parent also listens
+    // to UpdateService; starting the check here would mark that parent dirty
+    // while Flutter is still mounting the route.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
     });
-    try {
-      final info = await PackageInfo.fromPlatform();
-      final response = await http.get(
-        Uri.parse(
-          'https://api.github.com/repos/Sheathed/Saturn/releases/latest',
-        ),
-        headers: const {'Accept': 'application/vnd.github+json'},
-      );
-      if (response.statusCode != 200) {
-        throw Exception('GitHub returned HTTP ${response.statusCode}');
-      }
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final tag = data['tag_name'] as String?;
-      if (tag == null || tag.trim().isEmpty) {
-        throw const FormatException('The release response had no version tag.');
-      }
-      if (!mounted) return;
-      setState(() {
-        _currentVersion = info.version;
-        _latestVersion = tag.replaceFirst(RegExp(r'^v'), '');
-        _changelog = data['body'] as String?;
-        _updateUrl = data['html_url'] as String?;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = error.toString();
-        _loading = false;
-      });
-    }
   }
 
-  int _compareVersions(String left, String right) {
-    final leftParts = RegExp(
-      r'\d+',
-    ).allMatches(left.split('+').first).map((m) => int.parse(m[0]!));
-    final rightParts = RegExp(
-      r'\d+',
-    ).allMatches(right.split('+').first).map((m) => int.parse(m[0]!));
-    final a = leftParts.toList();
-    final b = rightParts.toList();
-    final length = a.length > b.length ? a.length : b.length;
-    for (var index = 0; index < length; index++) {
-      final comparison = (index < a.length ? a[index] : 0).compareTo(
-        index < b.length ? b[index] : 0,
-      );
-      if (comparison != 0) return comparison;
-    }
-    return 0;
+  void _onUpdateChanged() {
+    if (mounted) setState(() {});
   }
+
+  @override
+  void dispose() {
+    _updates.removeListener(_onUpdateChanged);
+    super.dispose();
+  }
+
+  Future<void> _load() => _updates.checkForUpdates();
 
   Future<void> _openRelease() async {
     final url = _updateUrl;
@@ -146,6 +105,11 @@ class _UpdaterScreenState extends State<UpdaterScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final markdownText = theme.colorScheme.onSurface;
+    final markdownBody = theme.textTheme.bodyMedium?.copyWith(
+      color: markdownText,
+      height: 1.55,
+    );
     final statusColor = _updateAvailable
         ? theme.colorScheme.primary
         : Colors.green;
@@ -328,13 +292,85 @@ class _UpdaterScreenState extends State<UpdaterScreen> {
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(20),
-                          child: SelectableText(
-                            (_changelog?.trim().isNotEmpty ?? false)
+                          child: MarkdownBody(
+                            data: (_changelog?.trim().isNotEmpty ?? false)
                                 ? _changelog!.trim()
                                 : 'No release notes were provided for this version.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              height: 1.55,
+                            selectable: true,
+                            styleSheet: MarkdownStyleSheet(
+                              a: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.primary,
+                                decoration: TextDecoration.underline,
+                              ),
+                              p: markdownBody,
+                              h1: theme.textTheme.headlineSmall?.copyWith(
+                                color: markdownText,
+                              ),
+                              h2: theme.textTheme.titleLarge?.copyWith(
+                                color: markdownText,
+                              ),
+                              h3: theme.textTheme.titleMedium?.copyWith(
+                                color: markdownText,
+                              ),
+                              h4: theme.textTheme.bodyLarge?.copyWith(
+                                color: markdownText,
+                              ),
+                              h5: theme.textTheme.bodyLarge?.copyWith(
+                                color: markdownText,
+                              ),
+                              h6: theme.textTheme.bodyLarge?.copyWith(
+                                color: markdownText,
+                              ),
+                              code: markdownBody?.copyWith(
+                                color: markdownText,
+                                fontFamily: 'monospace',
+                              ),
+                              em: TextStyle(
+                                color: markdownText,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              strong: TextStyle(
+                                color: markdownText,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              del: TextStyle(
+                                color: markdownText,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                              blockquote: markdownBody,
+                              img: markdownBody,
+                              checkbox: TextStyle(color: markdownText),
+                              listBullet: markdownBody,
+                              tableHead: TextStyle(
+                                color: markdownText,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              tableBody: markdownBody,
+                              blockquoteDecoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHigh,
+                                border: Border(
+                                  left: BorderSide(
+                                    color: theme.colorScheme.primary,
+                                    width: 3,
+                                  ),
+                                ),
+                              ),
+                              tableBorder: TableBorder.all(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
                             ),
+                            onTapLink: (text, href, title) {
+                              if (href == null) return;
+                              final uri = Uri.tryParse(href);
+                              if (uri != null) {
+                                unawaited(
+                                  launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                                );
+                              }
+                            },
                           ),
                         ),
                       ),

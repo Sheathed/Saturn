@@ -96,7 +96,7 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
           },
         ),
         IconButton(
-          icon: Icon(Icons.settings, semanticLabel: 'Settings'.i18n),
+          icon: const UpdateAwareSettingsIcon(),
           onPressed: () {
             context.push('/settings');
           },
@@ -795,7 +795,9 @@ class _LibraryAlbumsState extends State<LibraryAlbums> {
             color: Theme.of(context).scaffoldBackgroundColor,
             child: const Icon(Icons.sort, size: 32.0),
             onSelected: (SortType s) async {
-              setState(() => _sort.type = s);
+              setState(() {
+                _sort.type = s;
+              });
               //Save to cache
               int? index = Sorting.index(SortSourceTypes.ALBUMS);
               if (index == null) {
@@ -804,6 +806,7 @@ class _LibraryAlbumsState extends State<LibraryAlbums> {
                 cache.sorts[index] = _sort;
               }
               await cache.save();
+              await _load();
             },
             itemBuilder: (context) => <PopupMenuEntry<SortType>>[
               PopupMenuItem(
@@ -1282,69 +1285,93 @@ class LibraryPlaylists extends StatefulWidget {
 class _LibraryPlaylistsState extends State<LibraryPlaylists> {
   List<Playlist>? _playlists;
   bool _hasLocalOfflinePlaylists = true;
+  bool _hasMorePlaylists = false;
+  bool _loadingPlaylistPage = false;
+  int _playlistRequestGeneration = 0;
   Sorting _sort = Sorting(sourceType: SortSourceTypes.PLAYLISTS);
   final ScrollController _scrollController = ScrollController();
   StreamSubscription<void>? _offlineLibrarySub;
   late Future<List<Playlist>> _offlinePlaylistsFuture;
   String _filter = '';
+  Timer? _filterDebounce;
 
-  List<Playlist> get _sorted {
-    List<Playlist> playlists = List.from(
-      _playlists!.where(
-        (p) => (p.title ?? '').toLowerCase().contains(_filter.toLowerCase()),
-      ),
-    );
-    switch (_sort.type) {
-      case SortType.DEFAULT:
-        break;
-      case SortType.USER:
-        playlists.sort(
-          (a, b) => (a.user?.name ?? '').toLowerCase().compareTo(
-            (b.user?.name ?? '').toLowerCase(),
-          ),
-        );
-        break;
-      case SortType.TRACK_COUNT:
-        playlists.sort((a, b) => (b.trackCount ?? 0) - (a.trackCount ?? 0));
-        break;
-      case SortType.ALPHABETIC:
-        playlists.sort(
-          (a, b) => (a.title ?? '').toLowerCase().compareTo(
-            (b.title ?? '').toLowerCase(),
-          ),
-        );
-        break;
-      default:
-        break;
-    }
-    if (_sort.reverse) return playlists.reversed.toList();
-    return playlists;
+  void _onFilterChanged(String value) {
+    setState(() {
+      _filter = value;
+      _playlists = [];
+      _hasMorePlaylists = false;
+      _loadingPlaylistPage = false;
+      _playlistRequestGeneration++;
+    });
+    _filterDebounce?.cancel();
+    _filterDebounce = Timer(const Duration(milliseconds: 300), () => _load());
   }
 
-  Future _load() async {
-    if (!settings.offlineMode) {
+  Future<void> _load({bool reset = true}) async {
+    if (!reset && _loadingPlaylistPage) return;
+    final requestGeneration = reset
+        ? ++_playlistRequestGeneration
+        : _playlistRequestGeneration;
+    final platform = PlatformManager.instance.active;
+    final start = reset ? 0 : (_playlists?.length ?? 0);
+    if (!mounted) return;
+    setState(() {
+      _loadingPlaylistPage = true;
+      if (reset) {
+        _playlists = settings.offlineMode ? [] : null;
+        _hasMorePlaylists = false;
+      }
+    });
+
+    if (settings.offlineMode) {
       try {
-        List<Playlist> playlists = await PlatformManager.instance.active
-            .getUserPlaylists();
-        // The API list belongs to the active platform, so keep its playlists
-        // visible even when a downloaded copy also appears below.
-        if (mounted) setState(() => _playlists = playlists);
-      } catch (e) {
-        Logger.root.severe('Error loading playlists: $e');
-        if (mounted) setState(() => _playlists = []);
+        final offlinePlaylists = await downloadManager.getOfflinePlaylists();
+        if (!mounted || requestGeneration != _playlistRequestGeneration) return;
+        final sorted = offlinePlaylists
+            .where((playlist) => playlist.platformId == platform.platformId)
+            .toList()
+            .applyPlaylistSorting(_sort, query: _filter);
+        setState(() {
+          _playlists = sorted;
+          _hasMorePlaylists = false;
+          _loadingPlaylistPage = false;
+        });
+      } catch (error, stackTrace) {
+        Logger.root.severe('Error loading offline playlists: $error', error, stackTrace);
+        if (!mounted || requestGeneration != _playlistRequestGeneration) return;
+        setState(() {
+          _playlists = [];
+          _hasMorePlaylists = false;
+          _loadingPlaylistPage = false;
+        });
       }
-    } else {
-      // Still list downloaded playlists from the selected platform in the
-      // regular platform section while offline mode is enabled.
-      final activePlatformId = PlatformManager.instance.activePlatformId;
-      final offlinePlaylists = await downloadManager.getOfflinePlaylists();
-      if (mounted) {
-        setState(
-          () => _playlists = offlinePlaylists
-              .where((playlist) => playlist.platformId == activePlatformId)
-              .toList(),
-        );
-      }
+      return;
+    }
+
+    try {
+      final page = await platform.getUserPlaylistsPage(
+        start: start,
+        limit: 100,
+        sort: _sort,
+        query: _filter,
+        refresh: reset,
+      );
+      if (!mounted || requestGeneration != _playlistRequestGeneration) return;
+      setState(() {
+        _playlists = reset
+            ? page.playlists
+            : [...?_playlists, ...page.playlists];
+        _hasMorePlaylists = page.hasMore;
+        _loadingPlaylistPage = false;
+      });
+    } catch (error, stackTrace) {
+      Logger.root.severe('Error loading playlists: $error', error, stackTrace);
+      if (!mounted || requestGeneration != _playlistRequestGeneration) return;
+      setState(() {
+        _playlists = reset ? [] : _playlists;
+        _hasMorePlaylists = false;
+        _loadingPlaylistPage = false;
+      });
     }
   }
 
@@ -1358,6 +1385,7 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
       cache.sorts.add(_sort);
     }
     await cache.save();
+    await _load();
   }
 
   Future<void> _createPlaylist() async {
@@ -1393,6 +1421,7 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
 
   @override
   void dispose() {
+    _filterDebounce?.cancel();
     _offlineLibrarySub?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -1464,7 +1493,7 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
               padding: const EdgeInsets.all(8.0),
               child: TextField(
                 cursorColor: Theme.of(context).primaryColor,
-                onChanged: (String s) => setState(() => _filter = s),
+                onChanged: _onFilterChanged,
                 decoration: InputDecoration(
                   labelText: 'Search'.i18n,
                   fillColor: Theme.of(context).bottomAppBarTheme.color,
@@ -1502,7 +1531,8 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
               const FreezerDivider(),
             ],
 
-            if (!settings.offlineMode && _playlists == null)
+            if (_playlists == null ||
+                (_loadingPlaylistPage && _playlists!.isEmpty))
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
@@ -1527,7 +1557,7 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
             if (_playlists != null)
               Builder(
                 builder: (context) {
-                  final sortedPlaylists = _sorted;
+                  final sortedPlaylists = _playlists!;
                   if (sortedPlaylists.isEmpty && !_hasLocalOfflinePlaylists) {
                     return Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1624,6 +1654,21 @@ class _LibraryPlaylistsState extends State<LibraryPlaylists> {
                     }),
                   );
                 },
+              ),
+            if (_hasMorePlaylists)
+              VisibilityDetector(
+                key: ValueKey('playlist-page-${_playlists?.length ?? 0}'),
+                onVisibilityChanged: (info) {
+                  if (info.visibleFraction > 0 && !_loadingPlaylistPage) {
+                    _load(reset: false);
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: _loadingPlaylistPage
+                      ? const Center(child: CircularProgressIndicator())
+                      : const SizedBox(height: 1),
+                ),
               ),
 
             FutureBuilder(

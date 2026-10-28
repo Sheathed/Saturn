@@ -178,6 +178,32 @@ class RadioNowPlaying {
 ///
 /// Capability flags (via [capabilities]) tell the UI and download pipeline
 abstract class MusicPlatform {
+  List<Playlist>? _cachedUserPlaylists;
+  SortType? _cachedUserPlaylistSortType;
+  bool _cachedUserPlaylistReverse = false;
+  String _cachedUserPlaylistQuery = '';
+  int _userPlaylistCacheGeneration = 0;
+  final Map<String, List<Track>> _sortedPlaylistTrackCache = {};
+
+  /// Clears a playlist's sorted snapshot after its contents change.
+  void invalidatePlaylistTracksCache([String? playlistId]) {
+    if (playlistId == null) {
+      _sortedPlaylistTrackCache.clear();
+    } else {
+      _sortedPlaylistTrackCache.removeWhere(
+        (key, _) => key.startsWith('$playlistId:'),
+      );
+    }
+  }
+
+  /// Clears the sorted playlist snapshot after a playlist/library mutation.
+  void invalidateUserPlaylistsCache() {
+    _userPlaylistCacheGeneration++;
+    _cachedUserPlaylists = null;
+    _cachedUserPlaylistSortType = null;
+    _cachedUserPlaylistReverse = false;
+    _cachedUserPlaylistQuery = '';
+  }
   // ---------------------------------------------------------------------------
   // Identity
   // ---------------------------------------------------------------------------
@@ -339,6 +365,38 @@ abstract class MusicPlatform {
   Future<Playlist> getPlaylist(String id, {int limit = 100});
   Future<Playlist> getFullPlaylist(String id);
 
+  /// Returns a page from a playlist, applying [sort] to its complete contents
+  /// before slicing. Platforms may override this to use native sort/pagination.
+  Future<PaginatedTrackList> getPlaylistTracksPage({
+    required String id,
+    int start = 0,
+    int limit = 25,
+    Sorting? sort,
+  }) async {
+    final needsSort =
+        sort != null && (sort.reverse || sort.type != SortType.DEFAULT);
+    final pageStart = start < 0 ? 0 : start;
+    final pageLimit = limit < 1 ? 1 : limit;
+    List<Track> all;
+    if (needsSort) {
+      final activeSort = sort;
+      final cacheKey = '$id:${activeSort.type.name}:${activeSort.reverse}';
+      all = _sortedPlaylistTrackCache[cacheKey] ??= (await getFullPlaylist(id))
+          .tracks
+          ?.applySorting(activeSort) ?? [];
+    } else {
+      final page = await getPlaylistTracks(id, pageStart, nb: pageLimit + 1);
+      return PaginatedTrackList(
+        tracks: page.take(pageLimit).toList(),
+        hasMore: page.length > pageLimit,
+      );
+    }
+    return PaginatedTrackList(
+      tracks: all.skip(pageStart).take(pageLimit).toList(),
+      hasMore: all.length > pageStart + pageLimit,
+    );
+  }
+
   /// Fetch lyrics. Returns an error [Lyrics] if unsupported.
   Future<Lyrics> getLyrics(String trackId);
 
@@ -356,6 +414,51 @@ abstract class MusicPlatform {
   // ---------------------------------------------------------------------------
 
   Future<List<Playlist>> getUserPlaylists();
+
+  /// Returns the user's playlists sorted across the full library, then paged.
+  /// Platforms with native sorted pagination can override this method.
+  Future<PaginatedPlaylistList> getUserPlaylistsPage({
+    int start = 0,
+    int limit = 100,
+    Sorting? sort,
+    String query = '',
+    bool refresh = false,
+  }) async {
+    final sortType = sort?.type ?? SortType.DEFAULT;
+    final reverse = sort?.reverse ?? false;
+    final normalizedQuery = query.trim().toLowerCase();
+    final shouldLoad = refresh ||
+        _cachedUserPlaylists == null ||
+        _cachedUserPlaylistSortType != sortType ||
+        _cachedUserPlaylistReverse != reverse ||
+        _cachedUserPlaylistQuery != normalizedQuery;
+    if (shouldLoad) {
+      final generation = _userPlaylistCacheGeneration;
+      final all = await getUserPlaylists();
+      final sorted = all.applyPlaylistSorting(sort, query: normalizedQuery);
+      if (generation == _userPlaylistCacheGeneration) {
+        _cachedUserPlaylists = sorted;
+        _cachedUserPlaylistSortType = sortType;
+        _cachedUserPlaylistReverse = reverse;
+        _cachedUserPlaylistQuery = normalizedQuery;
+      }
+      final pageEnd = (start < 0 ? 0 : start) + (limit < 1 ? 1 : limit);
+      final pageStart = start < 0 ? 0 : start;
+      return PaginatedPlaylistList(
+        playlists: sorted.skip(pageStart).take(limit < 1 ? 1 : limit).toList(),
+        hasMore: sorted.length > pageEnd,
+      );
+    }
+
+    final all = _cachedUserPlaylists!;
+    final pageStart = start < 0 ? 0 : start;
+    final pageLimit = limit < 1 ? 1 : limit;
+    return PaginatedPlaylistList(
+      playlists: all.skip(pageStart).take(pageLimit).toList(),
+      hasMore: all.length > pageStart + pageLimit,
+    );
+  }
+
   Future<List<Album>> getUserAlbums();
   Future<List<Artist>> getUserArtists();
   Future<List<Show>> getUserShows();

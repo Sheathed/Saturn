@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/material.dart' as flutter_material;
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:logging/logging.dart';
 import 'package:saturn/platform/deezer/deezer_widgets.dart';
@@ -84,7 +85,9 @@ class DeezerPlatform extends MusicPlatform {
 
   String? get arl {
     final cfg = g.settings.platformConfigs['deezer'];
-    if (cfg is Map && cfg['arl'] is String && (cfg['arl'] as String).isNotEmpty) {
+    if (cfg is Map &&
+        cfg['arl'] is String &&
+        (cfg['arl'] as String).isNotEmpty) {
       return cfg['arl'] as String;
     }
     return null;
@@ -187,10 +190,29 @@ class DeezerPlatform extends MusicPlatform {
           ': ${g.settings.deezerLanguage}',
       icon: Icons.language,
       currentValue: g.settings.deezerLanguage,
-      options: [
-        const ChoicePlatformOption(value: 'en', label: 'English'),
-        const ChoicePlatformOption(value: 'de', label: 'Deutsch'),
-        const ChoicePlatformOption(value: 'it', label: 'Italiano'),
+      options: const [
+        ChoicePlatformOption(value: 'en', label: 'English'),
+        ChoicePlatformOption(value: 'ar', label: 'العربية'),
+        ChoicePlatformOption(value: 'bg', label: 'Български'),
+        ChoicePlatformOption(value: 'hr', label: 'Hrvatski'),
+        ChoicePlatformOption(value: 'cs', label: 'Čeština'),
+        ChoicePlatformOption(value: 'da', label: 'Dansk'),
+        ChoicePlatformOption(value: 'nl', label: 'Nederlands'),
+        ChoicePlatformOption(value: 'fi', label: 'Suomi'),
+        ChoicePlatformOption(value: 'fr', label: 'Français'),
+        ChoicePlatformOption(value: 'de', label: 'Deutsch'),
+        ChoicePlatformOption(value: 'hu', label: 'Magyar'),
+        ChoicePlatformOption(value: 'it', label: 'Italiano'),
+        ChoicePlatformOption(value: 'ja', label: '日本語'),
+        ChoicePlatformOption(value: 'pl', label: 'Polski'),
+        ChoicePlatformOption(value: 'pt', label: 'Português'),
+        ChoicePlatformOption(value: 'ro', label: 'Română'),
+        ChoicePlatformOption(value: 'ru', label: 'Русский'),
+        ChoicePlatformOption(value: 'sk', label: 'Slovenčina'),
+        ChoicePlatformOption(value: 'es', label: 'Español'),
+        ChoicePlatformOption(value: 'sv', label: 'Svenska'),
+        ChoicePlatformOption(value: 'tr', label: 'Türkçe'),
+        ChoicePlatformOption(value: 'uk', label: 'Українська'),
       ],
       onChanged: (value) async {
         g.settings.deezerLanguage = value;
@@ -207,22 +229,40 @@ class DeezerPlatform extends MusicPlatform {
       onAction: (context) async {
         showDialog(
           context: context,
-          builder: (context) => CountryPickerDialog(
-            title: Text('Select country'.i18n),
-            titlePadding: const EdgeInsets.all(8.0),
-            isSearchable: true,
-            itemBuilder: (country) => Row(
-              children: <Widget>[
-                CountryPickerUtils.getDefaultFlagImage(country),
-                const SizedBox(width: 8.0),
-                Expanded(child: Text('${country.name} (${country.isoCode})')),
-              ],
-            ),
-            onValuePicked: (Country country) {
-              g.settings.deezerCountry = country.isoCode ?? 'us';
-              g.settings.save();
-            },
-          ),
+          builder: (context) {
+            final brightness = g.settings.isDark
+                ? flutter_material.Brightness.dark
+                : flutter_material.Brightness.light;
+            final pickerTheme = flutter_material.ThemeData(
+              brightness: brightness,
+              colorScheme: flutter_material.ColorScheme.fromSeed(
+                seedColor: g.settings.themeData.colorScheme.primary,
+                brightness: brightness,
+              ),
+              useMaterial3: true,
+            );
+            return flutter_material.Theme(
+              data: pickerTheme,
+              child: CountryPickerDialog(
+                title: Text('Select country'.i18n),
+                titlePadding: const EdgeInsets.all(8.0),
+                isSearchable: true,
+                itemBuilder: (country) => Row(
+                  children: <Widget>[
+                    CountryPickerUtils.getDefaultFlagImage(country),
+                    const SizedBox(width: 8.0),
+                    Expanded(
+                      child: Text('${country.name} (${country.isoCode})'),
+                    ),
+                  ],
+                ),
+                onValuePicked: (Country country) {
+                  g.settings.deezerCountry = country.isoCode ?? 'US';
+                  g.settings.save();
+                },
+              ),
+            );
+          },
         );
       },
     ),
@@ -365,11 +405,7 @@ class DeezerPlatform extends MusicPlatform {
         lyrics = await getLyrics(trackId);
       } catch (_) {}
 
-      return TrackPageData(
-        track: track,
-        album: album,
-        lyrics: lyrics,
-      );
+      return TrackPageData(track: track, album: album, lyrics: lyrics);
     } catch (e) {
       Logger.root.warning('Deezer getTrackPageData fallback failed: $e');
       return null;
@@ -394,11 +430,13 @@ class DeezerPlatform extends MusicPlatform {
       for (final edge in rawContribs) {
         final node = edge?['node'] as Map?;
         if (node != null && node['name'] != null) {
-          artists.add(Artist(
-            id: node['id']?.toString() ?? '',
-            name: node['name']?.toString() ?? '',
-            platformId: platformId,
-          ));
+          artists.add(
+            Artist(
+              id: node['id']?.toString() ?? '',
+              name: node['name']?.toString() ?? '',
+              platformId: platformId,
+            ),
+          );
         }
       }
     }
@@ -416,14 +454,14 @@ class DeezerPlatform extends MusicPlatform {
         final smallList = rawCover['small'] as List?;
         final mediumList = rawCover['medium'] as List?;
         final largeList = rawCover['large'] as List?;
-        coverThumb = (mediumList?.isNotEmpty == true
-                ? mediumList!.first
-                : smallList?.first)
-            ?.toString();
-        coverFull = (largeList?.isNotEmpty == true
-                ? largeList!.first
-                : coverThumb)
-            ?.toString();
+        coverThumb =
+            (mediumList?.isNotEmpty == true
+                    ? mediumList!.first
+                    : smallList?.first)
+                ?.toString();
+        coverFull =
+            (largeList?.isNotEmpty == true ? largeList!.first : coverThumb)
+                ?.toString();
       }
 
       final albumArtists = <Artist>[];
@@ -432,16 +470,19 @@ class DeezerPlatform extends MusicPlatform {
         for (final edge in rawAlbumContribs) {
           final node = edge?['node'] as Map?;
           if (node != null && node['name'] != null) {
-            albumArtists.add(Artist(
-              id: node['id']?.toString() ?? '',
-              name: node['name']?.toString() ?? '',
-              platformId: platformId,
-            ));
+            albumArtists.add(
+              Artist(
+                id: node['id']?.toString() ?? '',
+                name: node['name']?.toString() ?? '',
+                platformId: platformId,
+              ),
+            );
           }
         }
       }
-      final resolvedAlbumArtists =
-          albumArtists.isNotEmpty ? albumArtists : artists;
+      final resolvedAlbumArtists = albumArtists.isNotEmpty
+          ? albumArtists
+          : artists;
 
       album = Album(
         id: albumId,
@@ -506,7 +547,8 @@ class DeezerPlatform extends MusicPlatform {
           Album? relAlb;
           if (relAlbMap != null) {
             final relCover = relAlbMap['cover'] as Map?;
-            final thumb = (relCover?['medium'] as List?)?.firstOrNull?.toString() ??
+            final thumb =
+                (relCover?['medium'] as List?)?.firstOrNull?.toString() ??
                 (relCover?['small'] as List?)?.firstOrNull?.toString();
             relAlb = Album(
               id: relAlbMap['id']?.toString(),
@@ -521,23 +563,27 @@ class DeezerPlatform extends MusicPlatform {
             for (final cEdge in relContrEdges) {
               final cNode = cEdge?['node'] as Map?;
               if (cNode?['name'] != null) {
-                relArtists.add(Artist(
-                  id: cNode!['id']?.toString() ?? '',
-                  name: cNode['name']?.toString() ?? '',
-                  platformId: platformId,
-                ));
+                relArtists.add(
+                  Artist(
+                    id: cNode!['id']?.toString() ?? '',
+                    name: cNode['name']?.toString() ?? '',
+                    platformId: platformId,
+                  ),
+                );
               }
             }
           }
-          similarTracks.add(Track(
-            id: relId,
-            title: relTitle,
-            duration: relDur,
-            album: relAlb,
-            artists: relArtists,
-            albumArt: relAlb?.art,
-            platformId: platformId,
-          ));
+          similarTracks.add(
+            Track(
+              id: relId,
+              title: relTitle,
+              duration: relDur,
+              album: relAlb,
+              artists: relArtists,
+              albumArt: relAlb?.art,
+              platformId: platformId,
+            ),
+          );
         }
       }
     }
@@ -698,10 +744,8 @@ class DeezerPlatform extends MusicPlatform {
   }
 
   @override
-  Future<HistoryTrackPage> getHistoryTracks({
-    String? cursor,
-    int limit = 50,
-  }) => _api.getHistoryTracks(cursor: cursor, limit: limit);
+  Future<HistoryTrackPage> getHistoryTracks({String? cursor, int limit = 50}) =>
+      _api.getHistoryTracks(cursor: cursor, limit: limit);
 
   // ---------------------------------------------------------------------------
   // Library mutations
@@ -892,12 +936,16 @@ class DeezerPlatform extends MusicPlatform {
   Future<void> deletePlaylist(String id) => _api.deletePlaylist(id);
 
   @override
-  Future<void> addToPlaylist(String trackId, String playlistId) =>
-      _api.addToPlaylist(trackId, playlistId);
+  Future<void> addToPlaylist(String trackId, String playlistId) async {
+    await _api.addToPlaylist(trackId, playlistId);
+    invalidatePlaylistTracksCache(playlistId);
+  }
 
   @override
-  Future<void> removeFromPlaylist(String trackId, String playlistId) =>
-      _api.removeFromPlaylist(trackId, playlistId);
+  Future<void> removeFromPlaylist(String trackId, String playlistId) async {
+    await _api.removeFromPlaylist(trackId, playlistId);
+    invalidatePlaylistTracksCache(playlistId);
+  }
 
   // ---------------------------------------------------------------------------
   // Discovery
@@ -1290,14 +1338,17 @@ class DeezerPlatform extends MusicPlatform {
 
   @override
   Future<List<MediaItem>?> getAndroidAutoItems(String parentId) async {
-    final cleanId = parentId.contains('_') ? parentId.split('_').first : parentId;
+    final cleanId = parentId.contains('_')
+        ? parentId.split('_').first
+        : parentId;
     if (cleanId == 'radio') {
       try {
         final radiosPage = await getChannel('channels/radios');
         final items = <MediaItem>[];
         for (final section in radiosPage.sections) {
           for (final item in section.items) {
-            if (item?.type == HomePageItemType.RADIO && item?.value is LiveRadio) {
+            if (item?.type == HomePageItemType.RADIO &&
+                item?.value is LiveRadio) {
               final r = item!.value as LiveRadio;
               items.add(
                 MediaItem(
@@ -1305,7 +1356,8 @@ class DeezerPlatform extends MusicPlatform {
                   title: r.title ?? 'Radio'.i18n,
                   album: 'Deezer',
                   displayTitle: r.title,
-                  displaySubtitle: (section.title != null &&
+                  displaySubtitle:
+                      (section.title != null &&
                           section.title!.isNotEmpty &&
                           section.title!.toLowerCase() != 'radio')
                       ? section.title!
@@ -1321,7 +1373,11 @@ class DeezerPlatform extends MusicPlatform {
         }
         if (items.isNotEmpty) return items;
       } catch (e, stack) {
-        Logger.root.warning('Deezer radio Android Auto loading failed: $e', e, stack);
+        Logger.root.warning(
+          'Deezer radio Android Auto loading failed: $e',
+          e,
+          stack,
+        );
       }
     }
     return null;

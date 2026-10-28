@@ -136,8 +136,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler {
   AudioPlayerHandler() {
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
-      if (results.any((result) => result != ConnectivityResult.none) &&
-          !settings.offlineMode) {
+      if (results.any((result) => result != ConnectivityResult.none)) {
         unawaited(_flushPendingListenLogs());
       }
     });
@@ -4216,6 +4215,10 @@ class AudioPlayerHandler extends BaseAudioHandler
   }
 
   Future<void> _flushPendingListenLogs() async {
+    // Android may construct the audio handler for a media-resume callback
+    // before prepareRun() has loaded settings and cache. The handler's player
+    // startup already waits for this gate; pending-log retries must do so too.
+    if (Platform.isAndroid) await _androidRuntimeReady.future;
     if (_flushingPendingListenLogs || settings.offlineMode) return;
     List<ConnectivityResult> results;
     try {

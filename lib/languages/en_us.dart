@@ -523,5 +523,18 @@ const language_en_US = {
     'Include word timestamps when the lyrics source provides them.':
         'Include word timestamps when the lyrics source provides them.',
     'Currently': 'Currently',
+    'Site used': 'Site used',
+    'Choose which Neuro Karaoke site to use. This changes which currency you earn.':
+        'Choose which Neuro Karaoke site to use. This changes which currency you earn.',
+    'Neuro Karaoke': 'Neuro Karaoke',
+    'Evil Karaoke': 'Evil Karaoke',
+    'Twins Karaoke': 'Twins Karaoke',
+    'Copy to clipboard': 'Copy to clipboard',
+    'Log copied to clipboard': 'Log copied to clipboard',
+    'Save logs as text file': 'Save logs as text file',
+    'Save application log': 'Save application log',
+    'An unexpected error occurred.': 'An unexpected error occurred.',
+    'Please check the logs for more details.':
+        'Please check the logs for more details.',
   },
 };

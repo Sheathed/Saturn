@@ -4,10 +4,11 @@ import 'dart:ui';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
-import 'package:material_ui/material_ui.dart' hide GlobalMaterialLocalizations;
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart'
+    as flutter_localizations;
 import 'package:get_it/get_it.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:i18n_extension/i18n_extension.dart';
@@ -43,6 +44,7 @@ import 'utils/directory_migration.dart';
 import 'utils/logging.dart';
 import 'utils/app_http_proxy.dart';
 import 'utils/app_webview_proxy.dart';
+import 'utils/update_service.dart';
 
 late Function updateTheme;
 late Future<void> Function() logOut;
@@ -76,9 +78,9 @@ void main() async {
               children: [
                 const Icon(Icons.error, color: Colors.red, size: 64.0),
                 const SizedBox(height: 16.0),
-                const Text(
-                  'An unexpected error occurred.',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                Text(
+                  'An unexpected error occurred.'.i18n,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8.0),
                 Text(
@@ -87,9 +89,9 @@ void main() async {
                   style: const TextStyle(fontSize: 12.0),
                 ),
                 const SizedBox(height: 16.0),
-                const Text(
-                  'Please check the logs for more details.',
-                  style: TextStyle(fontSize: 12.0),
+                Text(
+                  'Please check the logs for more details.'.i18n,
+                  style: const TextStyle(fontSize: 12.0),
                 ),
               ],
             ),
@@ -128,7 +130,10 @@ void main() async {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(_configureDesktopWindow());
     if (PlatformDispatcher.instance.views.isNotEmpty) {
-      unawaited(_requestNotificationPermission());
+      unawaited(() async {
+        await _requestNotificationPermission();
+        await UpdateService.instance.checkForUpdates(notifyIfAvailable: true);
+      }());
     }
   });
 
@@ -287,16 +292,43 @@ class _SaturnAppState extends State<SaturnApp> {
         settings.dynamicDarkScheme = darkDynamic;
         return MaterialApp.router(
           title: appTitle,
+          // Use the localization delegates bundled with material_ui so its
+          // widgets receive the MaterialLocalizations type they look up. The
+          // app's translations remain managed by I18n below.
+          locale: _locale(),
+          localeResolutionCallback: (requestedLocale, appLocales) {
+            final materialLocales = appLocales
+                .where(GlobalMaterialLocalizations.delegate.isSupported)
+                .toList();
+            if (requestedLocale != null) {
+              for (final candidate in materialLocales) {
+                if (candidate.languageCode == requestedLocale.languageCode &&
+                    candidate.countryCode == requestedLocale.countryCode) {
+                  return candidate;
+                }
+              }
+              for (final candidate in materialLocales) {
+                if (candidate.languageCode == requestedLocale.languageCode) {
+                  return candidate;
+                }
+              }
+            }
+            for (final candidate in materialLocales) {
+              if (candidate.languageCode == 'en') return candidate;
+            }
+            return const Locale('en', 'US');
+          },
           shortcuts: <ShortcutActivator, Intent>{
             ...WidgetsApp.defaultShortcuts,
             LogicalKeySet(LogicalKeyboardKey.select):
                 const ActivateIntent(), // DPAD center key, for remote controls
           },
           theme: settings.themeData,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
+          localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+            ...GlobalMaterialLocalizations.delegates,
+            // CountryPickerDialog still uses Flutter's SDK Material widgets.
+            // Register that parallel localization type alongside material_ui's.
+            flutter_localizations.GlobalMaterialLocalizations.delegate,
           ],
           supportedLocales: supportedLocales,
           routerConfig: appRouter,
@@ -347,9 +379,7 @@ class _AppInitializerState extends State<AppInitializer> {
         }
         if (mounted) setState(() => settings.offlineMode = false);
         if (GetIt.I.isRegistered<AudioPlayerHandler>()) {
-          unawaited(
-            GetIt.I<AudioPlayerHandler>().retryPendingListenLogs(),
-          );
+          unawaited(GetIt.I<AudioPlayerHandler>().retryPendingListenLogs());
         }
       }
     });
@@ -487,7 +517,6 @@ class _AppInitializerState extends State<AppInitializer> {
             },
           ),
         ]);
-
       });
     }
   }

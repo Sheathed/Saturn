@@ -1916,6 +1916,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
   late Playlist playlist;
   bool _loading = false;
   bool _error = false;
+  bool _hasMoreTracks = true;
+  int _trackLoadVersion = 0;
   late Sorting _sort;
   final ScrollController _scrollController = ScrollController();
 
@@ -1926,6 +1928,12 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
 
   List<Track> get sorted {
     final currentTracks = playlist.tracks ?? [];
+    // Remote playlist pages are already sorted by their platform. Local
+    // playlists still use this view-level sort after loading their full list.
+    if (playlist.platformId != 'local' &&
+        !(playlist.id?.startsWith('local_') ?? false)) {
+      return currentTracks;
+    }
     if (_cachedSortedTracks != null &&
         identical(currentTracks, _lastSourceTracks) &&
         _lastAppliedSort?.type == _sort.type &&
@@ -1943,14 +1951,15 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
   }
 
   //Load tracks from api
-  void _loadTracks() async {
+  Future<void> _loadTracks() async {
     // Got all tracks, return
-    if (_loading ||
+    if (_loading || !_hasMoreTracks ||
         (playlist.trackCount != null &&
             (playlist.tracks ?? []).length >= playlist.trackCount!)) {
       return;
     }
 
+    final loadVersion = _trackLoadVersion;
     setState(() => _loading = true);
     int pos = (playlist.tracks ?? []).length;
     //Get another page of tracks
@@ -2013,11 +2022,19 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
           );
         }
       } else {
-        tracks = await PlatformManager.instance
+        final page = await PlatformManager.instance
             .getPlatform(playlist.platformId)
-            .getPlaylistTracks(playlist.id!, pos, nb: 25);
+            .getPlaylistTracksPage(
+              id: playlist.id!,
+              start: pos,
+              limit: 25,
+              sort: _sort,
+            );
+        tracks = page.tracks;
+        _hasMoreTracks = page.hasMore;
       }
     } catch (e) {
+      if (loadVersion != _trackLoadVersion) return;
       if (mounted) {
         setState(() {
           _error = true;
@@ -2026,6 +2043,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
       }
       return;
     }
+
+    if (loadVersion != _trackLoadVersion) return;
 
     setState(() {
       if (tracks.isEmpty) {
@@ -2047,9 +2066,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
         : PlatformManager.instance.active.platformId,
   );
 
-  // Sorting needs every track. Whether that has happened is tracked
-  // explicitly rather than inferred from trackCount, which platforms report
-  // inconsistently.
+  // Full loading is retained for local playlists, whose contents are sorted
+  // in memory. Remote platforms page their globally sorted results instead.
   bool _fullLoaded = false;
   Future<void>? _fullLoad;
   Future<void> _ensureFullPlaylist() {
@@ -2072,28 +2090,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
           setState(() => playlist = complete);
         }
       } else {
-        final pId = playlist.platformId.isNotEmpty
-            ? playlist.platformId
-            : PlatformManager.instance.active.platformId;
-        final platform = PlatformManager.instance.getPlatform(pId);
-        final complete = await platform.getFullPlaylist(playlist.id!);
-        if (complete.tracks != null && complete.tracks!.isNotEmpty && mounted) {
-          _fullLoaded = true;
-          complete.trackCount = complete.tracks!.length;
-          _preserveCurrentMosaic(complete);
-          setState(() {
-            if (complete.title == null ||
-                complete.title == 'Playlist ${complete.id}' ||
-                complete.title == 'Playlist VL${complete.id}') {
-              complete.title = playlist.title;
-            }
-            complete.image ??= playlist.image;
-            complete.description ??= playlist.description;
-            complete.editable =
-                complete.editable == true || playlist.editable == true;
-            playlist = complete;
-          });
-        }
+        return;
       }
     } catch (e) {
       Logger.root.fine('Playlist preload error: $e');
@@ -2118,7 +2115,9 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
     if (mounted) {
       setState(() {});
     }
-    if (_sort.reverse || _sort.type != SortType.DEFAULT) {
+    if ((playlist.platformId == 'local' ||
+            (playlist.id?.startsWith('local_') ?? false)) &&
+        (_sort.reverse || _sort.type != SortType.DEFAULT)) {
       _ensureFullPlaylist();
     }
   }
@@ -2133,9 +2132,34 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
     }
     await cache.save();
 
-    if (_sort.reverse || _sort.type != SortType.DEFAULT) {
+    if ((playlist.platformId == 'local' ||
+            (playlist.id?.startsWith('local_') ?? false)) &&
+        (_sort.reverse || _sort.type != SortType.DEFAULT)) {
       await _ensureFullPlaylist();
+    } else if (playlist.platformId != 'local' &&
+        !(playlist.id?.startsWith('local_') ?? false)) {
+      await _reloadForSort();
     }
+  }
+
+  Future<void> _reloadForSort() async {
+    if (playlist.platformId == 'local' ||
+        (playlist.id?.startsWith('local_') ?? false)) {
+      _cachedSortedTracks = null;
+      await _ensureFullPlaylist();
+      if (mounted) setState(() {});
+      return;
+    }
+    setState(() {
+      _trackLoadVersion++;
+      _loading = false;
+      playlist.tracks = <Track>[];
+      _hasMoreTracks = true;
+      _cachedSortedTracks = null;
+      _lastSourceTracks = null;
+      _error = false;
+    });
+    await _loadTracks();
   }
 
   @override
@@ -2151,8 +2175,17 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
         _loadTracks();
       }
     });
+    final sortedRemotePlaylist =
+        playlist.platformId != 'local' &&
+        !(playlist.id?.startsWith('local_') ?? false) &&
+        (_sort.reverse || _sort.type != SortType.DEFAULT);
+    if (sortedRemotePlaylist) {
+      playlist.tracks = <Track>[];
+      _hasMoreTracks = true;
+      _loadTracks();
+    }
     // Initial load if no tracks
-    if ((playlist.tracks ?? []).isEmpty) {
+    if ((playlist.tracks ?? []).isEmpty && !sortedRemotePlaylist) {
       //Get correct metadata
       setState(() => _loading = true);
       if (playlist.id!.startsWith('local_')) {
@@ -2182,7 +2215,11 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                 _loading = false;
               });
               if (_sort.reverse || _sort.type != SortType.DEFAULT) {
-                await _ensureFullPlaylist();
+                if (playlist.platformId == 'local') {
+                  await _ensureFullPlaylist();
+                } else {
+                  await _reloadForSort();
+                }
               }
             })
             .catchError((e) {
@@ -2504,9 +2541,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                         }
                                         await cache.save();
 
-                                        if (s != SortType.DEFAULT || _sort.reverse) {
-                                          await _ensureFullPlaylist();
-                                        }
+                                        await _reloadForSort();
                                       },
                                       itemBuilder: (context) =>
                                           <PopupMenuEntry<SortType>>[
@@ -2816,9 +2851,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                               }
                               await cache.save();
 
-                              if (s != SortType.DEFAULT || _sort.reverse) {
-                                await _ensureFullPlaylist();
-                              }
+                              await _reloadForSort();
                             },
                             itemBuilder: (context) =>
                                 <PopupMenuEntry<SortType>>[

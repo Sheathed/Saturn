@@ -94,6 +94,7 @@ dependencies:
       url: https://github.com/bw8686/frb_plugins.git 
       path: packages/flutter_discord_rpc
   flutter_local_notifications: ^23.0.0-dev.2
+  flutter_markdown_plus: ^1.0.12
   flutter_background_service: ^5.1.0
   simple_icons: ^16.23.0
   silky_scroll: ^2.6.4

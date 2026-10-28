@@ -6,6 +6,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:saturn/platform/music_platform.dart';
 import 'package:saturn/platform/platform_manager.dart';
 import 'package:saturn/platform/platform_registry.dart';
+import '../utils/update_service.dart';
+import '../translations.i18n.dart';
 
 import '../settings.dart';
 
@@ -26,6 +28,40 @@ class LeadingIcon extends StatelessWidget {
       child: Icon(icon, color: Colors.white),
     );
   }
+}
+
+class UpdateAwareSettingsIcon extends StatelessWidget {
+  final double size;
+
+  const UpdateAwareSettingsIcon({super.key, this.size = 24});
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: UpdateService.instance,
+    builder: (context, child) => Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(Icons.settings, size: size, semanticLabel: 'Settings'.i18n),
+        if (UpdateService.instance.updateAvailable)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              width: size * 0.38,
+              height: size * 0.38,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.error,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.surface,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 //Container with set size to match LeadingIcon

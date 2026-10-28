@@ -55,7 +55,7 @@ class _PlatformLoginScreenState extends State<PlatformLoginScreen> {
         'Accounts & Platforms'.i18n,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const UpdateAwareSettingsIcon(),
             tooltip: 'Settings'.i18n,
             onPressed: _openSettings,
           ),
@@ -125,7 +125,7 @@ class _PlatformLoginScreenState extends State<PlatformLoginScreen> {
                     const SizedBox(height: 16),
                     Center(
                       child: TextButton.icon(
-                        icon: const Icon(Icons.settings, size: 18),
+                        icon: const UpdateAwareSettingsIcon(size: 18),
                         label: Text('Settings'.i18n),
                         onPressed: _openSettings,
                       ),

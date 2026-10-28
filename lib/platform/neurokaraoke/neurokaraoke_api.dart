@@ -222,8 +222,8 @@ class NeuroKaraokeAPI {
     final headers = {
       'Accept': '*/*',
       'User-Agent': _userAgent,
-      'Origin': 'https://www.neurokaraoke.com',
-      'Referer': 'https://www.neurokaraoke.com/',
+      'Origin': _siteOrigin,
+      'Referer': '$_siteOrigin/',
       'x-guest-id': _guestId,
       'Content-Type': 'application/json',
     };
@@ -231,6 +231,18 @@ class NeuroKaraokeAPI {
       headers['Authorization'] = 'Bearer $_authToken';
     }
     return headers;
+  }
+
+  String get _siteOrigin {
+    final config = settings.platformConfigs['neurokaraoke'];
+    final selectedSite = config is Map
+        ? config['listenSite']?.toString()
+        : null;
+    return switch (selectedSite) {
+      'https://evilkaraoke.com' => 'https://evilkaraoke.com',
+      'https://twinskaraoke.com' => 'https://twinskaraoke.com',
+      _ => 'https://www.neurokaraoke.com',
+    };
   }
 
   Future<void> logPlayCount(String trackId, String? playlistId) async {

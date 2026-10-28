@@ -737,12 +737,16 @@ class SoundCloudPlatform extends MusicPlatform {
   Future<void> deletePlaylist(String id) => _api.deletePlaylist(id);
 
   @override
-  Future<void> addToPlaylist(String trackId, String playlistId) =>
-      _api.editPlaylistTracks(playlistId, trackId, add: true);
+  Future<void> addToPlaylist(String trackId, String playlistId) async {
+    await _api.editPlaylistTracks(playlistId, trackId, add: true);
+    invalidatePlaylistTracksCache(playlistId);
+  }
 
   @override
-  Future<void> removeFromPlaylist(String trackId, String playlistId) =>
-      _api.editPlaylistTracks(playlistId, trackId, add: false);
+  Future<void> removeFromPlaylist(String trackId, String playlistId) async {
+    await _api.editPlaylistTracks(playlistId, trackId, add: false);
+    invalidatePlaylistTracksCache(playlistId);
+  }
 
   List<HomePageItem?> _items(SearchResults results) => [
     ...?results.albums?.map(

@@ -4,7 +4,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:visibility_detector/visibility_detector.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:silky_scroll/silky_scroll.dart';
 import 'package:saturn/ui/smooth_scroll_config.dart';
 
@@ -19,6 +18,7 @@ import '../ui/error.dart';
 import '../ui/menu.dart';
 import 'details_screens.dart';
 import 'tiles.dart';
+import 'cached_image.dart';
 import '../utils/logging.dart';
 import '../utils/app_config.dart';
 
@@ -65,7 +65,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           },
         ),
         IconButton(
-          icon: Icon(Icons.settings, semanticLabel: 'Settings'.i18n),
+          icon: const UpdateAwareSettingsIcon(),
           onPressed: () {
             context.push('/settings');
           },
@@ -376,11 +376,10 @@ class _HomepageRowSectionState extends State<HomepageRowSection> {
               Padding(
                 padding: const EdgeInsets.only(right: 12.0),
                 child: ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: widget.section.image!,
+                  child: CachedImage(
+                    url: widget.section.image!,
                     width: 48,
                     height: 48,
-                    fit: BoxFit.cover,
                   ),
                 ),
               ),
@@ -568,11 +567,10 @@ class _HomePageGridSectionState extends State<HomePageGridSection> {
               Padding(
                 padding: const EdgeInsets.only(right: 12.0),
                 child: ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: widget.section.image!,
+                  child: CachedImage(
+                    url: widget.section.image!,
                     width: 48,
                     height: 48,
-                    fit: BoxFit.cover,
                   ),
                 ),
               ),
@@ -966,11 +964,10 @@ class _HomepageGridRowSectionState extends State<HomepageGridRowSection> {
                     Padding(
                       padding: const EdgeInsets.only(right: 12.0),
                       child: ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: widget.section.image!,
+                        child: CachedImage(
+                          url: widget.section.image!,
                           width: 48,
                           height: 48,
-                          fit: BoxFit.cover,
                         ),
                       ),
                     ),

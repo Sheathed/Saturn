@@ -126,6 +126,15 @@ class _CachedImageState extends State<CachedImage> {
 
     final effectiveWidth = widget.width ?? widget.height;
     final effectiveHeight = widget.height ?? widget.width;
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    int? decodeSize(double? logicalSize) {
+      if (logicalSize == null || !logicalSize.isFinite || logicalSize <= 0) {
+        return null;
+      }
+      return (logicalSize * devicePixelRatio).round().clamp(1, 4096).toInt();
+    }
+    final cacheWidth = decodeSize(effectiveWidth);
+    final cacheHeight = decodeSize(effectiveHeight);
 
     final uri = Uri.tryParse(widget.url);
     if (uri?.scheme == 'file') {
@@ -133,6 +142,8 @@ class _CachedImageState extends State<CachedImage> {
         File.fromUri(uri!),
         width: effectiveWidth,
         height: effectiveHeight,
+        cacheWidth: cacheWidth,
+        cacheHeight: cacheHeight,
         fit: widget.fit ?? BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => Image.asset(
           'assets/cover_thumb.jpg',
@@ -167,6 +178,8 @@ class _CachedImageState extends State<CachedImage> {
       imageUrl: widget.url,
       width: effectiveWidth,
       height: effectiveHeight,
+      memCacheWidth: cacheWidth,
+      memCacheHeight: cacheHeight,
       fit: widget.fit ?? BoxFit.cover,
       placeholder: (context, url) {
         if (widget.fullThumb) {

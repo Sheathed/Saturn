@@ -435,11 +435,13 @@ class NeuroKaraokePlatform extends MusicPlatform {
   @override
   Future<void> addToPlaylist(String trackId, String playlistId) async {
     await _api.addToPlaylist(trackId, playlistId);
+    invalidatePlaylistTracksCache(playlistId);
   }
 
   @override
   Future<void> removeFromPlaylist(String trackId, String playlistId) async {
     await _api.removeFromPlaylist(trackId, playlistId);
+    invalidatePlaylistTracksCache(playlistId);
   }
 
   // ---------------------------------------------------------------------------
@@ -1046,6 +1048,43 @@ class NeuroKaraokePlatform extends MusicPlatform {
 
   @override
   List<PlatformSetting> get settings => [
+    ChoicePlatformSetting(
+      id: 'neurokaraoke_listen_site',
+      title: 'Site used'.i18n,
+      description:
+          'Choose which Neuro Karaoke site to use. This changes which currency you earn.'
+              .i18n,
+      icon: Icons.language,
+      currentValue: (app_settings.settings.platformConfigs['neurokaraoke']
+              is Map
+          ? app_settings.settings.platformConfigs['neurokaraoke']['listenSite']
+                    as String? ??
+                'https://www.neurokaraoke.com'
+          : 'https://www.neurokaraoke.com'),
+      options: [
+        ChoicePlatformOption(
+          value: 'https://www.neurokaraoke.com',
+          label: 'Neuro Karaoke'.i18n,
+        ),
+        ChoicePlatformOption(
+          value: 'https://evilkaraoke.com',
+          label: 'Evil Karaoke'.i18n,
+        ),
+        ChoicePlatformOption(
+          value: 'https://twinskaraoke.com',
+          label: 'Twins Karaoke'.i18n,
+        ),
+      ],
+      onChanged: (value) async {
+        final current = app_settings.settings.platformConfigs['neurokaraoke'];
+        final config = current is Map
+            ? Map<String, dynamic>.from(current)
+            : <String, dynamic>{};
+        config['listenSite'] = value;
+        app_settings.settings.platformConfigs['neurokaraoke'] = config;
+        await app_settings.settings.save();
+      },
+    ),
     ActionPlatformSetting(
       id: 'neurokaraoke_copy_token',
       title: 'Copy Token'.i18n,

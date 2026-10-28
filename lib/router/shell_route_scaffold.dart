@@ -170,8 +170,8 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
       isVisible: (_) => true,
     ),
     _SidebarItem(
-      icon: const Icon(Icons.settings_outlined),
-      selectedIcon: const Icon(Icons.settings),
+      icon: const UpdateAwareSettingsIcon(),
+      selectedIcon: const UpdateAwareSettingsIcon(),
       label: 'Settings'.i18n,
       route: AppRoutes.settings,
       isVisible: (_) => true,

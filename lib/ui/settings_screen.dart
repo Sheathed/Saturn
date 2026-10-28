@@ -44,6 +44,7 @@ import '../utils/file_utils.dart';
 import '../utils/app_http_proxy.dart';
 import '../utils/app_config.dart';
 import '../utils/app_webview_proxy.dart';
+import '../utils/update_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -54,6 +55,22 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   int _selectedCategory = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    UpdateService.instance.addListener(_onUpdateStatusChanged);
+  }
+
+  void _onUpdateStatusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    UpdateService.instance.removeListener(_onUpdateStatusChanged);
+    super.dispose();
+  }
 
   String _categoryTitle(int index) => switch (index) {
     0 => 'General'.i18n,
@@ -73,7 +90,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     3 => Icons.high_quality,
     4 => Icons.extension,
     5 => Icons.language,
-    6 => Icons.update,
+    6 => UpdateService.instance.updateAvailable
+        ? Icons.system_update_alt
+        : UpdateService.instance.latestVersion != null
+        ? Icons.check_circle_outline
+        : UpdateService.instance.errorMessage != null
+        ? Icons.cloud_off_outlined
+        : Icons.update,
     _ => Icons.info,
   };
 
@@ -2653,6 +2676,30 @@ class PlatformSettingsScreen extends StatefulWidget {
 }
 
 class _PlatformSettingsScreenState extends State<PlatformSettingsScreen> {
+  Set<String> _loggedInPlatformIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshLoggedInPlatforms();
+  }
+
+  Future<void> _refreshLoggedInPlatforms() async {
+    final loggedInIds = <String>{};
+    for (final platform in PlatformRegistry.instance.allPlatforms) {
+      try {
+        if (await platform.isLoggedIn()) {
+          loggedInIds.add(platform.platformId);
+        }
+      } catch (e) {
+        Logger.root.fine(
+          'Could not check ${platform.platformId} login status: $e',
+        );
+      }
+    }
+    if (mounted) setState(() => _loggedInPlatformIds = loggedInIds);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2664,12 +2711,13 @@ class _PlatformSettingsScreenState extends State<PlatformSettingsScreen> {
             title: Text('Accounts & Platforms'.i18n),
             subtitle: Text('Manage your streaming platform connections.'.i18n),
             leading: const Icon(Icons.account_circle),
-            onTap: () {
-              Navigator.of(context).push(
+            onTap: () async {
+              await Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => PlatformLoginScreen(callback: null),
                 ),
               );
+              await _refreshLoggedInPlatforms();
             },
           ),
           ListTile(
@@ -2688,7 +2736,10 @@ class _PlatformSettingsScreenState extends State<PlatformSettingsScreen> {
             leading: const Icon(Icons.history_toggle_off),
           ),
           const Divider(),
-          ...PlatformRegistry.instance.allPlatforms.expand((platform) {
+          ...PlatformRegistry.instance.allPlatforms
+              .where((platform) =>
+                  _loggedInPlatformIds.contains(platform.platformId))
+              .expand((platform) {
             final settingsList = platform.settings;
             if (settingsList.isEmpty) return <Widget>[];
 

@@ -140,7 +140,7 @@ class _SearchScreenState extends State<SearchScreen> {
             },
           ),
           IconButton(
-            icon: Icon(Icons.settings, semanticLabel: 'Settings'.i18n),
+          icon: const UpdateAwareSettingsIcon(),
             onPressed: () {
               context.push('/settings');
             },

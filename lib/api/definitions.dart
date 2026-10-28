@@ -2755,6 +2755,52 @@ class PaginatedTrackList {
   PaginatedTrackList({required this.tracks, required this.hasMore});
 }
 
+class PaginatedPlaylistList {
+  final List<Playlist> playlists;
+  final bool hasMore;
+
+  PaginatedPlaylistList({required this.playlists, required this.hasMore});
+}
+
+extension PlaylistListSorting on List<Playlist> {
+  List<Playlist> applyPlaylistSorting(Sorting? sort, {String query = ''}) {
+    final normalizedQuery = query.trim().toLowerCase();
+    final entries = asMap().entries
+        .where(
+          (entry) => (entry.value.title ?? '').toLowerCase().contains(
+            normalizedQuery,
+          ),
+        )
+        .toList();
+
+    int compareValues(Playlist left, Playlist right) {
+      switch (sort?.type ?? SortType.DEFAULT) {
+        case SortType.ALPHABETIC:
+          return (left.title ?? '').toLowerCase().compareTo(
+            (right.title ?? '').toLowerCase(),
+          );
+        case SortType.USER:
+          return (left.user?.name ?? '').toLowerCase().compareTo(
+            (right.user?.name ?? '').toLowerCase(),
+          );
+        case SortType.TRACK_COUNT:
+          return (left.trackCount ?? left.tracks?.length ?? 0).compareTo(
+            right.trackCount ?? right.tracks?.length ?? 0,
+          );
+        default:
+          return 0;
+      }
+    }
+
+    entries.sort((left, right) {
+      final comparison = compareValues(left.value, right.value);
+      return comparison == 0 ? left.key.compareTo(right.key) : comparison;
+    });
+    if (sort?.reverse == true) return entries.reversed.map((e) => e.value).toList();
+    return entries.map((entry) => entry.value).toList();
+  }
+}
+
 class PaginatedShowEpisodeList {
   final List<ShowEpisode> episodes;
   final bool hasMore;

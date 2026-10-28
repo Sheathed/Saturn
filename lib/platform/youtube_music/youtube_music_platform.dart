@@ -949,12 +949,16 @@ class YouTubeMusicPlatform extends MusicPlatform {
   Future<void> deletePlaylist(String id) async => _api.deletePlaylist(id);
 
   @override
-  Future<void> addToPlaylist(String trackId, String playlistId) async =>
-      _api.addToPlaylist(trackId, playlistId);
+  Future<void> addToPlaylist(String trackId, String playlistId) async {
+    await _api.addToPlaylist(trackId, playlistId);
+    invalidatePlaylistTracksCache(playlistId);
+  }
 
   @override
-  Future<void> removeFromPlaylist(String trackId, String playlistId) async =>
-      _api.removeFromPlaylist(trackId, playlistId);
+  Future<void> removeFromPlaylist(String trackId, String playlistId) async {
+    await _api.removeFromPlaylist(trackId, playlistId);
+    invalidatePlaylistTracksCache(playlistId);
+  }
 
   // ---------------------------------------------------------------------------
   // Discovery

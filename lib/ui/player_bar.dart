@@ -175,20 +175,20 @@ class PlayerBarState extends State<PlayerBar> {
                   ),
                   if (_blurImage != null)
                     ClipRect(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: _blurImage!,
-                            fit: BoxFit.cover,
-                            colorFilter: ColorFilter.mode(
-                              Colors.black.withValues(alpha: 0.25),
-                              BlendMode.dstATop,
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: _blurImage!,
+                              fit: BoxFit.cover,
+                              colorFilter: ColorFilter.mode(
+                                Colors.black.withValues(alpha: 0.25),
+                                BlendMode.dstATop,
+                              ),
                             ),
                           ),
-                        ),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                          child: Container(color: Colors.transparent),
+                          child: const SizedBox.expand(),
                         ),
                       ),
                     ),

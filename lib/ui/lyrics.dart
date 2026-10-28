@@ -1004,25 +1004,8 @@ class _LyricsScreenState extends State<LyricsScreen>
       child: ClipRect(
         child: Stack(
           children: [
-            if (artUrl.isNotEmpty)
-              Positioned.fill(
-                child: ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                  child: CachedNetworkImage(
-                    imageUrl: artUrl,
-                    fit: BoxFit.cover,
-                    color: Colors.black.withValues(alpha: 0.16),
-                    colorBlendMode: BlendMode.darken,
-                    errorWidget: (context, url, error) =>
-                        const SizedBox.shrink(),
-                  ),
-                ),
-              ),
             Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: Container(color: surface.withValues(alpha: 0.42)),
-              ),
+              child: ColoredBox(color: surface.withValues(alpha: 0.42)),
             ),
             SafeArea(
               top: false,
@@ -1240,10 +1223,9 @@ class _LyricsScreenState extends State<LyricsScreen>
 
   void _startSyncTimer() {
     _syncTimer?.cancel();
-    // High-precision sync timer (16ms / ~60fps) ensures ultra-responsive word switching
-    // for fast rap lyrics without delay. Word highlights are driven by _positionNotifier,
-    // so this only rebuilds the active line rather than the full SilkyListView.
-    _syncTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+    // Update word timing at 30fps. A 16ms timer woke and rebuilt the active
+    // lyric line every display frame, even when no word boundary changed.
+    _syncTimer = Timer.periodic(const Duration(milliseconds: 33), (timer) {
       if (!mounted ||
           _loading ||
           lyrics?.syncedLyrics == null ||
@@ -1265,11 +1247,14 @@ class _LyricsScreenState extends State<LyricsScreen>
 
       final newIndex = _lyricIndexAt(position);
 
+      final previousIndex = _currentIndex;
       final indexChanged = (newIndex != _currentIndex);
       final previousPosition = _currentPosition;
       final wasInInstrumentalGap =
-          _instrumentalCardAt(previousPosition) != null;
-      final isInInstrumentalGap = _instrumentalCardAt(position) != null;
+          _instrumentalCardAt(previousPosition, activeIndex: previousIndex) !=
+          null;
+      final isInInstrumentalGap =
+          _instrumentalCardAt(position, activeIndex: newIndex) != null;
 
       // Rich word highlights are driven by a notifier in the active line.
       // Rebuild this screen only when the active line changes or an
@@ -1291,8 +1276,8 @@ class _LyricsScreenState extends State<LyricsScreen>
       if (indexChanged && newIndex >= 0 && !_isUserScrolling) {
         _pendingAutoScrollIndex = newIndex;
         final instrumentalLayoutChanged =
-            _instrumentalCardAt(previousPosition) !=
-            _instrumentalCardAt(position);
+            _instrumentalCardAt(previousPosition, activeIndex: previousIndex) !=
+            _instrumentalCardAt(position, activeIndex: newIndex);
         if (instrumentalLayoutChanged) {
           _instrumentalLayoutAnimating = true;
         } else if (!_instrumentalLayoutAnimating) {
@@ -1320,7 +1305,7 @@ class _LyricsScreenState extends State<LyricsScreen>
     return low - 1;
   }
 
-  int? _instrumentalCardAt(Duration position) {
+  int? _instrumentalCardAt(Duration position, {int? activeIndex}) {
     final lines = lyrics?.syncedLyrics;
     if (lines == null || lines.isEmpty) return null;
     final positionMs = position.inMilliseconds;
@@ -1329,7 +1314,7 @@ class _LyricsScreenState extends State<LyricsScreen>
 
     // Find the active line in logarithmic time; lyrics can contain thousands
     // of entries and this check runs on every position tick.
-    final activeIndex = _lyricIndexAt(position);
+    activeIndex ??= _lyricIndexAt(position);
     if (activeIndex >= 0 && activeIndex + 1 < lines.length) {
       final activeLine = lines[activeIndex];
       final lineEndMs =
@@ -2334,27 +2319,33 @@ class _LyricsScreenState extends State<LyricsScreen>
             settings.blurPlayerBackground &&
             _blurImage != null)
           ClipRect(
-            child: Container(
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: _blurImage!,
-                  fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    (isDark ? Colors.black : Colors.white).withValues(
-                      alpha: isDark ? 0.35 : 0.70,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: _blurImage!,
+                        fit: BoxFit.cover,
+                        colorFilter: ColorFilter.mode(
+                          (isDark ? Colors.black : Colors.white).withValues(
+                            alpha: isDark ? 0.35 : 0.70,
+                          ),
+                          isDark ? BlendMode.darken : BlendMode.lighten,
+                        ),
+                      ),
                     ),
-                    isDark ? BlendMode.darken : BlendMode.lighten,
+                    child: const SizedBox.expand(),
                   ),
                 ),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                child: Container(
+                Container(
                   color: (isDark ? Colors.black : Colors.white).withValues(
                     alpha: isDark ? 0.2 : 0.35,
                   ),
                 ),
-              ),
+              ],
             ),
           )
         else if (!widget.embedded && _bgGradient != null)

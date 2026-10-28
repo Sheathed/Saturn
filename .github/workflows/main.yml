@@ -104,7 +104,8 @@ jobs:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
       - name: Set package version for this release
-        run: sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+        run: |
+          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
 
       - name: Install Linux dependencies
         run: |
@@ -200,7 +201,7 @@ jobs:
           fi
 
           # Keep the generated AppImage launcher aligned with Saturn's window class.
-          DESKTOP_FILE=$(find squashfs-root -maxdepth 2 -type f -name "*.desktop" -print -quit)
+          DESKTOP_FILE=$(find squashfs-root -type f -name "*.desktop" -print -quit)
           if [ -n "$DESKTOP_FILE" ]; then
             if grep -q '^StartupWMClass=' "$DESKTOP_FILE"; then
               sed -i 's/^StartupWMClass=.*/StartupWMClass=S.s.saturn/' "$DESKTOP_FILE"
@@ -245,7 +246,8 @@ jobs:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
       - name: Set package version for this release
-        run: sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+        run: |
+          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
 
       - name: Install Linux dependencies for Dart hooks
         run: |
@@ -347,7 +349,8 @@ jobs:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
       - name: Set package version for this release
-        run: sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+        run: |
+          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -409,7 +412,8 @@ jobs:
           ref: ${{ needs.VERSION_BUMP.outputs.commit }}
 
       - name: Set package version for this release
-        run: sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+        run: |
+          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -482,7 +486,8 @@ jobs:
 
       - name: Set package version for this release
         shell: pwsh
-        run: (Get-Content pubspec.yaml) -replace '^version:.*$', 'version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}' | Set-Content pubspec.yaml
+        run: |
+          (Get-Content pubspec.yaml) -replace '^version:.*$', 'version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}' | Set-Content pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

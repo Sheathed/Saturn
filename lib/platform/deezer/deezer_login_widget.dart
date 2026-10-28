@@ -352,6 +352,54 @@ class LoginBrowser extends StatefulWidget {
 
 class _LoginBrowserState extends State<LoginBrowser> {
   late final WebViewController controller;
+  bool _cookieCheckInProgress = false;
+  bool _loginCompleted = false;
+
+  Future<void> _finishBrowserLogin(String? arl) async {
+    final value = arl?.trim();
+    if (_loginCompleted || value == null || value.isEmpty) return;
+    _loginCompleted = true;
+    DeezerPlatform.instance.arl = value;
+    try {
+      await WebViewCookieManager().clearCookies();
+    } catch (error) {
+      Logger.root.warning('Could not clear Deezer WebView cookies', error);
+    }
+    if (!mounted) return;
+    if (Navigator.canPop(context)) Navigator.of(context).pop();
+    widget.updateParent();
+  }
+
+  Future<void> _checkForArlCookie(String url) async {
+    if (_cookieCheckInProgress || _loginCompleted) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        (uri.host != 'deezer.com' && !uri.host.endsWith('.deezer.com')) ||
+        uri.path.contains('/login') ||
+        uri.path.contains('/register')) {
+      return;
+    }
+
+    _cookieCheckInProgress = true;
+    try {
+      final cookies = await WebViewCookieManager().getCookies(
+        domain: Uri(scheme: uri.scheme, host: uri.host),
+      );
+      final arlCookie = cookies.where((cookie) => cookie.name == 'arl');
+      if (arlCookie.isNotEmpty) {
+        Logger.root.info('Found Deezer ARL cookie after browser login');
+        await _finishBrowserLogin(arlCookie.first.value);
+      }
+    } catch (error, stackTrace) {
+      Logger.root.warning(
+        'Could not check Deezer WebView cookies',
+        error,
+        stackTrace,
+      );
+    } finally {
+      _cookieCheckInProgress = false;
+    }
+  }
 
   @override
   void initState() {
@@ -365,22 +413,18 @@ class _LoginBrowserState extends State<LoginBrowser> {
                   settings.proxyUsername == null
               ? null
               : AppWebViewProxy.handleHttpAuthRequest,
-          onNavigationRequest: (NavigationRequest request) {
+          onNavigationRequest: (NavigationRequest request) async {
             final loadedUri = Uri.parse(request.url);
 
             // Parse arl from url
             if (request.url.startsWith('intent://deezer.page.link') ||
                 request.url.startsWith('intent://dzr.page.link')) {
               try {
-                Uri linkUri = Uri.parse(loadedUri.queryParameters['link']!);
-                String? arl = linkUri.queryParameters['arl'];
-                DeezerPlatform.instance.arl = arl;
-                // Clear cookies for next login after logout
-                WebViewCookieManager().clearCookies();
-                if (mounted && Navigator.canPop(context)) {
-                  Navigator.of(context).pop();
-                }
-                widget.updateParent();
+                final nestedLink = loadedUri.queryParameters['link'];
+                final linkUri = nestedLink == null
+                    ? null
+                    : Uri.tryParse(nestedLink);
+                await _finishBrowserLogin(linkUri?.queryParameters['arl']);
               } catch (e) {
                 Logger.root.severe('Error loading ARL from browser login: $e');
               }
@@ -389,13 +433,7 @@ class _LoginBrowserState extends State<LoginBrowser> {
 
             return NavigationDecision.navigate;
           },
-          onPageStarted: (String url) {
-            final loadedUri = Uri.parse(url);
-            if (!loadedUri.path.contains('/login') &&
-                !loadedUri.path.contains('/register')) {
-              controller.runJavaScript('window.location.href = "/open_app"');
-            }
-          },
+          onPageFinished: (url) => unawaited(_checkForArlCookie(url)),
         ),
       )
       ..loadRequest(Uri.parse('https://deezer.com/login'));

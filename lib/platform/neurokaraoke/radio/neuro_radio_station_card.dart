@@ -517,8 +517,8 @@ class _NeuroRadioStationCardState extends State<NeuroRadioStationCard> {
                           final nextArtist =
                               nextTrack.artistString ?? 'Unknown Artist';
                           final nextArt =
-                              nextTrack.albumArt?.thumbUrl ??
                               nextTrack.albumArt?.fullUrl ??
+                              nextTrack.albumArt?.thumbUrl ??
                               '';
                           final duration = nextTrack.duration;
                           String durationStr = '';

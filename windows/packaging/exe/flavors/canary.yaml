@@ -1,0 +1,11 @@
+# Saturn Canary Windows installer configuration.
+app_id: saturn-music-player-canary
+publisher: Sheathed
+publisher_url: https://saturn.kim
+display_name: Saturn Canary
+create_desktop_icon: true
+# The Inno template defaults fresh installs to Fastforge's 64-bit Program Files path.
+# It also keeps the previous path selected and leaves the directory page editable.
+setup_icon_file: windows/runner/resources/app_icon_canary.ico
+locales:
+  - en

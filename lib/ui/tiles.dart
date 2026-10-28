@@ -45,6 +45,12 @@ const Widget _offlineDot = Padding(
   child: Icon(Octicons.primitive_dot, color: Colors.green, size: 12.0),
 );
 
+String _trackArtworkUrl(Track track) {
+  // High-density tiles need the full source. Neurokaraoke's 128px thumbnail
+  // variant becomes visibly soft when rendered or cropped on desktop.
+  return track.albumArt?.full ?? track.albumArt?.thumb ?? '';
+}
+
 Widget _episodeProgressBadge(BuildContext context, double progress) => SizedBox(
   width: 12,
   height: 12,
@@ -315,6 +321,8 @@ class _TrackTileState extends State<TrackTile> {
     _offlineLibrarySub = downloadManager.offlineLibraryChanged.listen((_) {
       _refreshOfflineState();
     });
+    nowPlaying =
+        widget.track.id == GetIt.I<AudioPlayerHandler>().mediaItem.value?.id;
     _mediaItemSub = GetIt.I<AudioPlayerHandler>().mediaItem.listen((item) {
       if (mounted) {
         final isNowPlaying = widget.track.id == item?.id;
@@ -338,8 +346,9 @@ class _TrackTileState extends State<TrackTile> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.track.id != widget.track.id ||
         oldWidget.track.platformId != widget.track.platformId) {
-      final item = GetIt.I<AudioPlayerHandler>().mediaItem.value;
-      nowPlaying = widget.track.id == item?.id;
+      nowPlaying =
+          widget.track.id ==
+          GetIt.I<AudioPlayerHandler>().mediaItem.value?.id;
       _refreshOfflineState();
     }
   }
@@ -476,7 +485,7 @@ class _TrackTileState extends State<TrackTile> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4.0),
                     child: CachedImage(
-                      url: widget.track.albumArt?.thumb ?? '',
+                      url: _trackArtworkUrl(widget.track),
                       width: 48,
                       height: 48,
                     ),
@@ -1469,7 +1478,7 @@ class _TrackCardState extends State<TrackCard> {
                   CachedImage(
                     width: imageSize,
                     height: imageSize,
-                    url: track.albumArt?.thumb ?? '',
+                    url: _trackArtworkUrl(track),
                     rounded: true,
                   ),
                   if (track.unavailable == true)

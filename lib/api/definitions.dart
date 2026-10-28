@@ -1,3 +1,4 @@
+import '../utils/app_config.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:logging/logging.dart';
@@ -8,7 +9,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:intl/intl.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../api/cache.dart';
 import '../translations.i18n.dart';
@@ -254,7 +254,11 @@ class Track {
       album: album,
       id: (mi.extras?['radioTrackId'] as String?) ?? mi.id,
       albumArt: ImageDetails(
-        fullUrl: mi.artUri?.toString(),
+        // The service may replace artUri with a square-cropped copy for
+        // platform media controls. Preserve the original as Saturn's full art.
+        fullUrl:
+            mi.extras?['saturnOriginalArtUri'] as String? ??
+            mi.artUri?.toString(),
         thumbUrl: mi.extras?['thumb'],
         caption: mi.extras?['caption'] as String?,
       ),
@@ -323,7 +327,8 @@ class Track {
       diskNumber: int.tryParse((json['DISK_NUMBER'] ?? '1').toString()) ?? 1,
       explicit: (json['EXPLICIT_LYRICS'].toString() == '1') ? true : false,
       addedDate: () {
-        final val = originalJson['DATE_PLAYED'] ??
+        final val =
+            originalJson['DATE_PLAYED'] ??
             originalJson['DATE_ADD'] ??
             json['DATE_ADD'];
         if (val is int) return val;
@@ -514,6 +519,7 @@ class Album {
     }
     return null;
   }
+
   Duration get duration {
     final tr = tracks;
     if (tr == null || tr.isEmpty) return Duration.zero;
@@ -552,12 +558,11 @@ class Album {
           ? ImageDetails.fromPrivateString(json['ALB_PICTURE'].toString())
           : null,
       artists:
-          ((json['ARTISTS'] is List &&
-                      (json['ARTISTS'] as List).isNotEmpty)
+          ((json['ARTISTS'] is List && (json['ARTISTS'] as List).isNotEmpty)
                   ? json['ARTISTS'] as List
                   : (json['ART_NAME'] != null ? [json] : <dynamic>[]))
-          .map<Artist>((dynamic art) => Artist.fromPrivateJson(art))
-          .toList(),
+              .map<Artist>((dynamic art) => Artist.fromPrivateJson(art))
+              .toList(),
       tracks: (songsJson['data'] ?? [])
           .map<Track>((dynamic track) => Track.fromPrivateJson(track))
           .toList(),
@@ -1301,7 +1306,9 @@ class Lyrics {
         for (Match match in matches) {
           final hours = match.group(1) == null
               ? 0
-              : int.parse(match.group(1)!.substring(0, match.group(1)!.length - 1));
+              : int.parse(
+                  match.group(1)!.substring(0, match.group(1)!.length - 1),
+                );
           final minutes = int.parse(match.group(2)!);
           final seconds = int.parse(match.group(3)!);
           final fraction = match.group(4)!;
@@ -1762,15 +1769,11 @@ class HomePage {
   @JsonKey(includeFromJson: false, includeToJson: false)
   Future<List<HomePageSection>> Function()? loadMore;
 
-  HomePage({
-    this.sections = const [],
-    this.hasMore = false,
-    this.loadMore,
-  });
+  HomePage({this.sections = const [], this.hasMore = false, this.loadMore});
 
   //Save/Load
   Future<String> _getPath() async {
-    Directory d = await getApplicationSupportDirectory();
+    Directory d = await getFlavorSupportDirectory();
     return p.join(d.path, 'homescreen.json');
   }
 
@@ -2687,7 +2690,8 @@ class ShowEpisode {
     final isHeardVal = json['ISHEARD'];
     final isHeard = isHeardVal == 1 || isHeardVal == '1' || isHeardVal == true;
     final explicitValue = json['SHOW_IS_EXPLICIT'];
-    final isExplicit = explicitValue == true ||
+    final isExplicit =
+        explicitValue == true ||
         explicitValue == 1 ||
         explicitValue?.toString() == '1';
 
@@ -2767,9 +2771,8 @@ extension PlaylistListSorting on List<Playlist> {
     final normalizedQuery = query.trim().toLowerCase();
     final entries = asMap().entries
         .where(
-          (entry) => (entry.value.title ?? '').toLowerCase().contains(
-            normalizedQuery,
-          ),
+          (entry) =>
+              (entry.value.title ?? '').toLowerCase().contains(normalizedQuery),
         )
         .toList();
 
@@ -2796,7 +2799,8 @@ extension PlaylistListSorting on List<Playlist> {
       final comparison = compareValues(left.value, right.value);
       return comparison == 0 ? left.key.compareTo(right.key) : comparison;
     });
-    if (sort?.reverse == true) return entries.reversed.map((e) => e.value).toList();
+    if (sort?.reverse == true)
+      return entries.reversed.map((e) => e.value).toList();
     return entries.map((entry) => entry.value).toList();
   }
 }
@@ -2818,7 +2822,9 @@ extension TrackListSorting on List<Track> {
     switch (sort.type) {
       case SortType.ALPHABETIC:
         final alphabeticTracks = tcopy
-            .map((track) => (track: track, key: (track.title ?? '').toLowerCase()))
+            .map(
+              (track) => (track: track, key: (track.title ?? '').toLowerCase()),
+            )
             .toList();
         alphabeticTracks.sort((a, b) => a.key.compareTo(b.key));
         tcopy = alphabeticTracks.map((entry) => entry.track).toList();
@@ -2826,10 +2832,8 @@ extension TrackListSorting on List<Track> {
       case SortType.ARTIST:
         final artistTracks = tcopy
             .map(
-              (track) => (
-                track: track,
-                key: (track.artistString ?? '').toLowerCase(),
-              ),
+              (track) =>
+                  (track: track, key: (track.artistString ?? '').toLowerCase()),
             )
             .toList();
         artistTracks.sort((a, b) => a.key.compareTo(b.key));

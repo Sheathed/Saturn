@@ -128,6 +128,24 @@ class DeezerPlatform extends MusicPlatform {
   PlatformCapabilities get capabilities => deezerCapabilities;
 
   @override
+  List<PlatformAppShortcut> get appShortcuts => [
+    PlatformAppShortcut(id: 'flow', title: 'Flow'.i18n, icon: 'shortcut_flow'),
+  ];
+
+  @override
+  Future<void> handleAppShortcut(String id) async {
+    if (id == 'flow') {
+      final tracks = await getFlow();
+      if (tracks.isEmpty) return;
+      await GetIt.I<AudioPlayerHandler>().playFromTrackList(
+        tracks,
+        tracks.first.id ?? '',
+        QueueSource(id: 'flow:deezer', text: 'Flow'.i18n, source: 'flow'),
+      );
+    }
+  }
+
+  @override
   List<Widget> getExtraMenuOptions(BuildContext context, Object item) {
     final option = buildDeezerPinMenuOption(context, item);
     return option == null ? const [] : [option];

@@ -131,10 +131,20 @@ class _CachedImageState extends State<CachedImage> {
       if (logicalSize == null || !logicalSize.isFinite || logicalSize <= 0) {
         return null;
       }
-      return (logicalSize * devicePixelRatio).round().clamp(1, 4096).toInt();
+      // BoxFit.cover can crop a wide or tall source before filling the box.
+      // Decode at 3x physical size so common wide or tall artwork still has
+      // enough pixels after BoxFit.cover crops it to the display box.
+      const oversampling = 3.0;
+      return (logicalSize * devicePixelRatio * oversampling)
+          .round()
+          .clamp(1, 4096)
+          .toInt();
     }
+    // Decode to a single target dimension. Supplying both dimensions to the
+    // image decoder can force non-square source art into the widget's box
+    // before BoxFit.cover gets a chance to crop it, which visibly stretches
+    // portrait and landscape covers in tiles and the player bar.
     final cacheWidth = decodeSize(effectiveWidth);
-    final cacheHeight = decodeSize(effectiveHeight);
 
     final uri = Uri.tryParse(widget.url);
     if (uri?.scheme == 'file') {
@@ -143,13 +153,14 @@ class _CachedImageState extends State<CachedImage> {
         width: effectiveWidth,
         height: effectiveHeight,
         cacheWidth: cacheWidth,
-        cacheHeight: cacheHeight,
         fit: widget.fit ?? BoxFit.cover,
+        filterQuality: FilterQuality.high,
         errorBuilder: (context, error, stackTrace) => Image.asset(
           'assets/cover_thumb.jpg',
           width: effectiveWidth,
           height: effectiveHeight,
           fit: widget.fit ?? BoxFit.cover,
+          filterQuality: FilterQuality.high,
         ),
       );
     }
@@ -171,6 +182,7 @@ class _CachedImageState extends State<CachedImage> {
         width: effectiveWidth,
         height: effectiveHeight,
         fit: widget.fit ?? BoxFit.cover,
+        filterQuality: FilterQuality.high,
       );
     }
 
@@ -179,8 +191,8 @@ class _CachedImageState extends State<CachedImage> {
       width: effectiveWidth,
       height: effectiveHeight,
       memCacheWidth: cacheWidth,
-      memCacheHeight: cacheHeight,
       fit: widget.fit ?? BoxFit.cover,
+      filterQuality: FilterQuality.high,
       placeholder: (context, url) {
         if (widget.fullThumb) {
           return Image.asset(

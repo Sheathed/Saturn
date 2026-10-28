@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:get_it/get_it.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:saturn/platform/platform_settings.dart';
 import 'package:intl/intl.dart';
@@ -28,6 +29,7 @@ import 'radio/neuro_radio_service.dart';
 import '../../ui/details_screens.dart';
 import '../../ui/home_screen.dart';
 import '../../platform/platform_manager.dart';
+import '../../service/audio_service.dart';
 
 class NeuroKaraokePlatform extends MusicPlatform {
   final NeuroKaraokeAPI _api = NeuroKaraokeAPI();
@@ -106,6 +108,29 @@ class NeuroKaraokePlatform extends MusicPlatform {
       await _api.fetchCurrentUser();
     }
     return _api.isLoggedIn();
+  }
+
+  @override
+  List<PlatformAppShortcut> get appShortcuts => [
+    PlatformAppShortcut(
+      id: 'trending',
+      title: 'Trending'.i18n,
+      icon: 'shortcut_trending',
+    ),
+  ];
+
+  @override
+  Future<void> handleAppShortcut(String id) async {
+    if (id != 'trending') return;
+    final playlist = await getFullPlaylist('trending');
+    final tracks = playlist.tracks;
+    if (tracks == null || tracks.isEmpty) return;
+    final firstTrackId = tracks.first.id;
+    if (firstTrackId == null) return;
+    await GetIt.I<AudioPlayerHandler>().playFromPlaylist(
+      playlist,
+      firstTrackId,
+    );
   }
 
   @override
@@ -1055,8 +1080,8 @@ class NeuroKaraokePlatform extends MusicPlatform {
           'Choose which Neuro Karaoke site to use. This changes which currency you earn.'
               .i18n,
       icon: Icons.language,
-      currentValue: (app_settings.settings.platformConfigs['neurokaraoke']
-              is Map
+      currentValue:
+          (app_settings.settings.platformConfigs['neurokaraoke'] is Map
           ? app_settings.settings.platformConfigs['neurokaraoke']['listenSite']
                     as String? ??
                 'https://www.neurokaraoke.com'

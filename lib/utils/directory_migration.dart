@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:logging/logging.dart';
+import 'app_config.dart';
 
 class DirectoryMigration {
   static final Logger _logger = Logger('DirectoryMigration');
@@ -21,6 +22,12 @@ class DirectoryMigration {
     }
 
     try {
+      // Non-stable builds now have isolated data roots. Do not copy a shared
+      // legacy documents directory into each flavor.
+      if (appBuildFlavor != 'stable') {
+        _migrationCompleted = true;
+        return true;
+      }
       final oldDir = await getApplicationDocumentsDirectory();
       final newDir = await getApplicationSupportDirectory();
 
@@ -107,7 +114,7 @@ class DirectoryMigration {
 
   static Future<Directory> getAppSupportDirectory() async {
     await migrate();
-    return await getApplicationSupportDirectory();
+    return getFlavorSupportDirectory();
   }
 
   static Future<String> getAppSupportFilePath(String filename) async {

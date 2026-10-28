@@ -107,7 +107,7 @@ class _OfflineLyricsProvider {
 const _offlineLyricsProvider = _OfflineLyricsProvider();
 
 class _LyricsScreenState extends State<LyricsScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const double _providerSwitcherHeight = 60;
   String appBarTitle = 'Lyrics'.i18n;
   Lyrics? lyrics;
@@ -126,6 +126,7 @@ class _LyricsScreenState extends State<LyricsScreen>
   String? _selectedLyricsCandidateId;
   bool _showTranslation = true;
   bool _showRomanization = false;
+  String _lyricsDisplayProviderId = 'default';
   late String _activeTrackId;
   int _lyricsLoadGeneration = 0;
   Duration? _seekPreview;
@@ -153,6 +154,7 @@ class _LyricsScreenState extends State<LyricsScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _activeTrackId = widget.trackId;
     _providersFuture = _getAllProviders();
     final handler = GetIt.I<AudioPlayerHandler>();
@@ -161,8 +163,12 @@ class _LyricsScreenState extends State<LyricsScreen>
         : PlatformRegistry.instance.get(
             Track.fromMediaItem(handler.mediaItem.value!).platformId,
           );
-    _selectedProviderIndex =
-        activePlatform?.capabilities.supportsLyrics == true ? 0 : -1;
+    _selectedProviderIndex = activePlatform?.capabilities.supportsLyrics == true
+        ? 0
+        : -1;
+    if (activePlatform != null) {
+      _setLyricsDisplayProvider('platform:${activePlatform.platformId}');
+    }
     _hadRadioClock = handler.hasRadioClock;
 
     _pulseController = AnimationController(
@@ -210,6 +216,9 @@ class _LyricsScreenState extends State<LyricsScreen>
     final activePlatform = PlatformRegistry.instance.get(
       Track.fromMediaItem(item).platformId,
     );
+    if (activePlatform != null) {
+      _setLyricsDisplayProvider('platform:${activePlatform.platformId}');
+    }
     _lyricsLoadGeneration++;
     _syncTimer?.cancel();
     _seekPreview = null;
@@ -240,9 +249,23 @@ class _LyricsScreenState extends State<LyricsScreen>
     unawaited(_load());
   }
 
+  List<LyricsCandidate> get _lyricsVersionCandidates {
+    final seen = <String>{};
+    return _lyricsCandidates.where((candidate) {
+      final id = candidate.id.trim();
+      if (id.isEmpty ||
+          id.toLowerCase() == 'default' ||
+          id.toLowerCase() == 'native' ||
+          id == candidate.providerId) {
+        return false;
+      }
+      return seen.add('${candidate.providerId}|$id');
+    }).toList();
+  }
+
   void _syncLyricsChoicesButton() {
-    // A chooser is useful only when there is an actual choice to make.
-    final hasChoices = _lyricsCandidates.length > 1;
+    // A chooser is useful only when there are multiple real records.
+    final hasChoices = _lyricsVersionCandidates.length > 1;
     widget.controller?._updateToolbar(
       state: LyricsToolbarState(
         canChooseLyrics: hasChoices,
@@ -263,16 +286,51 @@ class _LyricsScreenState extends State<LyricsScreen>
     );
   }
 
+  void _setLyricsDisplayProvider(String providerId) {
+    _lyricsDisplayProviderId = providerId;
+    _showTranslation = settings.lyricsTranslationVisibility[providerId] ?? true;
+    _showRomanization =
+        settings.lyricsRomanizationVisibility[providerId] ?? false;
+  }
+
   void _setTranslationVisibility(bool value) {
     if (_showTranslation == value) return;
     setState(() => _showTranslation = value);
+    settings.lyricsTranslationVisibility[_lyricsDisplayProviderId] = value;
+    unawaited(settings.save());
     _syncLyricsChoicesButton();
   }
 
   void _setRomanizationVisibility(bool value) {
     if (_showRomanization == value) return;
     setState(() => _showRomanization = value);
+    settings.lyricsRomanizationVisibility[_lyricsDisplayProviderId] = value;
+    unawaited(settings.save());
     _syncLyricsChoicesButton();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    final handler = GetIt.I<AudioPlayerHandler>();
+    final position = handler.isRadio
+        ? handler.syncedPosition
+        : handler.player.position;
+    final index = _lyricIndexAt(position);
+    _syncTimer?.cancel();
+    if (_scrollController.hasClients) {
+      // jumpTo cancels any stale drag/ballistic activity left suspended by
+      // the platform while the app was backgrounded.
+      _scrollController.jumpTo(_scrollController.position.pixels);
+    }
+    setState(() {
+      _isUserScrolling = false;
+      _currentPosition = position;
+      _currentIndex = index;
+      _pendingAutoScrollIndex = index;
+    });
+    if (lyrics?.syncedLyrics?.isNotEmpty == true) _startSyncTimer();
+    _schedulePendingAutoScroll();
   }
 
   @override
@@ -283,6 +341,7 @@ class _LyricsScreenState extends State<LyricsScreen>
       toggleTranslation: null,
       toggleRomanization: null,
     );
+    WidgetsBinding.instance.removeObserver(this);
     _syncTimer?.cancel();
     _mediaItemSub?.cancel();
     _radioStateSub?.cancel();
@@ -326,6 +385,7 @@ class _LyricsScreenState extends State<LyricsScreen>
       final offlineIndex = providers.indexOf(_offlineLyricsProvider);
       if (!mounted || requestId != _lyricsLoadGeneration) return;
       if (offlineIndex >= 0) {
+        _setLyricsDisplayProvider('offline');
         setState(() => _selectedProviderIndex = offlineIndex);
         _updateLyricsState(currentTrack!.lyrics!);
         return;
@@ -334,6 +394,8 @@ class _LyricsScreenState extends State<LyricsScreen>
     if (savedChoice == null &&
         trackId == widget.trackId &&
         widget.lyrics?.isLoaded() == true) {
+      final platformId = currentTrack?.platformId;
+      if (platformId != null) _setLyricsDisplayProvider('platform:$platformId');
       _updateLyricsState(widget.lyrics!);
       return;
     }
@@ -355,6 +417,7 @@ class _LyricsScreenState extends State<LyricsScreen>
               targetPlatformId,
             );
             if (targetPlatform != null) {
+              _setLyricsDisplayProvider('platform:$targetPlatformId');
               final allProviders = await _getAllProviders();
               final provIdx = allProviders.indexWhere(
                 (p) => p is MusicPlatform && p.platformId == targetPlatformId,
@@ -378,6 +441,7 @@ class _LyricsScreenState extends State<LyricsScreen>
 
           final lyricsProvider = LyricsRegistry.instance.get(providerId);
           if (lyricsProvider != null) {
+            _setLyricsDisplayProvider('provider:$providerId');
             final allProviders = await _getAllProviders();
             final provIdx = allProviders.indexWhere(
               (p) => p is LyricsProvider && p.id == providerId,
@@ -392,9 +456,7 @@ class _LyricsScreenState extends State<LyricsScreen>
               );
               if (!mounted || requestId != _lyricsLoadGeneration) return;
 
-              final usableCandidates = candidates
-                  .where((c) => _hasAnyLyrics(c.lyrics))
-                  .toList();
+              final usableCandidates = _distinctUsableCandidates(candidates);
 
               if (usableCandidates.isNotEmpty) {
                 LyricsCandidate selected = usableCandidates.first;
@@ -443,6 +505,7 @@ class _LyricsScreenState extends State<LyricsScreen>
         );
         final lrclib = LyricsRegistry.instance.get('lrclib');
         if (track != null && lrclib != null && lrclibIndex >= 0) {
+          _setLyricsDisplayProvider('provider:lrclib');
           setState(() => _selectedProviderIndex = lrclibIndex);
           await _loadLyricsFromProvider(lrclib, track, requestId);
         } else {
@@ -466,6 +529,8 @@ class _LyricsScreenState extends State<LyricsScreen>
         _showLyricsUnavailable();
         return;
       }
+      if (track != null)
+        _setLyricsDisplayProvider('platform:${track.platformId}');
       _updateLyricsState(l);
     } catch (e, stack) {
       if (!mounted || requestId != _lyricsLoadGeneration) return;
@@ -496,12 +561,11 @@ class _LyricsScreenState extends State<LyricsScreen>
     Track track,
     int requestId,
   ) async {
+    _setLyricsDisplayProvider('provider:${provider.id}');
     try {
       final candidates = await provider.getLyricsCandidates(track);
       if (!mounted || requestId != _lyricsLoadGeneration) return;
-      final usableCandidates = candidates
-          .where((candidate) => _hasAnyLyrics(candidate.lyrics))
-          .toList();
+      final usableCandidates = _distinctUsableCandidates(candidates);
       if (usableCandidates.isNotEmpty) {
         final selected = usableCandidates.first;
         _lyricsCandidates = usableCandidates;
@@ -569,6 +633,7 @@ class _LyricsScreenState extends State<LyricsScreen>
   }
 
   Future<void> _chooseLyricsCandidate(LyricsCandidate candidate) async {
+    _setLyricsDisplayProvider('provider:${candidate.providerId}');
     final requestId = ++_lyricsLoadGeneration;
     final mediaItem = GetIt.I<AudioPlayerHandler>().mediaItem.value;
     if (mediaItem == null) {
@@ -599,6 +664,7 @@ class _LyricsScreenState extends State<LyricsScreen>
     final mediaItem = GetIt.I<AudioPlayerHandler>().mediaItem.value;
     if (mediaItem != null) {
       final track = Track.fromMediaItem(mediaItem);
+      _setLyricsDisplayProvider('platform:${track.platformId}');
       _removeSavedLyricsChoice(track);
     }
     setState(() {
@@ -674,6 +740,7 @@ class _LyricsScreenState extends State<LyricsScreen>
     MusicPlatform platform,
     int requestId,
   ) async {
+    _setLyricsDisplayProvider('platform:${platform.platformId}');
     final trackId = _activeTrackId;
     _lyricsCandidates = const [];
     _selectedLyricsCandidateId = null;
@@ -857,6 +924,17 @@ class _LyricsScreenState extends State<LyricsScreen>
     }
   }
 
+  List<LyricsCandidate> _distinctUsableCandidates(
+    Iterable<LyricsCandidate> candidates,
+  ) {
+    final seen = <String>{};
+    return candidates.where((candidate) {
+      if (!_hasAnyLyrics(candidate.lyrics)) return false;
+      final key = '${candidate.providerId}|${candidate.id}';
+      return seen.add(key);
+    }).toList();
+  }
+
   bool _hasAnyLyrics(Lyrics value) =>
       value.errorMessage == null &&
       (value.isLoaded() ||
@@ -994,7 +1072,10 @@ class _LyricsScreenState extends State<LyricsScreen>
     final surface = Theme.of(context).colorScheme.surface;
     final duration = handler.player.duration;
     final artUrl =
-        item?.extras?['thumb'] as String? ?? item?.artUri?.toString() ?? '';
+        item?.extras?['saturnOriginalArtUri'] as String? ??
+        item?.artUri?.toString() ??
+        item?.extras?['thumb'] as String? ??
+        '';
 
     return Container(
       key: _miniPlayerKey,
@@ -1205,11 +1286,9 @@ class _LyricsScreenState extends State<LyricsScreen>
       // Silky reports input before applying the delta. Ignore input trapped
       // against a clamped edge; it did not move the lyrics away from sync.
       if ((delta < 0 &&
-              position.pixels <=
-                  position.minScrollExtent + edgeTolerance) ||
+              position.pixels <= position.minScrollExtent + edgeTolerance) ||
           (delta > 0 &&
-              position.pixels >=
-                  position.maxScrollExtent - edgeTolerance)) {
+              position.pixels >= position.maxScrollExtent - edgeTolerance)) {
         return;
       }
     } else {
@@ -1373,11 +1452,10 @@ class _LyricsScreenState extends State<LyricsScreen>
     if (renderBox != null &&
         renderBox.hasSize &&
         _scrollController.hasClients) {
-      final viewportBox = _scrollController
-          .position
-          .context
-          .notificationContext
-          ?.findRenderObject() as RenderBox?;
+      final viewportBox =
+          _scrollController.position.context.notificationContext
+                  ?.findRenderObject()
+              as RenderBox?;
 
       double targetOffset;
       if (viewportBox != null && viewportBox.hasSize) {
@@ -1386,9 +1464,7 @@ class _LyricsScreenState extends State<LyricsScreen>
             .dy;
         final itemCenterInViewport =
             itemTopInViewport + (renderBox.size.height / 2);
-        final viewportCenter = _lyricsCenterInViewport(
-          viewportBox.size.height,
-        );
+        final viewportCenter = _lyricsCenterInViewport(viewportBox.size.height);
         final delta = itemCenterInViewport - viewportCenter;
         targetOffset = _scrollController.offset + delta;
       } else {
@@ -1430,13 +1506,14 @@ class _LyricsScreenState extends State<LyricsScreen>
       if (!mounted || !_scrollController.hasClients || _lyricKeys.isEmpty) {
         return;
       }
-      final firstBox = _lyricKeys.first.currentContext?.findRenderObject()
-          as RenderBox?;
-      final lastBox = _lyricKeys.last.currentContext?.findRenderObject()
-          as RenderBox?;
+      final firstBox =
+          _lyricKeys.first.currentContext?.findRenderObject() as RenderBox?;
+      final lastBox =
+          _lyricKeys.last.currentContext?.findRenderObject() as RenderBox?;
       final position = _scrollController.position;
-      final viewportBox = position.context.notificationContext
-          ?.findRenderObject() as RenderBox?;
+      final viewportBox =
+          position.context.notificationContext?.findRenderObject()
+              as RenderBox?;
       if (firstBox == null ||
           lastBox == null ||
           !firstBox.hasSize ||
@@ -1451,13 +1528,11 @@ class _LyricsScreenState extends State<LyricsScreen>
       // measured by localToGlobal (for example when the scroll view is wrapped
       // in a shader/expanded layout), which skews both edge-padding values.
       final targetCenter = _lyricsCenterInViewport(viewportBox.size.height);
-      final firstTop = firstBox
-              .localToGlobal(Offset.zero, ancestor: viewportBox)
-              .dy +
+      final firstTop =
+          firstBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy +
           position.pixels;
-      final lastTop = lastBox
-              .localToGlobal(Offset.zero, ancestor: viewportBox)
-              .dy +
+      final lastTop =
+          lastBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy +
           position.pixels;
       final firstCenter = firstTop + firstBox.size.height / 2;
       final lastCenterAtEnd =
@@ -1465,10 +1540,9 @@ class _LyricsScreenState extends State<LyricsScreen>
       final top = (_lyricEdgePadding.top + targetCenter - firstCenter)
           .clamp(0.0, double.infinity)
           .toDouble();
-      final bottom =
-          (_lyricEdgePadding.bottom + lastCenterAtEnd - targetCenter)
-              .clamp(0.0, double.infinity)
-              .toDouble();
+      final bottom = (_lyricEdgePadding.bottom + lastCenterAtEnd - targetCenter)
+          .clamp(0.0, double.infinity)
+          .toDouble();
       if ((top - _lyricEdgePadding.top).abs() > 0.5 ||
           (bottom - _lyricEdgePadding.bottom).abs() > 0.5) {
         setState(() {
@@ -1504,7 +1578,10 @@ class _LyricsScreenState extends State<LyricsScreen>
     }
 
     final artUrl =
-        mediaItem.extras?['thumb'] ?? mediaItem.artUri?.toString() ?? '';
+        mediaItem.extras?['saturnOriginalArtUri'] ??
+        mediaItem.artUri?.toString() ??
+        mediaItem.extras?['thumb'] ??
+        '';
     if (artUrl.isEmpty) return;
 
     final imageProvider = CachedNetworkImageProvider(artUrl);
@@ -1612,6 +1689,16 @@ class _LyricsScreenState extends State<LyricsScreen>
     );
   }
 
+  void _scrollProviderStripBy(double delta) {
+    if (!_providerScrollController.hasClients) return;
+    final position = _providerScrollController.position;
+    _providerScrollController.jumpTo(
+      (position.pixels + delta)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble(),
+    );
+  }
+
   Widget _buildProviderSwitcherItems(List<dynamic> allProviders) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
@@ -1637,12 +1724,17 @@ class _LyricsScreenState extends State<LyricsScreen>
               final delta = event.scrollDelta.dx != 0
                   ? event.scrollDelta.dx
                   : event.scrollDelta.dy;
-              final position = _providerScrollController.position;
-              _providerScrollController.jumpTo(
-                (position.pixels + delta)
-                    .clamp(position.minScrollExtent, position.maxScrollExtent)
-                    .toDouble(),
-              );
+              _scrollProviderStripBy(delta);
+            },
+            onPointerPanZoomUpdate: (event) {
+              if (!_providerScrollController.hasClients) return;
+              // Trackpads send pan/zoom events instead of wheel events. A
+              // positive pan means the fingers moved right/down, so move the
+              // horizontal strip in the opposite direction.
+              final pan = event.panDelta.dx != 0
+                  ? event.panDelta.dx
+                  : event.panDelta.dy;
+              _scrollProviderStripBy(-pan);
             },
             child: SilkySingleChildScrollView(
               silkyConfig: silkyHorizontalScrollConfig,
@@ -1722,6 +1814,7 @@ class _LyricsScreenState extends State<LyricsScreen>
                               provider.platformId == nativePlatformId;
 
                           if (provider is _OfflineLyricsProvider) {
+                            _setLyricsDisplayProvider('offline');
                             if (track?.lyrics?.isLoaded() == true) {
                               setState(() {
                                 _selectedProviderIndex = index;
@@ -1770,6 +1863,9 @@ class _LyricsScreenState extends State<LyricsScreen>
                           });
                           _syncLyricsChoicesButton();
                           if (provider is MusicPlatform) {
+                            _setLyricsDisplayProvider(
+                              'platform:${provider.platformId}',
+                            );
                             if (track != null) {
                               _removeSavedLyricsChoice(track);
                               settings.lyricsChoices[_lyricsPreferenceKey(
@@ -1788,6 +1884,9 @@ class _LyricsScreenState extends State<LyricsScreen>
                               return;
                             }
                             final lyricsProvider = provider as LyricsProvider;
+                            _setLyricsDisplayProvider(
+                              'provider:${lyricsProvider.id}',
+                            );
                             final track = Track.fromMediaItem(mediaItem);
                             _removeSavedLyricsChoice(track);
                             settings.lyricsChoices[_lyricsPreferenceKey(
@@ -1803,12 +1902,8 @@ class _LyricsScreenState extends State<LyricsScreen>
                                   requestId != _lyricsLoadGeneration) {
                                 return;
                               }
-                              final usableCandidates = candidates
-                                  .where(
-                                    (candidate) =>
-                                        _hasAnyLyrics(candidate.lyrics),
-                                  )
-                                  .toList();
+                              final usableCandidates =
+                                  _distinctUsableCandidates(candidates);
                               if (usableCandidates.isNotEmpty) {
                                 final selected = usableCandidates.first;
                                 _lyricsCandidates = usableCandidates;
@@ -1884,10 +1979,12 @@ class _LyricsScreenState extends State<LyricsScreen>
   }
 
   Future<void> _showLyricsCandidateSheet() async {
+    final versionCandidates = _lyricsVersionCandidates;
+    if (versionCandidates.length < 2) return;
     final selectedId = _selectedLyricsCandidateId;
     final mediaItem = GetIt.I<AudioPlayerHandler>().mediaItem.value;
     final currentTitle = mediaItem?.title;
-    final selectedCandidate = _lyricsCandidates
+    final selectedCandidate = versionCandidates
         .where((candidate) => candidate.id == selectedId)
         .firstOrNull;
     final candidate = await showModalBottomSheet<LyricsCandidate>(
@@ -1956,11 +2053,11 @@ class _LyricsScreenState extends State<LyricsScreen>
                 silkyConfig: silkyScrollConfig,
                 controller: scrollController,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _lyricsCandidates.length,
+                itemCount: versionCandidates.length,
                 separatorBuilder: (context, index) =>
                     const Divider(height: 1, indent: 72),
                 itemBuilder: (context, index) {
-                  final item = _lyricsCandidates[index];
+                  final item = versionCandidates[index];
                   final isSelected = item.id == selectedId;
                   final details = <String>[
                     item.artist,
@@ -2373,63 +2470,66 @@ class _LyricsScreenState extends State<LyricsScreen>
                   ).createShader(bounds),
                   child: SizedBox.expand(
                     child: _error
-                          ? Transform.translate(
-                              offset: const Offset(
-                                0,
-                                -_providerSwitcherHeight / 2,
+                        ? Transform.translate(
+                            offset: const Offset(
+                              0,
+                              -_providerSwitcherHeight / 2,
+                            ),
+                            child: Center(
+                              child: ErrorScreen(message: _errorMessage),
+                            ),
+                          )
+                        : _loading
+                        ? Transform.translate(
+                            offset: const Offset(
+                              0,
+                              -_providerSwitcherHeight / 2,
+                            ),
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: primaryColor,
                               ),
-                              child: Center(
-                                child: ErrorScreen(message: _errorMessage),
-                              ),
-                            )
-                          : _loading
-                          ? Transform.translate(
-                              offset: const Offset(
-                                0,
-                                -_providerSwitcherHeight / 2,
-                              ),
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  color: primaryColor,
-                                ),
-                              ),
-                            )
-                          : _lyricsUnavailable
-                          ? Transform.translate(
-                              offset: const Offset(
-                                0,
-                                -_providerSwitcherHeight / 2,
-                              ),
-                              child: _buildLyricsUnavailable(
-                                textColor,
-                                primaryColor,
-                              ),
-                            )
-                          : LayoutBuilder(
-                              builder: (context, _) {
-                                _scheduleLyricsEdgePaddingMeasurement();
-                                return NotificationListener<ScrollUpdateNotification>(
-                                  onNotification: (notification) {
-                                    if (notification.dragDetails != null) {
+                            ),
+                          )
+                        : _lyricsUnavailable
+                        ? Transform.translate(
+                            offset: const Offset(
+                              0,
+                              -_providerSwitcherHeight / 2,
+                            ),
+                            child: _buildLyricsUnavailable(
+                              textColor,
+                              primaryColor,
+                            ),
+                          )
+                        : LayoutBuilder(
+                            builder: (context, _) {
+                              _scheduleLyricsEdgePaddingMeasurement();
+                              return NotificationListener<
+                                ScrollUpdateNotification
+                              >(
+                                onNotification: (notification) {
+                                  if (notification.dragDetails != null) {
+                                    _markLyricsUserScrolling(
+                                      notification.scrollDelta ?? 0,
+                                    );
+                                  }
+                                  return false;
+                                },
+                                child: Listener(
+                                  onPointerSignal: (event) {
+                                    if (event is PointerScrollEvent) {
                                       _markLyricsUserScrolling(
-                                        notification.scrollDelta ?? 0,
+                                        event.scrollDelta.dy,
                                       );
                                     }
-                                    return false;
                                   },
-                                  child: Listener(
-                                    onPointerSignal: (event) {
-                                      if (event is PointerScrollEvent) {
-                                        _markLyricsUserScrolling(
-                                          event.scrollDelta.dy,
-                                        );
-                                      }
-                                    },
-                                    child: SingleChildScrollView(
+                                  child: SingleChildScrollView(
                                     controller: _scrollController,
-                                    physics: const AlwaysScrollableScrollPhysics(
-                                      parent: ClampingScrollPhysics(),
-                                    ),
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(
+                                          parent: ClampingScrollPhysics(),
+                                        ),
                                     padding: EdgeInsets.only(
                                       left: 16,
                                       right: 16,
@@ -2440,279 +2540,294 @@ class _LyricsScreenState extends State<LyricsScreen>
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
-                                      // Instrumental intro gap before the first lyric.
-                                      if (syncedList.isNotEmpty &&
-                                          (syncedList
-                                                      .first
-                                                      .offset
-                                                      ?.inMilliseconds ??
-                                                  0) >=
-                                              5000)
-                                        _buildAnimatedInstrumentalCard(
-                                          visible:
-                                              currentPosMs <
-                                              (syncedList
-                                                      .first
-                                                      .offset
-                                                      ?.inMilliseconds ??
-                                                  0),
-                                          isIntro: true,
-                                          secondsRemaining:
-                                              ((syncedList
-                                                              .first
-                                                              .offset!
-                                                              .inMilliseconds -
-                                                          currentPosMs) /
-                                                      1000)
-                                                  .ceil(),
-                                          onSkip: isRadioPlayback
-                                              ? null
-                                              : () {
-                                                  final target =
-                                                      syncedList.first.offset! -
-                                                      const Duration(
-                                                        milliseconds: 500,
-                                                      );
-                                                  GetIt.I<AudioPlayerHandler>()
-                                                      .seek(
-                                                        target < Duration.zero
-                                                            ? Duration.zero
-                                                            : target,
-                                                      );
-                                                  setState(
-                                                    () => _isUserScrolling =
-                                                        false,
-                                                  );
-                                                },
-                                        ),
+                                        // Instrumental intro gap before the first lyric.
+                                        if (syncedList.isNotEmpty &&
+                                            (syncedList
+                                                        .first
+                                                        .offset
+                                                        ?.inMilliseconds ??
+                                                    0) >=
+                                                5000)
+                                          _buildAnimatedInstrumentalCard(
+                                            visible:
+                                                currentPosMs <
+                                                (syncedList
+                                                        .first
+                                                        .offset
+                                                        ?.inMilliseconds ??
+                                                    0),
+                                            isIntro: true,
+                                            secondsRemaining:
+                                                ((syncedList
+                                                                .first
+                                                                .offset!
+                                                                .inMilliseconds -
+                                                            currentPosMs) /
+                                                        1000)
+                                                    .ceil(),
+                                            onSkip: isRadioPlayback
+                                                ? null
+                                                : () {
+                                                    final target =
+                                                        syncedList
+                                                            .first
+                                                            .offset! -
+                                                        const Duration(
+                                                          milliseconds: 500,
+                                                        );
+                                                    GetIt.I<
+                                                          AudioPlayerHandler
+                                                        >()
+                                                        .seek(
+                                                          target < Duration.zero
+                                                              ? Duration.zero
+                                                              : target,
+                                                        );
+                                                    setState(
+                                                      () => _isUserScrolling =
+                                                          false,
+                                                    );
+                                                  },
+                                          ),
 
-                                      // Synchronized lyrics lines
-                                      if (syncedList.isNotEmpty)
-                                        ...List.generate(syncedList.length, (
-                                          i,
-                                        ) {
-                                          final lyric = syncedList[i];
-                                          final isCurrentLine =
-                                              (_currentIndex == i);
-                                          final nextLyric =
-                                              i + 1 < syncedList.length
-                                              ? syncedList[i + 1]
-                                              : null;
-                                          final lineEndMs =
-                                              (lyric.offset?.inMilliseconds ??
-                                                  0) +
-                                              (lyric.duration?.inMilliseconds ??
-                                                  3000);
-                                          final nextStartMs =
-                                              nextLyric
-                                                  ?.offset
-                                                  ?.inMilliseconds ??
-                                              lineEndMs;
-                                          final showBreakAfter =
-                                              nextStartMs - lineEndMs >= 5000 &&
-                                              currentPosMs >= lineEndMs &&
-                                              currentPosMs < nextStartMs;
-                                          final breakSecondsRemaining =
-                                              ((nextStartMs - currentPosMs) /
-                                                      1000)
-                                                  .ceil();
+                                        // Synchronized lyrics lines
+                                        if (syncedList.isNotEmpty)
+                                          ...List.generate(syncedList.length, (
+                                            i,
+                                          ) {
+                                            final lyric = syncedList[i];
+                                            final isCurrentLine =
+                                                (_currentIndex == i);
+                                            final nextLyric =
+                                                i + 1 < syncedList.length
+                                                ? syncedList[i + 1]
+                                                : null;
+                                            final lineEndMs =
+                                                (lyric.offset?.inMilliseconds ??
+                                                    0) +
+                                                (lyric
+                                                        .duration
+                                                        ?.inMilliseconds ??
+                                                    3000);
+                                            final nextStartMs =
+                                                nextLyric
+                                                    ?.offset
+                                                    ?.inMilliseconds ??
+                                                lineEndMs;
+                                            final showBreakAfter =
+                                                nextStartMs - lineEndMs >=
+                                                    5000 &&
+                                                currentPosMs >= lineEndMs &&
+                                                currentPosMs < nextStartMs;
+                                            final breakSecondsRemaining =
+                                                ((nextStartMs - currentPosMs) /
+                                                        1000)
+                                                    .ceil();
 
-                                          return Column(
-                                            children: [
-                                              Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 4.0,
-                                                    ),
-                                                child: Container(
-                                                  key: _lyricKeys.length > i
-                                                      ? _lyricKeys[i]
-                                                      : null,
-                                                  decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          16.0,
-                                                        ),
-                                                    color: isCurrentLine
-                                                        ? primaryColor
-                                                              .withValues(
-                                                                alpha: isDark
-                                                                    ? 0.12
-                                                                    : 0.10,
-                                                              )
-                                                        : Colors.transparent,
-                                                  ),
+                                            return Column(
+                                              children: [
+                                                Padding(
                                                   padding:
                                                       const EdgeInsets.symmetric(
-                                                        horizontal: 14.0,
-                                                        vertical: 8.0,
+                                                        vertical: 4.0,
                                                       ),
-                                                  child: Center(
-                                                    child: GestureDetector(
-                                                      behavior: HitTestBehavior
-                                                          .opaque,
-                                                      onTap: isRadioPlayback
-                                                          ? null
-                                                          : () {
-                                                              final offset =
-                                                                  lyric.offset;
-                                                              if (offset !=
-                                                                  null) {
-                                                                GetIt.I<
-                                                                      AudioPlayerHandler
-                                                                    >()
-                                                                    .seek(
-                                                                      offset,
-                                                                    );
-                                                                setState(() {
-                                                                  _isUserScrolling =
-                                                                      false;
-                                                                });
-                                                                _scrollToIndex(
-                                                                  i,
-                                                                );
-                                                              }
-                                                            },
-                                                      child:
-                                                          lyric.words != null &&
-                                                              lyric
-                                                                  .words!
-                                                                  .isNotEmpty
-                                                          ? _buildWordSyncedLine(
-                                                              lyric,
-                                                              isCurrentLine,
-                                                              textColor,
-                                                            )
-                                                          : _buildLineByLineText(
-                                                              lyric,
-                                                              isCurrentLine,
-                                                              textColor,
-                                                            ),
+                                                  child: Container(
+                                                    key: _lyricKeys.length > i
+                                                        ? _lyricKeys[i]
+                                                        : null,
+                                                    decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            16.0,
+                                                          ),
+                                                      color: isCurrentLine
+                                                          ? primaryColor
+                                                                .withValues(
+                                                                  alpha: isDark
+                                                                      ? 0.12
+                                                                      : 0.10,
+                                                                )
+                                                          : Colors.transparent,
+                                                    ),
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 14.0,
+                                                          vertical: 8.0,
+                                                        ),
+                                                    child: Center(
+                                                      child: GestureDetector(
+                                                        behavior:
+                                                            HitTestBehavior
+                                                                .opaque,
+                                                        onTap: isRadioPlayback
+                                                            ? null
+                                                            : () {
+                                                                final offset =
+                                                                    lyric
+                                                                        .offset;
+                                                                if (offset !=
+                                                                    null) {
+                                                                  GetIt.I<
+                                                                        AudioPlayerHandler
+                                                                      >()
+                                                                      .seek(
+                                                                        offset,
+                                                                      );
+                                                                  setState(() {
+                                                                    _isUserScrolling =
+                                                                        false;
+                                                                  });
+                                                                  _scrollToIndex(
+                                                                    i,
+                                                                  );
+                                                                }
+                                                              },
+                                                        child:
+                                                            lyric.words !=
+                                                                    null &&
+                                                                lyric
+                                                                    .words!
+                                                                    .isNotEmpty
+                                                            ? _buildWordSyncedLine(
+                                                                lyric,
+                                                                isCurrentLine,
+                                                                textColor,
+                                                              )
+                                                            : _buildLineByLineText(
+                                                                lyric,
+                                                                isCurrentLine,
+                                                                textColor,
+                                                              ),
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                              ),
-                                              _buildAnimatedInstrumentalCard(
-                                                visible: showBreakAfter,
-                                                secondsRemaining:
-                                                    breakSecondsRemaining,
-                                                onSkip: isRadioPlayback
-                                                    ? null
-                                                    : () {
-                                                        final target =
-                                                            (nextLyric
-                                                                    ?.offset ??
-                                                                Duration.zero) -
-                                                            const Duration(
-                                                              milliseconds: 500,
-                                                            );
-                                                        GetIt.I<
-                                                              AudioPlayerHandler
-                                                            >()
-                                                            .seek(
-                                                              target <
-                                                                      Duration
+                                                _buildAnimatedInstrumentalCard(
+                                                  visible: showBreakAfter,
+                                                  secondsRemaining:
+                                                      breakSecondsRemaining,
+                                                  onSkip: isRadioPlayback
+                                                      ? null
+                                                      : () {
+                                                          final target =
+                                                              (nextLyric
+                                                                      ?.offset ??
+                                                                  Duration
+                                                                      .zero) -
+                                                              const Duration(
+                                                                milliseconds:
+                                                                    500,
+                                                              );
+                                                          GetIt.I<
+                                                                AudioPlayerHandler
+                                                              >()
+                                                              .seek(
+                                                                target <
+                                                                        Duration
+                                                                            .zero
+                                                                    ? Duration
                                                                           .zero
-                                                                  ? Duration
-                                                                        .zero
-                                                                  : target,
-                                                            );
-                                                        setState(
-                                                          () =>
-                                                              _isUserScrolling =
-                                                                  false,
-                                                        );
-                                                      },
-                                              ),
-                                            ],
-                                          );
-                                        }),
+                                                                    : target,
+                                                              );
+                                                          setState(
+                                                            () =>
+                                                                _isUserScrolling =
+                                                                    false,
+                                                          );
+                                                        },
+                                                ),
+                                              ],
+                                            );
+                                          }),
 
-                                      // Unsynchronized lyrics fallback
-                                      if (syncedList.isEmpty &&
-                                          lyrics?.unsyncedLyrics != null &&
-                                          lyrics!.unsyncedLyrics!.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16.0,
-                                            vertical: 24.0,
-                                          ),
-                                          child: SelectableText(
-                                            lyrics!.unsyncedLyrics!,
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              fontSize: 22.0,
-                                              height: 1.8,
-                                              color: textColor.withValues(
-                                                alpha: 0.9,
+                                        // Unsynchronized lyrics fallback
+                                        if (syncedList.isEmpty &&
+                                            lyrics?.unsyncedLyrics != null &&
+                                            lyrics!.unsyncedLyrics!.isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16.0,
+                                              vertical: 24.0,
+                                            ),
+                                            child: SelectableText(
+                                              lyrics!.unsyncedLyrics!,
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontSize: 22.0,
+                                                height: 1.8,
+                                                color: textColor.withValues(
+                                                  alpha: 0.9,
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      if (syncedList.isEmpty &&
-                                          (lyrics
-                                                      ?.unsyncedTranslatedLyrics
-                                                      ?.isNotEmpty ==
-                                                  true ||
-                                              lyrics
-                                                      ?.unsyncedRomanizedLyrics
-                                                      ?.isNotEmpty ==
-                                                  true))
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 12,
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              if (_showTranslation &&
-                                                  lyrics
-                                                          ?.unsyncedTranslatedLyrics
-                                                          ?.isNotEmpty ==
-                                                      true)
-                                                SelectableText(
-                                                  lyrics!
-                                                      .unsyncedTranslatedLyrics!,
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(
-                                                    fontSize: 18,
-                                                    height: 1.6,
-                                                    color: textColor.withValues(
-                                                      alpha: 0.85,
+                                        if (syncedList.isEmpty &&
+                                            (lyrics
+                                                        ?.unsyncedTranslatedLyrics
+                                                        ?.isNotEmpty ==
+                                                    true ||
+                                                lyrics
+                                                        ?.unsyncedRomanizedLyrics
+                                                        ?.isNotEmpty ==
+                                                    true))
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 12,
+                                            ),
+                                            child: Column(
+                                              children: [
+                                                if (_showTranslation &&
+                                                    lyrics
+                                                            ?.unsyncedTranslatedLyrics
+                                                            ?.isNotEmpty ==
+                                                        true)
+                                                  SelectableText(
+                                                    lyrics!
+                                                        .unsyncedTranslatedLyrics!,
+                                                    textAlign: TextAlign.center,
+                                                    style: TextStyle(
+                                                      fontSize: 18,
+                                                      height: 1.6,
+                                                      color: textColor
+                                                          .withValues(
+                                                            alpha: 0.85,
+                                                          ),
                                                     ),
                                                   ),
-                                                ),
-                                              if (_showRomanization &&
-                                                  lyrics
-                                                          ?.unsyncedRomanizedLyrics
-                                                          ?.isNotEmpty ==
-                                                      true)
-                                                SelectableText(
-                                                  lyrics!
-                                                      .unsyncedRomanizedLyrics!,
-                                                  textAlign: TextAlign.center,
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                    height: 1.5,
-                                                    color: textColor.withValues(
-                                                      alpha: 0.65,
+                                                if (_showRomanization &&
+                                                    lyrics
+                                                            ?.unsyncedRomanizedLyrics
+                                                            ?.isNotEmpty ==
+                                                        true)
+                                                  SelectableText(
+                                                    lyrics!
+                                                        .unsyncedRomanizedLyrics!,
+                                                    textAlign: TextAlign.center,
+                                                    style: TextStyle(
+                                                      fontSize: 15,
+                                                      height: 1.5,
+                                                      color: textColor
+                                                          .withValues(
+                                                            alpha: 0.65,
+                                                          ),
+                                                      fontStyle:
+                                                          FontStyle.italic,
                                                     ),
-                                                    fontStyle: FontStyle.italic,
                                                   ),
-                                                ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
-                                        ),
                                       ],
                                     ),
-                                    ),
                                   ),
-                                );
-                              },
-                            ),
-                    ),
+                                ),
+                              );
+                            },
+                          ),
                   ),
                 ),
+              ),
               if (!widget.embedded) _buildMiniPlayer(),
             ],
           ),

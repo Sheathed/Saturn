@@ -1,3 +1,4 @@
+import 'utils/app_config.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,7 +10,7 @@ import 'package:get_it/get_it.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:path_provider/path_provider.dart' show getDownloadsDirectory;
 
 import 'api/download.dart';
 import 'main.dart';
@@ -35,6 +36,8 @@ class Settings {
   late bool enableEqualizer;
   @JsonKey(defaultValue: false)
   late bool eastereggsDisabled;
+  @JsonKey(defaultValue: true)
+  late bool spacebarPlaybackToggle;
 
   // Legacy Deezer ARL. Read only so startup can migrate old settings into
   // platformConfigs['deezer']; never write credentials back to the root.
@@ -154,6 +157,8 @@ class Settings {
 
   @JsonKey(defaultValue: true)
   bool useArtColor = false;
+  @JsonKey(defaultValue: true)
+  bool cropMediaArtwork = true;
   StreamSubscription? _useArtColorSub;
   StreamSubscription? _playbackStateSub;
   Color? _activeArtColor;
@@ -211,6 +216,12 @@ class Settings {
   /// Preferred provider and lyric record for previously selected tracks.
   @JsonKey(defaultValue: {})
   Map<String, String> lyricsChoices = {};
+
+  /// Translation and romanization display preferences keyed by lyrics provider.
+  @JsonKey(defaultValue: {})
+  Map<String, bool> lyricsTranslationVisibility = {};
+  @JsonKey(defaultValue: {})
+  Map<String, bool> lyricsRomanizationVisibility = {};
 
   /// Preferred content language for SoundCloud requests.
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -416,7 +427,7 @@ class Settings {
   );
 
   Future<String> getPath() async =>
-      p.join((await getApplicationSupportDirectory()).path, 'settings.json');
+      p.join((await getFlavorSupportDirectory()).path, 'settings.json');
 
   //JSON
   factory Settings.fromJson(Map<String, dynamic> json) {
@@ -429,7 +440,15 @@ class Settings {
     } else if (json['themeSource'] == 'seed') {
       json['theme'] ??= 'MaterialYouPrimary';
     }
-    return _$SettingsFromJson(json);
+    final loaded = _$SettingsFromJson(json);
+    // Spacebar playback is a desktop-only control. Clear any value written by
+    // an older build when settings are loaded on a mobile device.
+    if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) {
+      loaded.spacebarPlaybackToggle = false;
+    } else if (!json.containsKey('spacebarPlaybackToggle')) {
+      loaded.spacebarPlaybackToggle = true;
+    }
+    return loaded;
   }
   Map<String, dynamic> toJson() => _$SettingsToJson(this);
 }

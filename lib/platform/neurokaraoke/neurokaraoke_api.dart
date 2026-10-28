@@ -32,7 +32,25 @@ String _formatNeuroImageUrl(
   if (p.isEmpty || p == 'null' || p.contains('nosource.png')) {
     return 'https://www.neurokaraoke.com/img/nosource.png';
   }
-  if (p.startsWith('http://') || p.startsWith('https://')) return p;
+  if (p.startsWith('http://') || p.startsWith('https://')) {
+    final uri = Uri.tryParse(p);
+    if (uri != null &&
+        uri.path.contains('/WxURxyML82UkE7gY-PiBKw/')) {
+      // API responses can already contain a Cloudflare variant URL. Normalize
+      // it too, otherwise the field called `fullUrl` can silently remain the
+      // 128px thumbnail even when callers request full artwork.
+      final variant = width <= 128 ? 'thumbnail' : 'public';
+      final imagePath = uri.path
+          .replaceFirst(
+            RegExp(r'/(public|thumbnail|quality=80|512x512)/?$'),
+            '',
+          )
+          .replaceFirst(RegExp(r'/$'), '');
+      final path = '$imagePath/$variant';
+      return uri.replace(path: path).toString();
+    }
+    return p;
+  }
   final normalized = p.startsWith('/') ? p : '/$p';
   if (normalized.startsWith('/WxURxyML82UkE7gY-PiBKw/')) {
     final pathWithoutVariant = normalized.replaceFirst(

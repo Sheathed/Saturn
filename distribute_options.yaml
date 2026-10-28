@@ -7,26 +7,36 @@ releases:
         package:
           platform: linux
           target: rpm
+          build_args:
+            flavor: stable
       - name: release-release-linux-appimage
         package:
           platform: linux
           target: appimage
+          build_args:
+            flavor: stable
       - name: release-release-linux-deb
         package:
           platform: linux
           target: deb
+          build_args:
+            flavor: stable
   - name: windows
     jobs:
       - name: release-release-windows-exe
         package:
           platform: windows
           target: exe
+          build_args:
+            flavor: stable
   - name: macos
     jobs:
       - name: release-release-mac-dmg
         package:
           platform: macos
           target: dmg
+          build_args:
+            flavor: stable
 
   - name: linux-dev
     jobs:

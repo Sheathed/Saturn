@@ -536,5 +536,19 @@ const language_en_US = {
     'An unexpected error occurred.': 'An unexpected error occurred.',
     'Please check the logs for more details.':
         'Please check the logs for more details.',
+    'Crop artwork for media controls': 'Crop artwork for media controls',
+    'Crops cover art to a square before sending it to platform media controls.':
+        'Crops cover art to a square before sending it to platform media controls.',
+    'Live Radio': 'Live Radio',
+    'Set as Active': 'Set as Active',
+    'Active': 'Active',
+    'Log in with your Deezer email and password, or use your ARL token.':
+        'Log in with your Deezer email and password, or use your ARL token.',
+    'Log In': 'Log In',
+    'How to get your Deezer ARL token?': 'How to get your Deezer ARL token?',
+    'Spacebar playback control': 'Spacebar playback control',
+    'Press Space to play or pause when no text field is selected.':
+        'Press Space to play or pause when no text field is selected.',
+    'Trending': 'Trending',
   },
 };

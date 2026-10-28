@@ -7,7 +7,7 @@ class MainFlutterWindow: NSWindow {
   private var proxyChannel: FlutterMethodChannel?
 
   override func awakeFromNib() {
-    minSize = NSSize(width: 450, height: 670)
+    minSize = NSSize(width: 350, height: 500)
 
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame

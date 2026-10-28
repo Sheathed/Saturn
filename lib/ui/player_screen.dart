@@ -126,7 +126,10 @@ class _SeasonalEffectsPainter extends CustomPainter {
   final SeasonalTrackEffect? season;
   final double timeSeconds;
 
-  const _SeasonalEffectsPainter({required this.season, required this.timeSeconds});
+  const _SeasonalEffectsPainter({
+    required this.season,
+    required this.timeSeconds,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -152,11 +155,9 @@ class _SeasonalEffectsPainter extends CustomPainter {
         ..color = Colors.white.withValues(alpha: 0.34)
         ..strokeWidth = 1.35
         ..strokeCap = StrokeCap.round;
-      final layoutSeed =
-          (size.width.round() * 31 + size.height.round()) & 0x7fffffff;
-      final random = math.Random(layoutSeed);
-      final snowCount = 32 + random.nextInt(17);
+      final snowCount = (size.width / 14).ceil().clamp(24, 96).toInt();
       for (var i = 0; i < snowCount; i++) {
+        final random = math.Random(0x51A0 + i * 104729);
         final xSeed = random.nextDouble();
         final ySeed = random.nextDouble();
         final swayPhase = random.nextDouble() * math.pi * 2;
@@ -164,9 +165,9 @@ class _SeasonalEffectsPainter extends CustomPainter {
         final fallDuration = 13 + random.nextDouble() * 17;
         final radius = 1.4 + random.nextDouble() * 3.0;
         const verticalMargin = 12.0;
-        final fallDistance = size.height + verticalMargin * 2;
+        const fallDistance = 760.0;
         final sway = math.sin(timeSeconds * 0.7 + swayPhase) * swayAmplitude;
-        final x = (xSeed * size.width + sway + size.width) % size.width;
+        final x = i * 14.0 + xSeed * 14.0 + sway;
         final y =
             ((ySeed + timeSeconds / fallDuration) % 1).toDouble() *
                 fallDistance -
@@ -231,11 +232,9 @@ class _SeasonalEffectsPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
     final emberPaint = Paint()
       ..color = const Color(0xFFFFA54A).withValues(alpha: 0.42);
-    final layoutSeed = size.width.round() * 31 + size.height.round();
-    final random = math.Random(layoutSeed & 0x7fffffff);
-    final baseCount = (size.width / 110).round().clamp(12, 18).toInt();
-    final count = (baseCount - 1 + random.nextInt(4)).clamp(10, 20).toInt();
+    final count = (size.width / 45).ceil().clamp(10, 48).toInt();
     for (var i = 0; i < count; i++) {
+      final random = math.Random(0xA110 + i * 104729);
       final xSeed = random.nextDouble();
       final ySeed = random.nextDouble();
       final swayPhase = random.nextDouble() * math.pi * 2;
@@ -244,18 +243,16 @@ class _SeasonalEffectsPainter extends CustomPainter {
       final kind = random.nextDouble();
       final scale = 0.62 + random.nextDouble() * 0.55;
       const verticalMargin = 40.0;
-      final fallDistance = size.height + verticalMargin * 2;
+      const fallDistance = 760.0;
       final x =
-          (xSeed * size.width +
-                  math.sin(timeSeconds * 0.62 + swayPhase) * swayAmplitude +
-                  size.width) %
-              size.width;
+          i * 45.0 +
+          xSeed * 45.0 +
+          math.sin(timeSeconds * 0.62 + swayPhase) * swayAmplitude;
       final y =
           ((ySeed + timeSeconds / fallDuration) % 1).toDouble() * fallDistance -
           verticalMargin;
       if (i != 0 && kind < 0.14) {
-        final pulse =
-            0.7 + 0.3 * math.sin(timeSeconds * 1.2 + i * 13.7);
+        final pulse = 0.7 + 0.3 * math.sin(timeSeconds * 1.2 + i * 13.7);
         canvas.drawCircle(
           Offset(x, y),
           (1.7 + random.nextDouble() * 2) * pulse,
@@ -265,9 +262,7 @@ class _SeasonalEffectsPainter extends CustomPainter {
       }
       canvas.save();
       canvas.translate(x, y);
-      canvas.scale(
-        scale * (0.9 + 0.1 * math.sin(timeSeconds * 0.8 + i * 9.1)),
-      );
+      canvas.scale(scale * (0.9 + 0.1 * math.sin(timeSeconds * 0.8 + i * 9.1)));
       if (i == 0 || kind < 0.42) {
         _drawJackOLantern(canvas);
       } else {
@@ -277,7 +272,13 @@ class _SeasonalEffectsPainter extends CustomPainter {
     }
   }
 
-  void _drawGlow(Canvas canvas, Size size, Offset center, Color color, double alpha) {
+  void _drawGlow(
+    Canvas canvas,
+    Size size,
+    Offset center,
+    Color color,
+    double alpha,
+  ) {
     final bounds = Rect.fromCircle(
       center: center,
       radius: size.shortestSide * 0.42,
@@ -286,12 +287,20 @@ class _SeasonalEffectsPainter extends CustomPainter {
       Offset.zero & size,
       Paint()
         ..shader = RadialGradient(
-          colors: [color.withValues(alpha: alpha), color.withValues(alpha: 0)],
+          colors: [
+            color.withValues(alpha: alpha),
+            color.withValues(alpha: 0),
+          ],
         ).createShader(bounds),
     );
   }
 
-  void _drawSnowflake(Canvas canvas, Offset center, double radius, Paint paint) {
+  void _drawSnowflake(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Paint paint,
+  ) {
     for (var arm = 0; arm < 6; arm++) {
       final angle = arm * math.pi / 3;
       final direction = Offset(math.cos(angle), math.sin(angle));
@@ -301,7 +310,10 @@ class _SeasonalEffectsPainter extends CustomPainter {
       for (final side in [-1, 1]) {
         final branchAngle = angle + side * math.pi / 3;
         final branchEnd =
-            branch + Offset(math.cos(branchAngle), math.sin(branchAngle)) * radius * 0.24;
+            branch +
+            Offset(math.cos(branchAngle), math.sin(branchAngle)) *
+                radius *
+                0.24;
         canvas.drawLine(branch, branchEnd, paint);
       }
     }
@@ -331,7 +343,10 @@ class _SeasonalEffectsPainter extends CustomPainter {
       Paint()
         ..color = const Color(0xFF52705B).withValues(alpha: 0.55)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..isAntiAlias = true,
     );
     const colors = [
       Color(0xFFFF626B),
@@ -342,26 +357,25 @@ class _SeasonalEffectsPainter extends CustomPainter {
     for (var i = 0; i < bulbCount; i++) {
       final t = (i + 0.5) / bulbCount;
       final segmentPosition = t * droopCount;
-      final segment = math
-          .min(segmentPosition.floor(), droopCount - 1)
-          .toInt();
+      final segment = math.min(segmentPosition.floor(), droopCount - 1).toInt();
       final localT = segmentPosition - segment;
       final inverseT = 1 - localT;
       final x0 = segmentWidth * segment;
       final x1 = segmentWidth * (segment + 1);
-      final x = inverseT * inverseT * inverseT * x0 +
+      final x =
+          inverseT * inverseT * inverseT * x0 +
           3 * inverseT * inverseT * localT * (x0 + segmentWidth * 0.25) +
           3 * inverseT * localT * localT * (x0 + segmentWidth * 0.75) +
           localT * localT * localT * x1;
-      final y = inverseT * inverseT * inverseT * wireTop +
+      final y =
+          inverseT * inverseT * inverseT * wireTop +
           3 * inverseT * inverseT * localT * (wireTop + sag) +
           3 * inverseT * localT * localT * (wireTop + sag) +
           localT * localT * localT * wireTop;
       // Alternate neighboring bulbs in pairs of opposing fades. Eight cycles
       // per animation loop keeps the lights lively without a sharp blink.
       final phaseOffset = i.isEven ? 0.0 : math.pi;
-      final phase =
-          (math.sin(timeSeconds * 5.2 + phaseOffset) + 1) / 2;
+      final phase = (math.sin(timeSeconds * 5.2 + phaseOffset) + 1) / 2;
       final twinkle = 0.12 + 0.88 * phase * phase;
       final color = colors[i % colors.length];
       final glowBounds = Rect.fromCircle(
@@ -371,6 +385,7 @@ class _SeasonalEffectsPainter extends CustomPainter {
       canvas.drawRect(
         glowBounds,
         Paint()
+          ..isAntiAlias = true
           ..shader = RadialGradient(
             colors: [
               color.withValues(alpha: 0.42 * twinkle),
@@ -382,22 +397,31 @@ class _SeasonalEffectsPainter extends CustomPainter {
       );
       // Socket straddles the wire; the rounded bulb hangs below it.
       final socket = RRect.fromRectAndRadius(
-        Rect.fromCenter(center: Offset(x, y + 1), width: 5, height: 5),
-        const Radius.circular(1.5),
+        Rect.fromCenter(center: Offset(x, y + 1.5), width: 7, height: 6),
+        const Radius.circular(2),
       );
-      canvas.drawRRect(socket, Paint()..color = const Color(0xFF9A9A78));
+      canvas.drawRRect(
+        socket,
+        Paint()
+          ..isAntiAlias = true
+          ..color = const Color(0xFF9A9A78),
+      );
       final bulbPath = Path()
-        ..moveTo(x - 3.2, y + 2)
-        ..quadraticBezierTo(x - 4.8, y + 7, x, y + 13)
-        ..quadraticBezierTo(x + 4.8, y + 7, x + 3.2, y + 2)
+        ..moveTo(x - 4.2, y + 3)
+        ..quadraticBezierTo(x - 6.2, y + 8, x, y + 16)
+        ..quadraticBezierTo(x + 6.2, y + 8, x + 4.2, y + 3)
         ..close();
       canvas.drawPath(
         bulbPath,
-        Paint()..color = color.withValues(alpha: 0.35 + 0.65 * twinkle),
+        Paint()
+          ..isAntiAlias = true
+          ..color = color.withValues(alpha: 0.35 + 0.65 * twinkle),
       );
       canvas.drawOval(
-        Rect.fromCenter(center: Offset(x - 1, y + 6), width: 1.7, height: 4),
-        Paint()..color = Colors.white.withValues(alpha: 0.18 + 0.48 * twinkle),
+        Rect.fromCenter(center: Offset(x - 1.4, y + 7), width: 2.2, height: 5),
+        Paint()
+          ..isAntiAlias = true
+          ..color = Colors.white.withValues(alpha: 0.18 + 0.48 * twinkle),
       );
     }
   }
@@ -417,7 +441,8 @@ class _SeasonalEffectsPainter extends CustomPainter {
       final angle = ray * math.pi / 10;
       canvas.drawLine(
         corner,
-        corner + Offset(math.cos(angle) * radius * sign, math.sin(angle) * radius),
+        corner +
+            Offset(math.cos(angle) * radius * sign, math.sin(angle) * radius),
         paint,
       );
     }
@@ -426,7 +451,8 @@ class _SeasonalEffectsPainter extends CustomPainter {
       final path = Path();
       for (var ray = 0; ray <= 5; ray++) {
         final angle = ray * math.pi / 10;
-        final point = corner + Offset(math.cos(angle) * r * sign, math.sin(angle) * r);
+        final point =
+            corner + Offset(math.cos(angle) * r * sign, math.sin(angle) * r);
         if (ray == 0) {
           path.moveTo(point.dx, point.dy);
         } else {
@@ -550,6 +576,16 @@ class PlayerScreen extends StatefulWidget {
   _PlayerScreenState createState() => _PlayerScreenState();
 }
 
+String? _displayArtworkSource(MediaItem? item) {
+  final originalArt = item?.extras?['saturnOriginalArtUri'];
+  if (originalArt is String && originalArt.isNotEmpty) return originalArt;
+  final artUri = item?.artUri?.toString();
+  if (artUri != null && artUri.isNotEmpty) return artUri;
+  final thumb = item?.extras?['thumb'];
+  if (thumb is String && thumb.isNotEmpty) return thumb;
+  return null;
+}
+
 class _PlayerScreenState extends State<PlayerScreen> {
   AudioPlayerHandler audioHandler = GetIt.I<AudioPlayerHandler>();
   LinearGradient? _bgGradient;
@@ -568,8 +604,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!settings.colorGradientBackground && !settings.blurPlayerBackground) {
       return;
     }
-    final source =
-        currentItem.extras?['thumb'] ?? currentItem.artUri?.toString();
+    final source = _displayArtworkSource(currentItem);
     if (source == null || source.isEmpty || source == _lastPaletteSource) {
       return;
     }
@@ -630,7 +665,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _updateColor;
     _mediaItemSub = audioHandler.mediaItem.listen((event) {
       if (event == null) return;
-      final source = event.extras?['thumb'] ?? event.artUri?.toString();
+      final source = _displayArtworkSource(event);
       if (source != _lastPaletteSource) _updateColor();
     });
 
@@ -1249,8 +1284,7 @@ class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
                               children: [
                                 ValueListenableBuilder<bool>(
                                   valueListenable: _queueLoading,
-                                  builder: (context, isLoading, _) =>
-                                      isLoading
+                                  builder: (context, isLoading, _) => isLoading
                                       ? const Padding(
                                           padding: EdgeInsets.symmetric(
                                             horizontal: 10,
@@ -1434,32 +1468,28 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab> {
       builder: (context, snapshot) {
         final state = snapshot.data ?? _handler.queueState;
         final showPlatformBadges = _queueHasMixedPlatforms(state.queue);
-        return SilkyListView.builder(
-          silkyConfig: silkyScrollConfig,
+        return SilkyScroll.fromConfig(
+          config: silkyScrollConfig,
           controller: _scrollController,
-          itemCount: state.queue.length,
-          itemBuilder: (context, displayIndex) {
-            final queueIndex =
-                state.shuffleMode == AudioServiceShuffleMode.all &&
-                    displayIndex < state.indices.length
-                ? state.indices[displayIndex]
-                : displayIndex;
-            final item = state.queue[queueIndex];
-            final track = Track.fromMediaItem(item);
-            final removeFromQueueOption = ListTile(
-              title: Text('Remove from queue'.i18n),
-              leading: const Icon(Icons.remove_circle_outline),
-              onTap: () => _handler.removeQueueItem(item),
-            );
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                final isCompact = constraints.maxWidth < 668;
-                return TrackTile(
-                  track,
-                  showPlatformBadge: showPlatformBadges,
-                  key: ValueKey('${item.id}:$queueIndex'),
-                  onTap: () => _handler.skipToQueueItem(queueIndex),
-                  trailing: isCompact
+          builder: (context, controller, physics, _) {
+            Widget buildQueueItem(int displayIndex) {
+              final queueIndex =
+                  state.shuffleMode == AudioServiceShuffleMode.all &&
+                      displayIndex < state.indices.length
+                  ? state.indices[displayIndex]
+                  : displayIndex;
+              final item = state.queue[queueIndex];
+              final track = Track.fromMediaItem(item);
+              final removeFromQueueOption = ListTile(
+                title: Text('Remove from queue'.i18n),
+                leading: const Icon(Icons.remove_circle_outline),
+                onTap: () => _handler.removeQueueItem(item),
+              );
+              return LayoutBuilder(
+                key: ValueKey('${item.id}:$queueIndex'),
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 668;
+                  final trailing = isCompact
                       ? Builder(
                           builder: (buttonContext) => IconButton(
                             tooltip: 'Options'.i18n,
@@ -1498,11 +1528,58 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab> {
                           tooltip: 'Remove from queue'.i18n,
                           icon: const Icon(Icons.close),
                           onPressed: () => _handler.removeQueueItem(item),
-                        ),
-                  trailingBypass: true,
-                  popupLeadingOptions: [removeFromQueueOption],
-                );
+                        );
+                  final canReorder =
+                      state.shuffleMode != AudioServiceShuffleMode.all;
+                  return TrackTile(
+                    track,
+                    showPlatformBadge: showPlatformBadges,
+                    onTap: () => _handler.skipToQueueItem(queueIndex),
+                    trailing: canReorder
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              trailing,
+                              ReorderableDragStartListener(
+                                index: displayIndex,
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 8),
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.grab,
+                                    child: Icon(Icons.drag_handle),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : trailing,
+                    trailingBypass: true,
+                    popupLeadingOptions: [removeFromQueueOption],
+                  );
+                },
+              );
+            }
+
+            if (state.shuffleMode == AudioServiceShuffleMode.all) {
+              return ListView.builder(
+                controller: controller,
+                physics: physics,
+                itemCount: state.queue.length,
+                itemBuilder: (context, index) => buildQueueItem(index),
+              );
+            }
+            return ReorderableListView.builder(
+              scrollController: controller,
+              physics: physics,
+              buildDefaultDragHandles: false,
+              itemCount: state.queue.length,
+              onReorderItem: (oldIndex, newIndex) async {
+                if (newIndex > oldIndex) newIndex--;
+                if (oldIndex != newIndex) {
+                  await _handler.moveQueueItem(oldIndex, newIndex);
+                }
               },
+              itemBuilder: (context, index) => buildQueueItem(index),
             );
           },
         );
@@ -1603,7 +1680,7 @@ class _DesktopInfoTab extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: CachedImage(
-                        url: item.artUri?.toString() ?? '',
+                        url: _displayArtworkSource(item) ?? '',
                         width: 128,
                         height: 128,
                       ),
@@ -1887,6 +1964,12 @@ class PlayerScreenHorizontal extends StatefulWidget {
 class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
   @override
   Widget build(BuildContext context) {
+    final isDesktop =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.windows);
+    final actionIconSize = isDesktop ? 22.0 : ScreenUtil().setWidth(12);
     return Row(
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -1909,7 +1992,7 @@ class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
                 padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
                 child: PlayerScreenTopRow(
                   textSize: ScreenUtil().setSp(28),
-                  iconSize: ScreenUtil().setSp(38),
+                  iconSize: isDesktop ? 24 : ScreenUtil().setSp(38),
                   textWidth: ScreenUtil().setWidth(150),
                   short: false,
                 ),
@@ -1974,7 +2057,10 @@ class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: const SeekBar(24.0),
               ),
-              PlaybackControls(ScreenUtil().setSp(60), horizontalPadding: 16),
+              PlaybackControls(
+                isDesktop ? 48 : ScreenUtil().setSp(60),
+                horizontalPadding: 16,
+              ),
               Padding(
                 //padding: EdgeInsets.fromLTRB(4, 0, 4, 8),
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -1984,7 +2070,10 @@ class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
                     mainAxisSize: MainAxisSize.max,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
-                      LyricsIconButton(12, afterOnPressed: updateColor),
+                      LyricsIconButton(
+                        isDesktop ? 22 : 12,
+                        afterOnPressed: updateColor,
+                      ),
                       if (!GetIt.I<AudioPlayerHandler>().isRadio &&
                           !AudioPlayerHandler.isRadioItem(
                             GetIt.I<AudioPlayerHandler>().mediaItem.value,
@@ -1997,7 +2086,7 @@ class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
                         IconButton(
                           icon: Icon(
                             Icons.file_download,
-                            size: ScreenUtil().setWidth(12),
+                            size: actionIconSize,
                             semanticLabel: 'Download'.i18n,
                           ),
                           onPressed: () async {
@@ -2019,15 +2108,15 @@ class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
                           },
                         )
                       else
-                        SizedBox(width: ScreenUtil().setWidth(12)),
+                        SizedBox(width: actionIconSize),
                       const QualityInfoWidget(),
                       if (!GetIt.I<AudioPlayerHandler>().isRadio &&
                           !AudioPlayerHandler.isRadioItem(
                             GetIt.I<AudioPlayerHandler>().mediaItem.value,
                           ))
-                        RepeatButton(ScreenUtil().setWidth(12))
+                        RepeatButton(actionIconSize)
                       else
-                        SizedBox(width: ScreenUtil().setWidth(12)),
+                        SizedBox(width: actionIconSize),
                       const PlayerMenuButton(),
                     ],
                   ),
@@ -2052,6 +2141,12 @@ class PlayerScreenVertical extends StatefulWidget {
 class _PlayerScreenVerticalState extends State<PlayerScreenVertical> {
   @override
   Widget build(BuildContext context) {
+    final isDesktop =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.windows);
+    final actionIconSize = isDesktop ? 22.0 : ScreenUtil().setWidth(20);
     return Column(
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2131,14 +2226,20 @@ class _PlayerScreenVerticalState extends State<PlayerScreenVertical> {
           ],
         ),
         const SeekBar(12.0),
-        PlaybackControls(ScreenUtil().setSp(36), horizontalPadding: 16),
+        PlaybackControls(
+          isDesktop ? 32 : ScreenUtil().setSp(36),
+          horizontalPadding: 16,
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16.0),
           child: Row(
             mainAxisSize: MainAxisSize.max,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              LyricsIconButton(20, afterOnPressed: updateColor),
+              LyricsIconButton(
+                isDesktop ? 22 : 20,
+                afterOnPressed: updateColor,
+              ),
               if (!GetIt.I<AudioPlayerHandler>().isRadio &&
                   !AudioPlayerHandler.isRadioItem(
                     GetIt.I<AudioPlayerHandler>().mediaItem.value,
@@ -2151,7 +2252,7 @@ class _PlayerScreenVerticalState extends State<PlayerScreenVertical> {
                 IconButton(
                   icon: Icon(
                     Icons.file_download,
-                    size: ScreenUtil().setWidth(20),
+                    size: actionIconSize,
                     semanticLabel: 'Download'.i18n,
                   ),
                   onPressed: () async {
@@ -2173,15 +2274,15 @@ class _PlayerScreenVerticalState extends State<PlayerScreenVertical> {
                   },
                 )
               else
-                SizedBox(width: ScreenUtil().setWidth(20)),
+                SizedBox(width: actionIconSize),
               const QualityInfoWidget(),
               if (!GetIt.I<AudioPlayerHandler>().isRadio &&
                   !AudioPlayerHandler.isRadioItem(
                     GetIt.I<AudioPlayerHandler>().mediaItem.value,
                   ))
-                RepeatButton(ScreenUtil().setWidth(20))
+                RepeatButton(actionIconSize)
               else
-                SizedBox(width: ScreenUtil().setWidth(20)),
+                SizedBox(width: actionIconSize),
               const PlayerMenuButton(),
             ],
           ),
@@ -2301,24 +2402,26 @@ class LyricsIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mediaItem = GetIt.I<AudioPlayerHandler>().mediaItem.value;
+    final isDesktop =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.windows);
+    final iconSize = isDesktop ? width : ScreenUtil().setWidth(width);
     if (mediaItem == null) return const SizedBox.shrink();
     final isRadio =
         GetIt.I<AudioPlayerHandler>().isRadio ||
         AudioPlayerHandler.isRadioItem(mediaItem);
     final radioTrackId = mediaItem.extras?['radioTrackId'] as String?;
     if (isRadio && (radioTrackId == null || radioTrackId.isEmpty)) {
-      return SizedBox(width: ScreenUtil().setWidth(width));
+      return SizedBox(width: iconSize);
     }
     final trackId = radioTrackId ?? mediaItem.id;
 
     return Opacity(
       opacity: 1.0,
       child: IconButton(
-        icon: Icon(
-          Icons.lyrics,
-          size: ScreenUtil().setWidth(width),
-          semanticLabel: 'Lyrics'.i18n,
-        ),
+        icon: Icon(Icons.lyrics, size: iconSize, semanticLabel: 'Lyrics'.i18n),
         onPressed: () async {
           //Fix bottom buttons
           SystemChrome.setSystemUIOverlayStyle(
@@ -2643,6 +2746,7 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
   List<MediaItem> _queue = [];
   late PageController _pageController;
   StreamSubscription? _currentItemAndQueueSub;
+  late int _lastKnownCurrentIndex;
   bool _isVisible = false;
   // Count of active programmatic page transitions.
   // Intermediate pages passed during programmatic moves must not trigger skips.
@@ -2655,7 +2759,9 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: audioHandler.currentIndex);
+    final initialIndex = audioHandler.currentIndex;
+    _lastKnownCurrentIndex = initialIndex < 0 ? 0 : initialIndex;
+    _pageController = PageController(initialPage: _lastKnownCurrentIndex);
 
     _queue = audioHandler.queue.value;
 
@@ -2665,14 +2771,42 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
           audioHandler.queue,
           (mediaItem, queue) {
             if (queue.isNotEmpty) {
-              _handleMediaItemChange(mediaItem);
-              if (_didQueueChange(queue)) {
+              final queueChanged = _didQueueChange(queue);
+              final currentIndex = audioHandler.currentIndex;
+              final activeItem = mediaItem;
+              final currentItemWasReordered =
+                  queueChanged &&
+                  queue.length == _queue.length &&
+                  currentIndex != _lastKnownCurrentIndex &&
+                  _lastKnownCurrentIndex >= 0 &&
+                  _lastKnownCurrentIndex < _queue.length &&
+                  currentIndex >= 0 &&
+                  currentIndex < queue.length &&
+                  activeItem != null &&
+                  _queue[_lastKnownCurrentIndex].id == activeItem.id &&
+                  queue[currentIndex].id == activeItem.id;
+
+              _lastKnownCurrentIndex = currentIndex;
+              if (queueChanged) {
                 setState(() {
                   // AudioService publishes immutable queue snapshots. Keep
                   // the snapshot itself so media-item-only events can be
                   // recognized by identity without copying a large queue.
                   _queue = queue;
                 });
+              }
+
+              if (currentItemWasReordered) {
+                // A queue reorder changes the current track's numeric index,
+                // but the track itself hasn't changed. Keep its artwork in
+                // place without animating through the newly reordered items.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && _pageController.hasClients) {
+                    _pageController.jumpToPage(currentIndex);
+                  }
+                });
+              } else {
+                _handleMediaItemChange(mediaItem);
               }
             }
           },
@@ -2803,6 +2937,21 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final keyCounts = <String, int>{};
+    final pageKeys = <Key>[];
+    final keyToIndex = <Key, int>{};
+    for (var index = 0; index < _queue.length; index++) {
+      final id = _queue[index].id;
+      final occurrence = keyCounts.update(
+        id,
+        (count) => count + 1,
+        ifAbsent: () => 0,
+      );
+      final key = ValueKey<String>('$id#$occurrence');
+      pageKeys.add(key);
+      keyToIndex[key] = index;
+    }
+
     return VisibilityDetector(
       key: const Key('big_album_art'),
       onVisibilityChanged: (VisibilityInfo info) {
@@ -2824,11 +2973,12 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
             child: PageView.builder(
               controller: _pageController,
               itemCount: _queue.length,
+              findChildIndexCallback: (key) => keyToIndex[key],
               itemBuilder: (context, index) {
                 final item = _queue[index];
                 return ZoomableImage(
-                  key: ValueKey('${item.id}_$index'),
-                  url: item.artUri?.toString() ?? '',
+                  key: pageKeys[index],
+                  url: _displayArtworkSource(item) ?? '',
                   caption: item.extras?['caption'] as String?,
                 );
               },

@@ -1,3 +1,4 @@
+import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
@@ -1093,9 +1094,7 @@ class _DownloadWorker {
   Map<String, dynamic> _lyricsToJson(LyricsFull lyrics) => {
     'id': lyrics.id,
     'writers': lyrics.writers,
-    'syncedLyrics': lyrics.syncedLyrics
-        ?.map((line) => line.toJson())
-        .toList(),
+    'syncedLyrics': lyrics.syncedLyrics?.map((line) => line.toJson()).toList(),
     'errorMessage': lyrics.errorMessage,
     'unsyncedLyrics': lyrics.unsyncedLyrics,
     'unsyncedTranslatedLyrics': lyrics.unsyncedTranslatedLyrics,
@@ -1127,8 +1126,7 @@ class _DownloadWorker {
             : await createDownloadPlatform(
                 platformId,
                 settings,
-                executeJavaScriptOnRootIsolate:
-                    executeJavaScriptOnRootIsolate,
+                executeJavaScriptOnRootIsolate: executeJavaScriptOnRootIsolate,
               );
         resolvedSource = 'platform:${provider.platformId}';
         if (provider.platformId == nativePlatform.platformId) {
@@ -1162,7 +1160,8 @@ class _DownloadWorker {
           final candidates = await lyricProvider.getLyricsCandidates(track);
           final selected = candidateId == null
               ? null
-              : candidates.where((candidate) => candidate.id == candidateId)
+              : candidates
+                    .where((candidate) => candidate.id == candidateId)
                     .firstOrNull;
           lyrics = selected?.lyrics ?? await lyricProvider.getLyrics(track);
         }
@@ -1270,9 +1269,9 @@ class _DownloadWorker {
   Future<Directory> _temporaryRoot() async {
     if (Platform.isAndroid || Platform.isIOS) {
       return await getExternalStorageDirectory() ??
-          await getApplicationSupportDirectory();
+          await getFlavorSupportDirectory();
     }
-    return getApplicationSupportDirectory();
+    return getFlavorSupportDirectory();
   }
 
   Future<int?> _download(
@@ -1417,11 +1416,8 @@ class _DownloadWorker {
     // line-timed LRC instead. A single timed line is still valid LRC.
     if ((settings['downloadLyrics'] as bool? ?? false) &&
         lyrics?.syncedLyrics?.isNotEmpty == true) {
-      final useEnhancedLrc =
-          settings['downloadEnhancedLrc'] as bool? ?? false;
-      await File(
-        _sidecarPath(outputFile, 'lrc'),
-      ).writeAsString(
+      final useEnhancedLrc = settings['downloadEnhancedLrc'] as bool? ?? false;
+      await File(_sidecarPath(outputFile, 'lrc')).writeAsString(
         _generateLrc(metadata, lyrics!, enhanced: useEnhancedLrc),
       );
     }

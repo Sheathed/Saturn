@@ -1,3 +1,4 @@
+import '../../utils/app_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:get_it/get_it.dart';
@@ -13,7 +14,6 @@ import '../../ui/menu.dart';
 import 'neurokaraoke_api.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:silky_scroll/silky_scroll.dart';
 import 'package:saturn/ui/smooth_scroll_config.dart';
@@ -69,7 +69,7 @@ class _NeuroKaraokeExplorePageState extends State<NeuroKaraokeExplorePage> {
   }
 
   Future<String> _getCachePath() async {
-    Directory d = await getApplicationSupportDirectory();
+    Directory d = await getFlavorSupportDirectory();
     return p.join(d.path, 'nk_explore_cache.json');
   }
 
@@ -174,102 +174,100 @@ class _NeuroKaraokeExplorePageState extends State<NeuroKaraokeExplorePage> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final pageChildren = <Widget>[
+      NeuroRadioStationCard(radio: widget.radio),
+
+      if (_recent != null)
+        _buildFeaturedList(
+          context,
+          'Recent Setlist',
+          _recent!,
+          _recent!.tracks ?? [],
+        ),
+
+      if (_suggestions.isNotEmpty)
+        _buildFeaturedList(
+          context,
+          'Made for You',
+          Playlist(
+            id: 'made-for-you',
+            title: 'Your mix',
+            description:
+                'Personalized song recommendations based on your listening history',
+            tracks: _suggestions,
+            trackCount: _suggestions.length,
+            image:
+                _suggestions.first.albumArt ??
+                ImageDetails(
+                  fullUrl: 'https://www.neurokaraoke.com/img/nosource.png',
+                ),
+            mosaicImages: _mosaicForTracks(_suggestions).$1,
+            mosaicImageCaptions: _mosaicForTracks(_suggestions).$2,
+            platformId: 'neurokaraoke',
+          ),
+          _suggestions,
+        ),
+
+      if (_trending.isNotEmpty)
+        _buildFeaturedList(
+          context,
+          'Trending This Week',
+          Playlist(
+            id: 'trending',
+            title: 'Trending This Week',
+            description: 'The most played songs over the past 7 days',
+            tracks: _trending,
+            trackCount: _trending.length,
+            image:
+                _trending.first.albumArt ??
+                ImageDetails(
+                  fullUrl: 'https://www.neurokaraoke.com/img/nosource.png',
+                ),
+            mosaicImages: _mosaicForTracks(_trending).$1,
+            mosaicImageCaptions: _mosaicForTracks(_trending).$2,
+            platformId: 'neurokaraoke',
+          ),
+          _trending,
+        ),
+
+      if (_stats != null || _genres.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              bool isWide = constraints.maxWidth > 800;
+              final statsWidget = _stats != null
+                  ? _buildStatsSection(context, _stats!)
+                  : const SizedBox();
+              final genresWidget = _genres.isNotEmpty
+                  ? _buildGenresSection(context, _genres)
+                  : const SizedBox();
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: statsWidget),
+                    const SizedBox(width: 32),
+                    Expanded(child: genresWidget),
+                  ],
+                );
+              } else {
+                return Column(
+                  children: [
+                    statsWidget,
+                    const SizedBox(height: 16),
+                    genresWidget,
+                  ],
+                );
+              }
+            },
+          ),
+        ),
+    ];
     return SilkyListView(
       silkyConfig: silkyScrollConfig,
       padding: const EdgeInsets.only(bottom: 32),
-      children: [
-        NeuroRadioStationCard(radio: widget.radio),
-
-        if (_recent != null)
-          _buildFeaturedList(
-            context,
-            'Recent Setlist',
-            _recent!,
-            _recent!.tracks ?? [],
-          ),
-
-        if (_suggestions.isNotEmpty)
-          _buildFeaturedList(
-            context,
-            'Made for You',
-            Playlist(
-              id: 'made-for-you',
-              title: 'Your mix',
-              description:
-                  'Personalized song recommendations based on your listening history',
-              tracks: _suggestions,
-              trackCount: _suggestions.length,
-              image:
-                  _suggestions.first.albumArt ??
-                  ImageDetails(
-                    fullUrl: 'https://www.neurokaraoke.com/img/nosource.png',
-                  ),
-              mosaicImages: _mosaicForTracks(_suggestions).$1,
-              mosaicImageCaptions: _mosaicForTracks(_suggestions).$2,
-              platformId: 'neurokaraoke',
-            ),
-            _suggestions,
-          ),
-
-        if (_trending.isNotEmpty)
-          _buildFeaturedList(
-            context,
-            'Trending This Week',
-            Playlist(
-              id: 'trending',
-              title: 'Trending This Week',
-              description: 'The most played songs over the past 7 days',
-              tracks: _trending,
-              trackCount: _trending.length,
-              image:
-                  _trending.first.albumArt ??
-                  ImageDetails(
-                    fullUrl: 'https://www.neurokaraoke.com/img/nosource.png',
-                  ),
-              mosaicImages: _mosaicForTracks(_trending).$1,
-              mosaicImageCaptions: _mosaicForTracks(_trending).$2,
-              platformId: 'neurokaraoke',
-            ),
-            _trending,
-          ),
-
-        if (_stats != null || _genres.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 16.0,
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                bool isWide = constraints.maxWidth > 800;
-                final statsWidget = _stats != null
-                    ? _buildStatsSection(context, _stats!)
-                    : const SizedBox();
-                final genresWidget = _genres.isNotEmpty
-                    ? _buildGenresSection(context, _genres)
-                    : const SizedBox();
-                if (isWide) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: statsWidget),
-                      const SizedBox(width: 32),
-                      Expanded(child: genresWidget),
-                    ],
-                  );
-                } else {
-                  return Column(
-                    children: [
-                      statsWidget,
-                      const SizedBox(height: 16),
-                      genresWidget,
-                    ],
-                  );
-                }
-              },
-            ),
-          ),
-      ],
+      children: pageChildren,
     );
   }
 
@@ -505,30 +503,42 @@ class _NeuroKaraokeExplorePageState extends State<NeuroKaraokeExplorePage> {
           ),
         );
 
-        final listWidget = SilkyListView.builder(
-          silkyConfig: silkyScrollConfig,
-          shrinkWrap: true,
-          physics: isWide
-              ? ScrollConfiguration.of(context).getScrollPhysics(context)
-              : const NeverScrollableScrollPhysics(),
-          itemCount: tracks.length,
-          itemBuilder: (context, index) {
-            final track = tracks[index];
-            return TrackTile(
-              track,
-              onTap: () {
-                GetIt.I<AudioPlayerHandler>().playFromPlaylist(
-                  playlist,
-                  track.id!,
-                );
-              },
-              onHold: () {
-                MenuSheet m = MenuSheet();
-                m.defaultTrackMenu(track, context: context);
-              },
-            );
-          },
-        );
+        Widget buildTrackTile(BuildContext context, int index) {
+          final track = tracks[index];
+          return TrackTile(
+            track,
+            onTap: () {
+              GetIt.I<AudioPlayerHandler>().playFromPlaylist(
+                playlist,
+                track.id!,
+              );
+            },
+            onHold: () {
+              MenuSheet m = MenuSheet();
+              m.defaultTrackMenu(track, context: context);
+            },
+          );
+        }
+
+        // The inner SilkyListView owns wheel input while hovered; the package
+        // routes nested silky scroll events to the deepest hovered list and
+        // lets the page handle input outside the list or at its edges.
+        final listWidget = isWide
+            ? SilkyListView.builder(
+                silkyConfig: silkyScrollConfig,
+                shrinkWrap: true,
+                physics: ScrollConfiguration.of(
+                  context,
+                ).getScrollPhysics(context),
+                itemCount: tracks.length,
+                itemBuilder: buildTrackTile,
+              )
+            : ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: tracks.length,
+                itemBuilder: buildTrackTile,
+              );
 
         final constrainedListWidget = isWide
             ? ConstrainedBox(

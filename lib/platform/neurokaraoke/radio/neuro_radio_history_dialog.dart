@@ -312,8 +312,8 @@ class _NeuroRadioHistoryDialogState extends State<NeuroRadioHistoryDialog> {
                       itemBuilder: (context, index) {
                         final track = _history[index];
                         final artUrl =
-                            track.albumArt?.thumbUrl ??
                             track.albumArt?.fullUrl ??
+                            track.albumArt?.thumbUrl ??
                             '';
                         final title = track.title ?? 'Unknown Track';
                         final artist = track.artistString ?? 'Unknown Artist';

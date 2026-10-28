@@ -4,8 +4,8 @@ import 'dart:ui';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'
     as flutter_localizations;
@@ -18,14 +18,13 @@ import 'package:quick_actions/quick_actions.dart';
 import 'package:saturn/utils/rpc_service.dart';
 import 'package:saturn/utils/single_instance.dart';
 import 'package:saturn/utils/tray_service.dart';
-import 'package:window_manager/window_manager.dart';
 import 'package:windows_taskbar/windows_taskbar.dart';
 import 'api/cache.dart';
-import 'api/definitions.dart';
 import 'api/download.dart';
 import 'platform/deezer/deezer_platform.dart';
 import 'platform/stream_proxy_server.dart';
 import 'platform/platform_manager.dart';
+import 'platform/music_platform.dart';
 import 'platform/platform_registry.dart';
 import 'platform/neurokaraoke/neurokaraoke_platform.dart';
 import 'platform/soundcloud/soundcloud_platform.dart';
@@ -41,16 +40,29 @@ import 'ui/music_link_navigation.dart';
 import 'ui/toast.dart';
 import 'utils/app_config.dart';
 import 'utils/directory_migration.dart';
+import 'utils/desktop_window_state.dart';
 import 'utils/logging.dart';
 import 'utils/app_http_proxy.dart';
 import 'utils/app_webview_proxy.dart';
 import 'utils/update_service.dart';
+
+bool get _supportsDesktopSpacebar =>
+    !kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+
+bool _textEntryHasFocus() {
+  final context = FocusManager.instance.primaryFocus?.context;
+  return context != null &&
+      (context.widget is EditableText ||
+          context.findAncestorWidgetOfExactType<EditableText>() != null ||
+          context.findAncestorWidgetOfExactType<TextField>() != null);
+}
 
 late Function updateTheme;
 late Future<void> Function() logOut;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _configureMobileOrientation();
 
   // Set up global error handling
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -121,6 +133,7 @@ void main() async {
   if (Platform.isAndroid) await setupServiceLocator();
 
   await prepareRun();
+  await _configureDesktopWindow();
 
   runApp(const Restartable(child: SaturnApp()));
 
@@ -128,7 +141,6 @@ void main() async {
   // resumption starts this same Dart entry point without an Activity, and must
   // not wait for a permission dialog before it can prepare playback.
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(_configureDesktopWindow());
     if (PlatformDispatcher.instance.views.isNotEmpty) {
       unawaited(() async {
         await _requestNotificationPermission();
@@ -151,12 +163,26 @@ void main() async {
   }
 }
 
+Future<void> _configureMobileOrientation() async {
+  if (!Platform.isAndroid && !Platform.isIOS) return;
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return;
+  final view = views.first;
+  final logicalSize = view.physicalSize / view.devicePixelRatio;
+  // A 600 dp shortest side is Flutter's standard tablet breakpoint. Checking
+  // shortestSide keeps phones portrait-locked even when currently rotated.
+  if (logicalSize.shortestSide < 600) {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+  }
+}
+
 Future<void> _configureDesktopWindow() async {
   if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) return;
 
   try {
-    await windowManager.ensureInitialized();
-    await windowManager.setTitle(appTitle);
+    await DesktopWindowState.instance.initializeAndRestore();
   } catch (error, stackTrace) {
     Logger.root.warning(
       'Could not configure desktop window: $error',
@@ -246,14 +272,34 @@ class SaturnApp extends StatefulWidget {
 class _SaturnAppState extends State<SaturnApp> {
   @override
   void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleGlobalPlaybackKey);
     //Make update theme global
     updateTheme = _updateTheme;
     _updateTheme();
-    super.initState();
+  }
+
+  bool _handleGlobalPlaybackKey(KeyEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.space ||
+        !_supportsDesktopSpacebar ||
+        !settings.spacebarPlaybackToggle ||
+        _textEntryHasFocus()) {
+      return false;
+    }
+    if (event is KeyRepeatEvent) return true;
+    if (event is! KeyDownEvent || !GetIt.I.isRegistered<AudioPlayerHandler>()) {
+      return false;
+    }
+    final player = GetIt.I<AudioPlayerHandler>();
+    unawaited(
+      player.playbackState.value.playing ? player.pause() : player.play(),
+    );
+    return true;
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleGlobalPlaybackKey);
     super.dispose();
   }
 
@@ -357,8 +403,10 @@ class AppInitializer extends StatefulWidget {
 
 class _AppInitializerState extends State<AppInitializer> {
   late final AppLifecycleListener _lifeCycleListener;
+  static const QuickActions _quickActions = QuickActions();
   Future<void>? _initialization;
   StreamSubscription? _urlLinkStream;
+  bool _quickActionsInitialized = false;
 
   @override
   void initState() {
@@ -366,6 +414,9 @@ class _AppInitializerState extends State<AppInitializer> {
     _lifeCycleListener = AppLifecycleListener(
       onStateChange: _onLifeCycleChanged,
     );
+    if (Platform.isAndroid || Platform.isIOS) {
+      PlatformManager.instance.addListener(_onActivePlatformChanged);
+    }
 
     // Load token on background via the connected platforms
     settings.offlineMode = true;
@@ -523,22 +574,11 @@ class _AppInitializerState extends State<AppInitializer> {
 
   Future<void> _prepareQuickActions() async {
     try {
-      const quickActions = QuickActions();
-      await quickActions.initialize((type) {
-        _startPreload(type);
-      });
-      await quickActions.setShortcutItems([
-        ShortcutItem(
-          type: 'favorites',
-          localizedTitle: 'Favorites'.i18n,
-          icon: 'ic_favorites',
-        ),
-        ShortcutItem(
-          type: 'flow',
-          localizedTitle: 'Flow'.i18n,
-          icon: 'ic_flow',
-        ),
-      ]);
+      if (!_quickActionsInitialized) {
+        await _quickActions.initialize(_startPreload);
+        _quickActionsInitialized = true;
+      }
+      await _refreshQuickActions();
     } on MissingPluginException {
       // The media-resumption engine has no Activity for this UI plugin.
     } on PlatformException catch (error) {
@@ -546,30 +586,123 @@ class _AppInitializerState extends State<AppInitializer> {
     }
   }
 
-  void _startPreload(String type) async {
-    if (!await PlatformManager.instance.active.isLoggedIn()) return;
-    if (type == 'flow') {
-      await GetIt.I<AudioPlayerHandler>().playFromSmartTrackList(
-        SmartTrackList(id: 'flow'),
-      );
-      return;
-    }
-    if (type == 'favorites') {
-      try {
-        final platform = PlatformManager.instance.active;
-        // Use the first available user playlist as a fallback for platforms
-        // that do not expose a dedicated favorites playlist.
-        final playlists = await platform.getUserPlaylists();
-        if (playlists.isNotEmpty) {
-          Playlist p = await platform.getFullPlaylist(playlists.first.id!);
-          final firstTrackId = p.tracks?.isNotEmpty == true
-              ? (p.tracks!.first.id ?? '')
-              : '';
-          GetIt.I<AudioPlayerHandler>().playFromPlaylist(p, firstTrackId);
+  void _onActivePlatformChanged() {
+    if (_quickActionsInitialized) unawaited(_refreshQuickActions());
+  }
+
+  Future<void> _refreshQuickActions() async {
+    try {
+      final authenticatedPlatforms = <MusicPlatform>[];
+      for (final platform in PlatformRegistry.instance.allPlatforms) {
+        if (await platform.isLoggedIn()) {
+          authenticatedPlatforms.add(platform);
         }
-      } catch (e) {
-        Logger.root.severe('Error preloading favorites', e);
       }
+      if (authenticatedPlatforms.isEmpty) {
+        await _quickActions.setShortcutItems(const []);
+        return;
+      }
+
+      final activePlatformId = PlatformManager.instance.activePlatformId;
+      final activePlatform = authenticatedPlatforms
+          .where((platform) => platform.platformId == activePlatformId)
+          .firstOrNull;
+      final favoritePlatform =
+          activePlatform != null &&
+              activePlatform.capabilities.supportsLibrarySync
+          ? activePlatform
+          : authenticatedPlatforms
+                .where((platform) => platform.capabilities.supportsLibrarySync)
+                .firstOrNull;
+      final shortcuts = <ShortcutItem>[
+        if (favoritePlatform != null)
+          ShortcutItem(
+            type: 'favorites:${favoritePlatform.platformId}',
+            localizedTitle: 'Favorites'.i18n,
+            icon: 'shortcut_favorites',
+          ),
+      ];
+
+      // Register one shortcut per authenticated platform. Android launchers
+      // choose how many to show; order Favorites first, then the active
+      // platform, followed by the remaining platforms.
+      final orderedPlatforms = <MusicPlatform>[];
+      if (activePlatform case final platform?) {
+        orderedPlatforms.add(platform);
+      }
+      orderedPlatforms.addAll(
+        authenticatedPlatforms.where(
+          (platform) => platform.platformId != activePlatformId,
+        ),
+      );
+      for (final platform in orderedPlatforms) {
+        final action = platform.appShortcuts.firstOrNull;
+        if (action == null) continue;
+        shortcuts.add(
+          ShortcutItem(
+            type: 'platform:${platform.platformId}:${action.id}',
+            localizedTitle: action.title,
+            icon: action.icon,
+          ),
+        );
+      }
+      if (shortcuts.isEmpty) {
+        // A signed-in platform without shortcut capabilities still gets no
+        // unrelated Deezer actions.
+        await _quickActions.setShortcutItems(const []);
+        return;
+      }
+      await _quickActions.setShortcutItems(shortcuts);
+    } on MissingPluginException {
+      // The media-resumption engine has no Activity for this UI plugin.
+    } on PlatformException catch (error) {
+      Logger.root.info('Could not update app shortcuts: $error');
+    } catch (error, stackTrace) {
+      Logger.root.warning('Could not update app shortcuts', error, stackTrace);
+    }
+  }
+
+  void _startPreload(String type) async {
+    try {
+      final parts = type.split(':');
+      if (parts.first == 'favorites' &&
+          (parts.length == 1 || parts.length == 2)) {
+        // The generic shortcut targets the active platform. Continue to accept
+        // older per-platform shortcut IDs saved by Android.
+        final platformId = parts.length == 2
+            ? parts[1]
+            : PlatformManager.instance.activePlatformId;
+        final platform = PlatformManager.instance.getPlatform(platformId);
+        if (!await platform.isLoggedIn()) return;
+        final tracks = await platform.getAllFavoriteTracks();
+        if (tracks.isEmpty) return;
+        await GetIt.I<AudioPlayerHandler>().playFromTrackList(
+          tracks,
+          tracks.first.id ?? '',
+          platform.favoritesQueueSource,
+        );
+        return;
+      }
+      if (parts.first == 'platform' && parts.length == 3) {
+        final platform = PlatformManager.instance.getPlatform(parts[1]);
+        if (await platform.isLoggedIn()) {
+          await platform.handleAppShortcut(parts[2]);
+        }
+        return;
+      }
+
+      // Support shortcuts saved by older app versions.
+      final platform = PlatformManager.instance.active;
+      if (!await platform.isLoggedIn()) return;
+      if (type == 'flow') {
+        await platform.handleAppShortcut('flow');
+      }
+    } catch (error, stackTrace) {
+      Logger.root.severe(
+        'Could not handle app shortcut "$type"',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -668,6 +801,9 @@ class _AppInitializerState extends State<AppInitializer> {
   @override
   void dispose() {
     _urlLinkStream?.cancel();
+    if (Platform.isAndroid || Platform.isIOS) {
+      PlatformManager.instance.removeListener(_onActivePlatformChanged);
+    }
     _lifeCycleListener.dispose();
     super.dispose();
   }

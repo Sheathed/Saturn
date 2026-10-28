@@ -33,8 +33,6 @@ class LrclibLyricsProvider extends LyricsProvider {
       final searchUri = Uri.https('lrclib.net', '/api/search', {
         'track_name': title,
         'artist_name': artistStr,
-        if (track.album?.title?.isNotEmpty == true)
-          'album_name': track.album!.title!,
       });
       final response = await http.get(searchUri, headers: _headers);
       if (response.statusCode == 200) {
@@ -57,7 +55,9 @@ class LrclibLyricsProvider extends LyricsProvider {
       // Preserve LRCLIB's exact-signature lookup as a fallback when search
       // doesn't return a sufficiently close metadata and duration match.
       final exact = await _getExactRecord(track);
-      final candidate = exact == null ? null : _candidateFromRecord(exact, track);
+      final candidate = exact == null
+          ? null
+          : _candidateFromRecord(exact, track);
       return candidate == null ? const [] : [candidate];
     } catch (e) {
       debugPrint('[LrclibProvider] Search failed: $e');
@@ -84,15 +84,6 @@ class LrclibLyricsProvider extends LyricsProvider {
   }
 
   bool _matchesTrack(Map<String, dynamic> record, Track track) {
-    final expectedDuration = track.duration?.inMilliseconds;
-    final recordDuration = (record['duration'] as num?)?.toDouble();
-    if (expectedDuration != null && expectedDuration > 0) {
-      if (recordDuration == null ||
-          (recordDuration * 1000 - expectedDuration).abs() > 2000) {
-        return false;
-      }
-    }
-
     final expectedTitle = _normalize(track.title ?? '');
     final recordTitle = _normalize(
       (record['trackName'] ?? record['name'] ?? '').toString(),
@@ -174,14 +165,17 @@ class LrclibLyricsProvider extends LyricsProvider {
     return LyricsCandidate(
       id: id,
       providerId: this.id,
-      title: (data['trackName'] ?? data['name'] ?? track.title ?? '').toString(),
+      title: (data['trackName'] ?? data['name'] ?? track.title ?? '')
+          .toString(),
       artist: (data['artistName'] ?? track.artistString ?? '').toString(),
       album: data['albumName']?.toString(),
       duration: duration == null
           ? null
           : Duration(milliseconds: (duration * 1000).round()),
-      wordSynced: data['hasWordSync'] == true &&
-          (syncedLyrics?.any((line) => line.words?.isNotEmpty == true) ?? false),
+      wordSynced:
+          data['hasWordSync'] == true &&
+          (syncedLyrics?.any((line) => line.words?.isNotEmpty == true) ??
+              false),
       lyrics: lyrics,
     );
   }
@@ -197,9 +191,8 @@ class LrclibLyricsProvider extends LyricsProvider {
         return null;
       }
 
-      int? milliseconds(dynamic value) => value is num
-          ? value.round()
-          : int.tryParse(value?.toString() ?? '');
+      int? milliseconds(dynamic value) =>
+          value is num ? value.round() : int.tryParse(value?.toString() ?? '');
 
       final parsedLines = <SynchronizedLyric>[];
       for (final rawLine in rawLines) {
@@ -265,7 +258,8 @@ class LrclibLyricsProvider extends LyricsProvider {
                         .clamp(1, 120000)
                         .toInt(),
                   ),
-            text: rawLine['text']?.toString() ??
+            text:
+                rawLine['text']?.toString() ??
                 words.map((word) => word.text).join(),
             words: words,
           ),

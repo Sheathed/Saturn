@@ -165,6 +165,10 @@ class YouTubeMusicStreamProvider extends StreamProvider {
     // this provider logs the final, classified result instead.
     hierarchicalLoggingEnabled = true;
     Logger('YoutubeExplode.StreamsClient').level = Level.OFF;
+    // youtube_explode_dart logs full request URLs, headers, cookies, and stack
+    // traces at FINE/FINER for every stream probe. These are internal retries,
+    // not useful app diagnostics, and can expose session credentials in logs.
+    Logger('YoutubeExplode.HttpClient').level = Level.OFF;
   }
 
   final YoutubeExplode? _customYt;
@@ -185,8 +189,7 @@ class YouTubeMusicStreamProvider extends StreamProvider {
     bool retryWithRefreshedCookie,
   })?
   _innertubePost;
-  final Future<String> Function(String jsCode)?
-  _executeJavaScriptOnRootIsolate;
+  final Future<String> Function(String jsCode)? _executeJavaScriptOnRootIsolate;
   final _log = Logger('YouTubeMusicStreamProvider');
   Future<YoutubeExplode>? _cachedYt;
   Future<YoutubeExplode>? _guestYt;
@@ -949,8 +952,7 @@ class YouTubeMusicStreamProvider extends StreamProvider {
         body: jsonEncode(body),
       );
       if (res.statusCode == 200) {
-        final data =
-            await decodeJsonAsync(res.body) as Map<String, dynamic>;
+        final data = await decodeJsonAsync(res.body) as Map<String, dynamic>;
         final hls = data['streamingData']?['hlsManifestUrl'] as String?;
         if (hls != null && hls.isNotEmpty) {
           return hls;

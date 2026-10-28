@@ -103,8 +103,9 @@ class DownloadLog {
 
   /// Process the write queue sequentially
   Future<void> _processQueue() async {
-    if (_isWriting || _writeQueue.isEmpty || _writer == null || _isClosed)
+    if (_isWriting || _writeQueue.isEmpty || _writer == null || _isClosed) {
       return;
+    }
 
     _isWriting = true;
 

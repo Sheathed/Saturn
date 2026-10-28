@@ -46,18 +46,27 @@ releases:
           target: rpm
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/dev/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-dev-linux-appimage
         package:
           platform: linux
           target: appimage
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/dev/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-dev-linux-deb
         package:
           platform: linux
           target: deb
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/dev/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
   - name: linux-canary
     jobs:
       - name: release-canary-linux-rpm
@@ -66,18 +75,27 @@ releases:
           target: rpm
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/canary/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-canary-linux-appimage
         package:
           platform: linux
           target: appimage
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/canary/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-canary-linux-deb
         package:
           platform: linux
           target: deb
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/canary/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
 
   - name: windows-dev
     jobs:

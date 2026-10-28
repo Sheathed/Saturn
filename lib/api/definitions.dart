@@ -2799,8 +2799,9 @@ extension PlaylistListSorting on List<Playlist> {
       final comparison = compareValues(left.value, right.value);
       return comparison == 0 ? left.key.compareTo(right.key) : comparison;
     });
-    if (sort?.reverse == true)
+    if (sort?.reverse == true) {
       return entries.reversed.map((e) => e.value).toList();
+    }
     return entries.map((entry) => entry.value).toList();
   }
 }

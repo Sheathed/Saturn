@@ -529,8 +529,9 @@ class _LyricsScreenState extends State<LyricsScreen>
         _showLyricsUnavailable();
         return;
       }
-      if (track != null)
+      if (track != null) {
         _setLyricsDisplayProvider('platform:${track.platformId}');
+      }
       _updateLyricsState(l);
     } catch (e, stack) {
       if (!mounted || requestId != _lyricsLoadGeneration) return;

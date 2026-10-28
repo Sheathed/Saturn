@@ -38,6 +38,7 @@ jobs:
     outputs:
       commit: ${{ steps.build_metadata.outputs.commit }}
       release_version: ${{ steps.build_metadata.outputs.release_version }}
+      package_version: ${{ steps.build_metadata.outputs.package_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,11 +87,14 @@ jobs:
         id: build_metadata
         run: |
           VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d'+' -f1 | tr -d '\r')
+          RELEASE_VERSION="$VERSION"
           if [[ "$BUILD_FLAVOR" != "stable" ]]; then
-            VERSION="${VERSION}-${BUILD_FLAVOR}.${GITHUB_RUN_NUMBER}"
+            RELEASE_VERSION="${VERSION}-${BUILD_FLAVOR}.${GITHUB_RUN_NUMBER}"
           fi
+          PACKAGE_VERSION="${VERSION}+${GITHUB_RUN_NUMBER}"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "release_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
 
   LINUX:
     name: Linux
@@ -105,7 +109,7 @@ jobs:
 
       - name: Set package version for this release
         run: |
-          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
 
       - name: Install Linux dependencies
         run: |
@@ -247,7 +251,7 @@ jobs:
 
       - name: Set package version for this release
         run: |
-          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+          sed -i "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
 
       - name: Install Linux dependencies for Dart hooks
         run: |
@@ -350,7 +354,7 @@ jobs:
 
       - name: Set package version for this release
         run: |
-          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -413,7 +417,7 @@ jobs:
 
       - name: Set package version for this release
         run: |
-          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}/" pubspec.yaml
+          sed -i '' "s/^version:.*/version: ${{ needs.VERSION_BUMP.outputs.package_version }}/" pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -487,7 +491,7 @@ jobs:
       - name: Set package version for this release
         shell: pwsh
         run: |
-          (Get-Content pubspec.yaml) -replace '^version:.*$', 'version: ${{ needs.VERSION_BUMP.outputs.release_version }}+${{ github.run_number }}' | Set-Content pubspec.yaml
+          (Get-Content pubspec.yaml) -replace '^version:.*$', 'version: ${{ needs.VERSION_BUMP.outputs.package_version }}' | Set-Content pubspec.yaml
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

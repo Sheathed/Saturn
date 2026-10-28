@@ -105,6 +105,9 @@ releases:
           target: exe
           build_args:
             flavor: dev
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && mkdir -p "$BUILD_OUTPUT_DIRECTORY" && cp -R "$(pwd)/build/windows/x64/dev/runner/Release/." "$BUILD_OUTPUT_DIRECTORY/"
   - name: windows-canary
     jobs:
       - name: release-canary-windows-exe
@@ -113,6 +116,9 @@ releases:
           target: exe
           build_args:
             flavor: canary
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && mkdir -p "$BUILD_OUTPUT_DIRECTORY" && cp -R "$(pwd)/build/windows/x64/canary/runner/Release/." "$BUILD_OUTPUT_DIRECTORY/"
 
   - name: macos-dev
     jobs:

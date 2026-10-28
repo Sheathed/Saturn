@@ -93,10 +93,15 @@ class UpdateService extends ChangeNotifier {
       if (tag == null || tag.trim().isEmpty) {
         throw const FormatException('Release response had no version tag.');
       }
-      currentVersion = info.version.replaceFirst(
-        RegExp(r'-(?:CANARY|DEV)$', caseSensitive: false),
-        '',
+      final installedVersion = info.version.split('+').first;
+      final existingFlavorSuffix = RegExp(
+        r'-(?:canary|dev)\.\d+$',
+        caseSensitive: false,
       );
+      currentVersion = isPrereleaseBuild &&
+              !existingFlavorSuffix.hasMatch(installedVersion)
+          ? '$installedVersion-$appBuildFlavor.${info.buildNumber}'
+          : installedVersion;
       latestVersion = tag.replaceFirst(RegExp(r'^v'), '');
       changelog = data['body'] as String?;
       releasePageUrl = data['html_url'] as String?;

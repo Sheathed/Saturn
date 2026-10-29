@@ -6,4 +6,4 @@ Icon=saturn
 Terminal=false
 Type=Application
 Categories=Utility;
-StartupWMClass=S.s.saturn
+StartupWMClass=@APPLICATION_ID@

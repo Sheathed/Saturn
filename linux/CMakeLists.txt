@@ -146,6 +146,11 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
     COMPONENT Runtime)
 endif()
 
-# Installed by launcher_icons: freedesktop icons + desktop entry from linux/share/.
+# Keep the desktop entry window class aligned with the flavor-specific app ID.
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/share/applications/saturn.desktop"
+  "${PROJECT_BINARY_DIR}/saturn.desktop"
+  @ONLY
+)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/share/icons" DESTINATION "share" COMPONENT Runtime)
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/share/applications" DESTINATION "share" COMPONENT Runtime)
+install(FILES "${PROJECT_BINARY_DIR}/saturn.desktop" DESTINATION "share/applications" COMPONENT Runtime)

@@ -15,6 +15,9 @@ releases:
           target: appimage
           build_args:
             flavor: stable
+          hooks:
+            post:
+              - 'STARTUP_WM_CLASS=s.s.saturn sh linux/packaging/appimage/postprocess.sh'
       - name: release-release-linux-deb
         package:
           platform: linux
@@ -58,6 +61,8 @@ releases:
           hooks:
             pre:
               - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/dev/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
+            post:
+              - 'STARTUP_WM_CLASS=s.s.saturn.dev sh linux/packaging/appimage/postprocess.sh'
       - name: release-dev-linux-deb
         package:
           platform: linux
@@ -87,6 +92,8 @@ releases:
           hooks:
             pre:
               - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/canary/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
+            post:
+              - 'STARTUP_WM_CLASS=s.s.saturn.canary sh linux/packaging/appimage/postprocess.sh'
       - name: release-canary-linux-deb
         package:
           platform: linux

@@ -134,6 +134,7 @@ class _LyricsScreenState extends State<LyricsScreen>
   Timer? _syncTimer;
   final ScrollController _scrollController = ScrollController();
   final ScrollController _providerScrollController = ScrollController();
+  final Map<String, FocusNode> _providerChipFocusNodes = {};
   final GlobalKey _miniPlayerKey = GlobalKey();
   double? _miniPlayerHeight;
   final ValueNotifier<Duration> _positionNotifier = ValueNotifier(
@@ -340,6 +341,9 @@ class _LyricsScreenState extends State<LyricsScreen>
     _radioStateSub?.cancel();
     _scrollController.dispose();
     _providerScrollController.dispose();
+    for (final focusNode in _providerChipFocusNodes.values) {
+      focusNode.dispose();
+    }
     _positionNotifier.dispose();
     if (!widget.embedded) {
       SystemChrome.setSystemUIOverlayStyle(
@@ -1695,266 +1699,296 @@ class _LyricsScreenState extends State<LyricsScreen>
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       height: 44,
-      child: SizedBox(
-        width: double.infinity,
-        child: ScrollConfiguration(
-          // Flutter's default desktop behavior doesn't let a mouse drag a
-          // scroll view. The provider strip should be draggable with a mouse
-          // as well as swipeable on touch screens.
-          behavior: const MaterialScrollBehavior().copyWith(
-            dragDevices: {
-              PointerDeviceKind.touch,
-              PointerDeviceKind.mouse,
-              PointerDeviceKind.stylus,
-            },
-          ),
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerPanZoomUpdate: (event) {
-              if (!_providerScrollController.hasClients) return;
-              // Silky handles horizontal trackpad pans. Native vertical pans
-              // need to be mapped onto this horizontal strip explicitly.
-              if (event.panDelta.dx == 0 && event.panDelta.dy != 0) {
-                _scrollProviderStripBy(-event.panDelta.dy);
-              }
-            },
-            child: SilkySingleChildScrollView(
-              silkyConfig: silkyHorizontalScrollConfig.copyWith(
-                mouseWheelVerticalDeltaBehavior:
-                    MouseWheelVerticalDeltaBehavior.always,
-              ),
-              controller: _providerScrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: List.generate(allProviders.length, (index) {
-                  final isSelected = _selectedProviderIndex == index;
-                  final provider = allProviders[index];
-                  final name = provider is MusicPlatform
-                      ? provider.platformName
-                      : provider is _OfflineLyricsProvider
-                      ? provider.name
-                      : (provider as LyricsProvider).name;
-                  final icon = provider is MusicPlatform
-                      ? provider.buildPlatformIcon(size: 16)
-                      : provider is _OfflineLyricsProvider
-                      ? const Icon(Icons.download_done, size: 16)
-                      : const Icon(Icons.lyrics, size: 16);
-                  final theme = Theme.of(context);
-                  final primary = theme.colorScheme.primary;
-                  final isDark = theme.brightness == Brightness.dark;
-                  final selectedColor = AppTheme.legibleAccent(
-                    primary,
-                    isDark: isDark,
-                  );
-                  final unselectedColor = isDark
-                      ? Colors.white70
-                      : theme.colorScheme.onSurface.withValues(alpha: 0.70);
-                  final unselectedBg = isDark
-                      ? Colors.white.withValues(alpha: 0.07)
-                      : theme.colorScheme.surfaceContainerHighest.withValues(
-                          alpha: 0.40,
-                        );
-                  final unselectedBorder = isDark
-                      ? Colors.white.withValues(alpha: 0.12)
-                      : theme.colorScheme.outlineVariant.withValues(
-                          alpha: 0.45,
-                        );
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOutCubic,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? primary.withValues(alpha: isDark ? 0.22 : 0.12)
-                            : unselectedBg,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: isSelected
-                              ? selectedColor.withValues(
-                                  alpha: isDark ? 0.8 : 0.6,
-                                )
-                              : unselectedBorder,
-                          width: isSelected ? 1.5 : 1,
-                        ),
+      child: ClipRect(
+        child: SizedBox(
+          width: double.infinity,
+          child: ScrollConfiguration(
+            // Flutter's default desktop behavior doesn't let a mouse drag a
+            // scroll view. The provider strip should be draggable with a mouse
+            // as well as swipeable on touch screens.
+            behavior: const MaterialScrollBehavior().copyWith(
+              dragDevices: {
+                PointerDeviceKind.touch,
+                PointerDeviceKind.mouse,
+                PointerDeviceKind.stylus,
+              },
+            ),
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerPanZoomUpdate: (event) {
+                if (!_providerScrollController.hasClients) return;
+                // Silky handles horizontal trackpad pans. Map vertical or
+                // diagonal pans onto this horizontal strip when the vertical
+                // component is dominant.
+                if (event.panDelta.dy.abs() >= event.panDelta.dx.abs() &&
+                    event.panDelta.dy != 0) {
+                  _scrollProviderStripBy(-event.panDelta.dy);
+                }
+              },
+              child: SilkySingleChildScrollView(
+                silkyConfig: silkyHorizontalScrollConfig.copyWith(
+                  mouseWheelVerticalDeltaBehavior:
+                      MouseWheelVerticalDeltaBehavior.always,
+                ),
+                controller: _providerScrollController,
+                scrollDirection: Axis.horizontal,
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(allProviders.length, (index) {
+                    final isSelected = _selectedProviderIndex == index;
+                    final provider = allProviders[index];
+                    final name = provider is MusicPlatform
+                        ? provider.platformName
+                        : provider is _OfflineLyricsProvider
+                        ? provider.name
+                        : (provider as LyricsProvider).name;
+                    final icon = provider is MusicPlatform
+                        ? provider.buildPlatformIcon(size: 16)
+                        : provider is _OfflineLyricsProvider
+                        ? const Icon(Icons.download_done, size: 16)
+                        : const Icon(Icons.lyrics, size: 16);
+                    final theme = Theme.of(context);
+                    final primary = theme.colorScheme.primary;
+                    final isDark = theme.brightness == Brightness.dark;
+                    final selectedColor = AppTheme.legibleAccent(
+                      primary,
+                      isDark: isDark,
+                    );
+                    final unselectedColor = isDark
+                        ? Colors.white70
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.70);
+                    final unselectedBg = isDark
+                        ? Colors.white.withValues(alpha: 0.07)
+                        : theme.colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.40,
+                          );
+                    final unselectedBorder = isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : theme.colorScheme.outlineVariant.withValues(
+                            alpha: 0.45,
+                          );
+                    final providerKey = provider is MusicPlatform
+                        ? 'platform:${provider.platformId}'
+                        : provider is _OfflineLyricsProvider
+                        ? 'offline'
+                        : 'provider:${(provider as LyricsProvider).id}';
+                    final focusNode = _providerChipFocusNodes.putIfAbsent(
+                      providerKey,
+                      () => FocusNode(
+                        debugLabel: 'lyrics-provider-$providerKey',
+                        onKeyEvent: (_, event) =>
+                            event.logicalKey == LogicalKeyboardKey.space &&
+                                !settings.spacebarPlaybackToggle
+                            ? KeyEventResult.handled
+                            : KeyEventResult.ignored,
                       ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(22),
-                        onTap: () async {
-                          final mediaItem =
-                              GetIt.I<AudioPlayerHandler>().mediaItem.value;
-                          var track = mediaItem != null
-                              ? Track.fromMediaItem(mediaItem)
-                              : null;
-                          if (track != null) {
-                            track = await _withOfflineLyrics(track);
-                          }
-                          if (!mounted) return;
-                          final nativePlatformId = track?.platformId;
-                          final isNativePlatform =
-                              provider is MusicPlatform &&
-                              provider.platformId == nativePlatformId;
+                    );
 
-                          if (provider is _OfflineLyricsProvider) {
-                            _setLyricsDisplayProvider('offline');
-                            if (track?.lyrics?.isLoaded() == true) {
-                              setState(() {
-                                _selectedProviderIndex = index;
-                                _selectedLyricsCandidateId = null;
-                                _lyricsCandidates = const [];
-                              });
-                              _syncLyricsChoicesButton();
-                              _updateLyricsState(track!.lyrics!);
-                            } else {
-                              _showLyricsUnavailable();
-                            }
-                            return;
-                          }
-
-                          // Only the track's own platform represents the
-                          // default/native lyrics source. The first visible
-                          // provider can be another platform (for example,
-                          // Deezer while playing a SoundCloud track), and must
-                          // use the cross-platform search path below.
-                          if (isNativePlatform) {
-                            if (_selectedProviderIndex == index &&
-                                _selectedLyricsCandidateId == null &&
-                                track != null &&
-                                _getSavedLyricsChoice(track) == null &&
-                                !_loading) {
-                              return;
-                            }
-                            await _resetToDefaultLyrics();
-                            return;
-                          }
-
-                          if (_selectedProviderIndex == index &&
-                              !_loading &&
-                              _selectedLyricsCandidateId == null) {
-                            return;
-                          }
-                          final requestId = ++_lyricsLoadGeneration;
-                          setState(() {
-                            _selectedProviderIndex = index;
-                            _loading = true;
-                            lyrics = null;
-                            _error = false;
-                            _lyricsUnavailable = false;
-                            _lyricsCandidates = const [];
-                            _selectedLyricsCandidateId = null;
-                          });
-                          _syncLyricsChoicesButton();
-                          if (provider is MusicPlatform) {
-                            _setLyricsDisplayProvider(
-                              'platform:${provider.platformId}',
-                            );
-                            if (track != null) {
-                              _removeSavedLyricsChoice(track);
-                              settings.lyricsChoices[_lyricsPreferenceKey(
-                                    track,
-                                  )] =
-                                  'platform:${provider.platformId}';
-                              unawaited(settings.save());
-                            }
-                            await _loadPlatformLyrics(provider, requestId);
-                          } else {
-                            if (mediaItem == null) {
-                              if (mounted &&
-                                  requestId == _lyricsLoadGeneration) {
-                                _showLyricsUnavailable();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: AnimatedContainer(
+                        clipBehavior: Clip.antiAlias,
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? primary.withValues(alpha: isDark ? 0.22 : 0.12)
+                              : unselectedBg,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: isSelected
+                                ? selectedColor.withValues(
+                                    alpha: isDark ? 0.8 : 0.6,
+                                  )
+                                : unselectedBorder,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(22),
+                            focusNode: focusNode,
+                            onTap: () async {
+                              final mediaItem =
+                                  GetIt.I<AudioPlayerHandler>().mediaItem.value;
+                              var track = mediaItem != null
+                                  ? Track.fromMediaItem(mediaItem)
+                                  : null;
+                              if (track != null) {
+                                track = await _withOfflineLyrics(track);
                               }
-                              return;
-                            }
-                            final lyricsProvider = provider as LyricsProvider;
-                            _setLyricsDisplayProvider(
-                              'provider:${lyricsProvider.id}',
-                            );
-                            final track = Track.fromMediaItem(mediaItem);
-                            _removeSavedLyricsChoice(track);
-                            settings.lyricsChoices[_lyricsPreferenceKey(
-                                  track,
-                                )] =
-                                lyricsProvider.id;
-                            unawaited(settings.save());
+                              if (!mounted) return;
+                              final nativePlatformId = track?.platformId;
+                              final isNativePlatform =
+                                  provider is MusicPlatform &&
+                                  provider.platformId == nativePlatformId;
 
-                            try {
-                              final candidates = await lyricsProvider
-                                  .getLyricsCandidates(track);
-                              if (!mounted ||
-                                  requestId != _lyricsLoadGeneration) {
-                                return;
-                              }
-                              final usableCandidates =
-                                  _distinctUsableCandidates(candidates);
-                              if (usableCandidates.isNotEmpty) {
-                                final selected = usableCandidates.first;
-                                _lyricsCandidates = usableCandidates;
-                                _selectedLyricsCandidateId = selected.id;
-                                _syncLyricsChoicesButton();
-                                _updateLyricsState(selected.lyrics);
-                              } else {
-                                final l = await lyricsProvider.getLyrics(track);
-                                if (!mounted ||
-                                    requestId != _lyricsLoadGeneration) {
-                                  return;
-                                }
-                                if (_hasAnyLyrics(l)) {
-                                  _lyricsCandidates = const [];
-                                  _selectedLyricsCandidateId = null;
+                              if (provider is _OfflineLyricsProvider) {
+                                _setLyricsDisplayProvider('offline');
+                                if (track?.lyrics?.isLoaded() == true) {
+                                  setState(() {
+                                    _selectedProviderIndex = index;
+                                    _selectedLyricsCandidateId = null;
+                                    _lyricsCandidates = const [];
+                                  });
                                   _syncLyricsChoicesButton();
-                                  _updateLyricsState(l);
+                                  _updateLyricsState(track!.lyrics!);
                                 } else {
                                   _showLyricsUnavailable();
                                 }
+                                return;
                               }
-                            } catch (_) {
-                              if (mounted &&
-                                  requestId == _lyricsLoadGeneration) {
-                                _showLyricsUnavailable();
+
+                              // Only the track's own platform represents the
+                              // default/native lyrics source. The first visible
+                              // provider can be another platform (for example,
+                              // Deezer while playing a SoundCloud track), and must
+                              // use the cross-platform search path below.
+                              if (isNativePlatform) {
+                                if (_selectedProviderIndex == index &&
+                                    _selectedLyricsCandidateId == null &&
+                                    track != null &&
+                                    _getSavedLyricsChoice(track) == null &&
+                                    !_loading) {
+                                  return;
+                                }
+                                await _resetToDefaultLyrics();
+                                return;
                               }
-                            }
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconTheme(
-                                data: IconThemeData(
-                                  size: 16,
-                                  color: isSelected
-                                      ? selectedColor
-                                      : unselectedColor,
-                                ),
-                                child: icon,
+
+                              if (_selectedProviderIndex == index &&
+                                  !_loading &&
+                                  _selectedLyricsCandidateId == null) {
+                                return;
+                              }
+                              final requestId = ++_lyricsLoadGeneration;
+                              setState(() {
+                                _selectedProviderIndex = index;
+                                _loading = true;
+                                lyrics = null;
+                                _error = false;
+                                _lyricsUnavailable = false;
+                                _lyricsCandidates = const [];
+                                _selectedLyricsCandidateId = null;
+                              });
+                              _syncLyricsChoicesButton();
+                              if (provider is MusicPlatform) {
+                                _setLyricsDisplayProvider(
+                                  'platform:${provider.platformId}',
+                                );
+                                if (track != null) {
+                                  _removeSavedLyricsChoice(track);
+                                  settings.lyricsChoices[_lyricsPreferenceKey(
+                                        track,
+                                      )] =
+                                      'platform:${provider.platformId}';
+                                  unawaited(settings.save());
+                                }
+                                await _loadPlatformLyrics(provider, requestId);
+                              } else {
+                                if (mediaItem == null) {
+                                  if (mounted &&
+                                      requestId == _lyricsLoadGeneration) {
+                                    _showLyricsUnavailable();
+                                  }
+                                  return;
+                                }
+                                final lyricsProvider =
+                                    provider as LyricsProvider;
+                                _setLyricsDisplayProvider(
+                                  'provider:${lyricsProvider.id}',
+                                );
+                                final track = Track.fromMediaItem(mediaItem);
+                                _removeSavedLyricsChoice(track);
+                                settings.lyricsChoices[_lyricsPreferenceKey(
+                                      track,
+                                    )] =
+                                    lyricsProvider.id;
+                                unawaited(settings.save());
+
+                                try {
+                                  final candidates = await lyricsProvider
+                                      .getLyricsCandidates(track);
+                                  if (!mounted ||
+                                      requestId != _lyricsLoadGeneration) {
+                                    return;
+                                  }
+                                  final usableCandidates =
+                                      _distinctUsableCandidates(candidates);
+                                  if (usableCandidates.isNotEmpty) {
+                                    final selected = usableCandidates.first;
+                                    _lyricsCandidates = usableCandidates;
+                                    _selectedLyricsCandidateId = selected.id;
+                                    _syncLyricsChoicesButton();
+                                    _updateLyricsState(selected.lyrics);
+                                  } else {
+                                    final l = await lyricsProvider.getLyrics(
+                                      track,
+                                    );
+                                    if (!mounted ||
+                                        requestId != _lyricsLoadGeneration) {
+                                      return;
+                                    }
+                                    if (_hasAnyLyrics(l)) {
+                                      _lyricsCandidates = const [];
+                                      _selectedLyricsCandidateId = null;
+                                      _syncLyricsChoicesButton();
+                                      _updateLyricsState(l);
+                                    } else {
+                                      _showLyricsUnavailable();
+                                    }
+                                  }
+                                } catch (_) {
+                                  if (mounted &&
+                                      requestId == _lyricsLoadGeneration) {
+                                    _showLyricsUnavailable();
+                                  }
+                                }
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                name,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.w500,
-                                  color: isSelected
-                                      ? selectedColor
-                                      : unselectedColor,
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconTheme(
+                                    data: IconThemeData(
+                                      size: 16,
+                                      color: isSelected
+                                          ? selectedColor
+                                          : unselectedColor,
+                                    ),
+                                    child: icon,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    name,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? selectedColor
+                                          : unselectedColor,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }),
+                    );
+                  }),
+                ),
               ),
             ),
           ),

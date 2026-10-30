@@ -273,33 +273,27 @@ class _SaturnAppState extends State<SaturnApp> {
   @override
   void initState() {
     super.initState();
-    HardwareKeyboard.instance.addHandler(_handleGlobalPlaybackKey);
     //Make update theme global
     updateTheme = _updateTheme;
     _updateTheme();
   }
 
-  bool _handleGlobalPlaybackKey(KeyEvent event) {
+  KeyEventResult _handleGlobalPlaybackKey(KeyEvent event) {
     if (event.logicalKey != LogicalKeyboardKey.space ||
         !_supportsDesktopSpacebar ||
         !settings.spacebarPlaybackToggle ||
         _textEntryHasFocus()) {
-      return false;
+      return KeyEventResult.ignored;
     }
-    if (event is KeyRepeatEvent) return true;
-    if (event is! KeyDownEvent || !GetIt.I.isRegistered<AudioPlayerHandler>()) {
-      return false;
+    if (event is KeyDownEvent && GetIt.I.isRegistered<AudioPlayerHandler>()) {
+      final player = GetIt.I<AudioPlayerHandler>();
+      unawaited(player.isPlaybackActive ? player.pause() : player.play());
     }
-    final player = GetIt.I<AudioPlayerHandler>();
-    unawaited(
-      player.playbackState.value.playing ? player.pause() : player.play(),
-    );
-    return true;
+    return KeyEventResult.handled;
   }
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleGlobalPlaybackKey);
     super.dispose();
   }
 
@@ -380,9 +374,13 @@ class _SaturnAppState extends State<SaturnApp> {
           routerConfig: appRouter,
           debugShowCheckedModeBanner: false,
           builder: (context, child) {
-            return I18n(
-              initialLocale: _locale(),
-              child: child ?? const SizedBox.shrink(),
+            return Focus(
+              canRequestFocus: false,
+              onKeyEvent: (_, event) => _handleGlobalPlaybackKey(event),
+              child: I18n(
+                initialLocale: _locale(),
+                child: child ?? const SizedBox.shrink(),
+              ),
             );
           },
         );

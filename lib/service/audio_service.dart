@@ -283,6 +283,7 @@ class AudioPlayerHandler extends BaseAudioHandler
   Stream<RadioState?> get radioStateStream => _radioStateSubject.stream;
   RadioState? get radioState => _radioStateSubject.value;
   bool get isRadio => isRadioItem(mediaItem.value) || _radioStationItem != null;
+  bool get isPlaybackActive => _playbackRequested || _player.playing;
   StreamSubscription<RadioNowPlaying>? _radioSubscription;
   Timer? _radioFallbackTimer;
   bool _radioRefreshInFlight = false;
@@ -3658,7 +3659,9 @@ class AudioPlayerHandler extends BaseAudioHandler
       rpc.updateRPC(
         item.title,
         item.artist ?? '',
-        item.artUri?.toString() ?? '',
+        (item.extras?['saturnOriginalArtUri'] as String?) ??
+            item.artUri?.toString() ??
+            '',
         item.album ?? '',
         platformName: platformName,
         shareUrl: shareUrl,

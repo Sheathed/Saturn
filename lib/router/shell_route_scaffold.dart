@@ -118,15 +118,23 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
     final position = _pageScrollPosition;
     if (position == null || !position.hasContentDimensions) return;
 
-    // Re-dispatch the original input type inside the page viewport so Silky
-    // sees the same wheel or native trackpad gesture it receives over the page.
+    // Route gutter input through the outer page scrollable. Centering the
+    // synthetic event can land on a nested list (as on Neuro Karaoke's home
+    // page), making both the nested list and page respond to one gutter scroll.
+    // The left inset is inside the page viewport but outside its content padding.
+    final forwardedPosition = Offset(
+      bounds.left + math.min(13.0, bounds.width / 2),
+      sourceEvent.position.dy
+          .clamp(bounds.top + 1, bounds.bottom - 1)
+          .toDouble(),
+    );
     final forwardedEvent = switch (sourceEvent) {
       PointerScrollEvent event => PointerScrollEvent(
         viewId: sourceEvent.viewId,
         timeStamp: sourceEvent.timeStamp,
         kind: sourceEvent.kind,
         device: sourceEvent.device,
-        position: bounds.center,
+        position: forwardedPosition,
         scrollDelta: event.scrollDelta,
         embedderId: sourceEvent.embedderId,
       ),
@@ -135,7 +143,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
         timeStamp: event.timeStamp,
         device: event.device,
         pointer: event.pointer,
-        position: bounds.center,
+        position: forwardedPosition,
         embedderId: event.embedderId,
       ),
       PointerPanZoomUpdateEvent event => PointerPanZoomUpdateEvent(
@@ -143,7 +151,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
         timeStamp: event.timeStamp,
         device: event.device,
         pointer: event.pointer,
-        position: bounds.center,
+        position: forwardedPosition,
         embedderId: event.embedderId,
         pan: event.pan,
         panDelta: event.panDelta,
@@ -155,7 +163,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
         timeStamp: event.timeStamp,
         device: event.device,
         pointer: event.pointer,
-        position: bounds.center,
+        position: forwardedPosition,
         embedderId: event.embedderId,
       ),
       _ => null,

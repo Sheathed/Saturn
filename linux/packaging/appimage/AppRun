@@ -29,6 +29,12 @@ if [ -n "${LD_LIBRARY_PATH:-}" ]; then
     export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}"
 fi
 
+if [ -n "${APPIMAGE:-}" ] && [ -x "$APPDIR/saturn-appimage-integrate" ]; then
+    # Install a hidden per-user launcher/icon so taskbars can resolve the
+    # flavor StartupWMClass without adding Saturn to the application menu.
+    "$APPDIR/saturn-appimage-integrate" "$APPDIR" "$APPIMAGE" >/dev/null 2>&1 || true
+fi
+
 if [ -x "$SATURN_BIN" ]; then
     # check if AOT library exists and is readable
     if [ -f "${APPDIR}/lib/libapp.so" ]; then

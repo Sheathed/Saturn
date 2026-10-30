@@ -756,10 +756,10 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
       final scale = 0.30 + random.nextDouble() * 0.25;
       final kind = random.nextDouble();
       const verticalMargin = 18.0;
-      const fallDistance = 140.0;
+      final fallDistance = size.height + verticalMargin * 2;
+      final laneWidth = size.width / count;
       final x =
-          i * 24.0 +
-          xSeed * 24.0 +
+          (i + xSeed) * laneWidth +
           math.sin(timeSeconds * 0.62 + swayPhase) * swayAmplitude;
       final y =
           ((ySeed + timeSeconds / fallDuration) % 1).toDouble() * fallDistance -
@@ -833,9 +833,10 @@ class _PlayerBarSeasonalPainter extends CustomPainter {
       final fallDuration = 4 + random.nextDouble() * 10;
       final radius = 0.7 + random.nextDouble() * 1.05;
       const verticalMargin = 5.0;
-      const fallDistance = 140.0;
+      final fallDistance = size.height + verticalMargin * 2;
       final sway = math.sin(timeSeconds * 0.7 + swayPhase) * swayAmplitude;
-      final x = i * 12.0 + xSeed * 12.0 + sway;
+      final laneWidth = size.width / count;
+      final x = (i + xSeed) * laneWidth + sway;
       final y =
           ((ySeed + timeSeconds / fallDuration) % 1).toDouble() * fallDistance -
           verticalMargin;

@@ -165,7 +165,7 @@ class _SeasonalEffectsPainter extends CustomPainter {
         final fallDuration = 13 + random.nextDouble() * 17;
         final radius = 1.4 + random.nextDouble() * 3.0;
         const verticalMargin = 12.0;
-        const fallDistance = 760.0;
+        final fallDistance = size.height + verticalMargin * 2;
         final sway = math.sin(timeSeconds * 0.7 + swayPhase) * swayAmplitude;
         final x = i * 14.0 + xSeed * 14.0 + sway;
         final y =
@@ -243,7 +243,7 @@ class _SeasonalEffectsPainter extends CustomPainter {
       final kind = random.nextDouble();
       final scale = 0.62 + random.nextDouble() * 0.55;
       const verticalMargin = 40.0;
-      const fallDistance = 760.0;
+      final fallDistance = size.height + verticalMargin * 2;
       final x =
           i * 45.0 +
           xSeed * 45.0 +
@@ -1880,11 +1880,13 @@ class _DesktopLyricsTab extends StatelessWidget {
     final item = GetIt.I<AudioPlayerHandler>().mediaItem.value;
     if (item == null) return const SizedBox.shrink();
     final track = Track.fromMediaItem(item);
-    return LyricsScreen(
-      trackId: item.id,
-      lyrics: track.lyrics,
-      embedded: true,
-      controller: controller,
+    return ClipRect(
+      child: LyricsScreen(
+        trackId: item.id,
+        lyrics: track.lyrics,
+        embedded: true,
+        controller: controller,
+      ),
     );
   }
 }

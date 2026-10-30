@@ -51,7 +51,15 @@ if ! command -v convert >/dev/null 2>&1; then
   echo "ImageMagick is required to normalize the AppImage icon" >&2
   exit 1
 fi
-convert "$icon_source" -resize 512x512 "$appdir/$STARTUP_WM_CLASS.png"
+convert "$icon_source" -resize 512x512 -background none -gravity center \
+  -extent 512x512 "$appdir/$STARTUP_WM_CLASS.png"
+for icon_size in 16 24 32 48 64 128 256 512; do
+  icon_directory="$appdir/usr/share/icons/hicolor/${icon_size}x${icon_size}/apps"
+  mkdir -p "$icon_directory"
+  convert "$icon_source" -resize "${icon_size}x${icon_size}" \
+    -background none -gravity center -extent "${icon_size}x${icon_size}" \
+    "$icon_directory/$STARTUP_WM_CLASS.png"
+done
 find "$appdir" -maxdepth 1 -type f -name '*.png' ! -name "$STARTUP_WM_CLASS.png" -delete
 rm -f "$appdir/.DirIcon"
 ln -s "$STARTUP_WM_CLASS.png" "$appdir/.DirIcon"
@@ -91,12 +99,27 @@ done <<EOF
 $desktop_files
 EOF
 
+# AppImage integrations expect a desktop entry at the AppDir root. Fastforge
+# may place it only under usr/share/applications, so expose that entry there.
+root_desktop="$appdir/$STARTUP_WM_CLASS.desktop"
+if [ ! -e "$root_desktop" ]; then
+  nested_desktop="$appdir/usr/share/applications/$STARTUP_WM_CLASS.desktop"
+  if [ -f "$nested_desktop" ]; then
+    ln -s "usr/share/applications/$STARTUP_WM_CLASS.desktop" "$root_desktop"
+  else
+    echo "No root or usr/share/applications desktop entry found for $STARTUP_WM_CLASS" >&2
+    exit 1
+  fi
+fi
+
 if [ ! -f "$project_root/linux/packaging/appimage/AppRun" ]; then
   echo "Custom AppRun not found in $project_root" >&2
   exit 1
 fi
 cp "$project_root/linux/packaging/appimage/AppRun" "$appdir/AppRun"
-chmod +x "$appdir/AppRun"
+cp "$project_root/linux/packaging/appimage/integrate-desktop.sh" \
+  "$appdir/saturn-appimage-integrate"
+chmod +x "$appdir/AppRun" "$appdir/saturn-appimage-integrate"
 chmod -R a+rX "$appdir"
 chmod a+rx "$appdir/AppRun"
 appimagetool -n "$appdir" "$appimage_file"

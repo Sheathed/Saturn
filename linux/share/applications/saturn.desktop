@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=saturn
-Comment=saturn
-Exec=saturn
-Icon=saturn
+Name=@WINDOW_TITLE@
+Comment=@WINDOW_TITLE@ music player
+Exec=Saturn
+Icon=@APPLICATION_ID@
 Terminal=false
 Type=Application
 Categories=Utility;

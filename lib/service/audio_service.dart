@@ -183,6 +183,9 @@ class AudioPlayerHandler extends BaseAudioHandler
   _unavailableStreamSub;
   late final StreamSubscription<Track> _offlineTracksRemovedSub;
   late final StreamSubscription<List<ConnectivityResult>> _connectivitySub;
+  StreamSubscription<double>? _playerVolumeSub;
+  Timer? _playerVolumeSaveTimer;
+  bool _playerVolumeSavePending = false;
   bool _flushingPendingListenLogs = false;
   String? _lastDrmTrackId;
   DateTime? _lastDrmNoticeAt;
@@ -525,6 +528,13 @@ class AudioPlayerHandler extends BaseAudioHandler
   /// Keep a duration already learned for an item when later queue/source
   /// metadata for that same ID omits it or carries a zero placeholder.
   void _publishMediaItem(MediaItem? item) {
+    // Clear radio-only state synchronously with the selected item. Relying on
+    // the mediaItem stream listener leaves a window where restored radio
+    // metadata can leak into a normal track transition.
+    if (!isRadioItem(item) &&
+        (_radioStationItem != null || _radioStateSubject.value != null)) {
+      _stopRadioPolling();
+    }
     final generation = ++_publishedMediaGeneration;
     if (item == null) {
       mediaItem.add(null);
@@ -789,7 +799,9 @@ class AudioPlayerHandler extends BaseAudioHandler
             ? targetStation.id.substring('radio:'.length)
             : targetStation.id);
 
-    if (state == null) {
+    if (state == null ||
+        state.stationId != radioId ||
+        state.platformId != pId) {
       state = RadioState(
         stationId: radioId,
         stationName: targetStation.title,
@@ -851,6 +863,8 @@ class AudioPlayerHandler extends BaseAudioHandler
       return;
     }
 
+    final previousTrackId = currentState.nowPlaying?.id;
+    final isNewTrack = previousTrackId != track.id;
     final previousStart = _radioSongStart;
     if (info.startedAt != null) {
       final start = info.startedAt!.toUtc();
@@ -921,6 +935,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       currentQueue[currentIndex] = updatedStation;
     }
     setMetadata(updatedStation);
+    if (isNewTrack) unawaited(_addToHistory(updatedStation));
     // Playback state carries the position shown by notifications and MPRIS.
     unawaited(_broadcastState(_player.playerEvent));
   }
@@ -989,6 +1004,17 @@ class AudioPlayerHandler extends BaseAudioHandler
   Future<void> _init() async {
     if (Platform.isAndroid) await _androidRuntimeReady.future;
     await _startSession();
+    _playerVolumeSub = _player.volumeStream.distinct().listen((volume) {
+      final normalizedVolume = volume.clamp(0.0, 1.0).toDouble();
+      if (settings.playerVolume == normalizedVolume) return;
+      settings.playerVolume = normalizedVolume;
+      _playerVolumeSavePending = true;
+      _playerVolumeSaveTimer?.cancel();
+      _playerVolumeSaveTimer = Timer(const Duration(milliseconds: 500), () {
+        _playerVolumeSavePending = false;
+        unawaited(settings.save());
+      });
+    });
     _playerInitializedCompleter.complete();
 
     // Keep podcast speed as a preference, and apply it only while an episode
@@ -2067,6 +2093,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       );
     }
 
+    await _player.setVolume(settings.playerVolume.clamp(0.0, 1.0).toDouble());
     await _loadEmptyPlaylist();
     Logger.root.info('audio player initialized!');
     if (Platform.isAndroid) {
@@ -3572,9 +3599,17 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   Future<void> _addToHistory(MediaItem item) async {
     if (!_player.playing) return;
-    if (_scrobblenautReady && _loggedTrackId != item.id) {
-      Logger.root.info('scrobbling track ${item.id} to recently LastFM');
-      _loggedTrackId = item.id;
+    final isRadio = isRadioItem(item);
+    final radioTrackId = item.extras?['radioTrackId'] as String?;
+    // Radio queue entries represent a station until the service supplies the
+    // currently playing song. Never save or scrobble that placeholder.
+    if (isRadio && (radioTrackId == null || radioTrackId.isEmpty)) return;
+
+    final historyTrack = Track.fromMediaItem(item);
+    final historyId = historyTrack.id ?? item.id;
+    if (_scrobblenautReady && _loggedTrackId != historyId) {
+      Logger.root.info('scrobbling track $historyId to recently LastFM');
+      _loggedTrackId = historyId;
       try {
         await _scrobblenaut?.track.scrobble(
           track: item.title,
@@ -3590,9 +3625,9 @@ class AudioPlayerHandler extends BaseAudioHandler
       }
     }
 
-    if (cache.history.isNotEmpty && cache.history.last.id == item.id) return;
-    Logger.root.info('adding track ${item.id} to recently played history');
-    cache.history.add(Track.fromMediaItem(item));
+    if (cache.history.isNotEmpty && cache.history.last.id == historyId) return;
+    Logger.root.info('adding track $historyId to recently played history');
+    cache.history.add(historyTrack);
     cache.scheduleSave();
   }
 
@@ -3713,6 +3748,9 @@ class AudioPlayerHandler extends BaseAudioHandler
     await _unavailableStreamSub.cancel();
     await _offlineTracksRemovedSub.cancel();
     await _connectivitySub.cancel();
+    await _playerVolumeSub?.cancel();
+    _playerVolumeSaveTimer?.cancel();
+    if (_playerVolumeSavePending) await settings.save();
     _streamMetadataTimer?.cancel();
     _queueStateSub?.cancel();
     await _shuffleIndicesSubject.close();
@@ -3788,6 +3826,10 @@ class AudioPlayerHandler extends BaseAudioHandler
                     PlatformManager.instance.activePlatformId,
               ),
             );
+            // A restored station item can be published before play() is
+            // called. Subscribe now so Neuro21 metadata/socket updates resume
+            // with the restored session instead of waiting for pause/play.
+            _startRadioPolling();
           }
         }
         // Rebuild sources using current provider/proxy URLs, then persist the

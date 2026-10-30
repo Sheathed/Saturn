@@ -130,8 +130,8 @@ static void my_application_activate(GApplication* application) {
     }
   }
 
-  gtk_window_set_default_icon_name(APPLICATION_ID);
-  gtk_window_set_icon_name(window, APPLICATION_ID);
+  // APPLICATION_ID is a reverse-DNS app identity, not an icon-theme name.
+  // Setting it here would override the explicit flavor icon loaded above.
   gtk_window_set_default_size(window, 1280, 720);
   GdkGeometry minimum_window_size = {};
   minimum_window_size.min_width = 350;

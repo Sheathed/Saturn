@@ -308,10 +308,12 @@ class PlayerBarState extends State<PlayerBar> {
                                     .mediaItem
                                     .value
                                     ?.extras?['saturnOriginalArtUri'] ??
-                                audioHandler.mediaItem.value?.artUri?.toString() ??
-                                audioHandler.mediaItem.value?.extras?[
-                                    'thumb'
-                                  ] ??
+                                audioHandler.mediaItem.value?.artUri
+                                    ?.toString() ??
+                                audioHandler
+                                    .mediaItem
+                                    .value
+                                    ?.extras?['thumb'] ??
                                 '',
                           ),
                         ),
@@ -470,22 +472,22 @@ class PlayerBarState extends State<PlayerBar> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      StreamBuilder(
-                        stream: audioHandler.playbackState,
-                        builder: (context, _) {
-                          final position =
-                              audioHandler.isRadio && audioHandler.hasRadioClock
-                              ? audioHandler.syncedPosition
-                              : audioHandler.playbackState.value.position;
-                          return Text(
-                            _formatPosition(position),
-                            style: const TextStyle(
-                              fontFeatures: [FontFeature.tabularFigures()],
-                            ).copyWith(color: foreground),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 12),
+                      if (!transport) ...[
+                        StreamBuilder(
+                          stream: audioHandler.playbackState,
+                          builder: (context, _) {
+                            return Text(
+                              _formatPosition(
+                                audioHandler.playbackState.value.position,
+                              ),
+                              style: const TextStyle(
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ).copyWith(color: foreground),
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                      ],
                       const Flexible(child: QualityInfoWidget()),
                     ],
                   ),

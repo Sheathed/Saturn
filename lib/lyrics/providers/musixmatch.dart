@@ -41,9 +41,6 @@ class MusixmatchLyricsProvider extends LyricsProvider {
         final status = data['message']?['header']?['status_code'];
         if (status == 200) {
           _usertoken = data['message']?['body']?['user_token'];
-          debugPrint(
-            '[MusixmatchProvider] Successfully generated new token: $_usertoken',
-          );
         } else {
           debugPrint(
             '[MusixmatchProvider] Failed to generate token, status: $status',
@@ -250,10 +247,20 @@ class MusixmatchLyricsProvider extends LyricsProvider {
   ) async {
     final language = _translationLanguageCode();
     final cacheKey = '$commonTrackId:$language';
-    return _translationCache.putIfAbsent(
-      cacheKey,
-      () => _requestTranslatedSubtitle(commonTrackId, duration, language),
+    final cached = _translationCache[cacheKey];
+    if (cached != null) return cached;
+
+    final request = _requestTranslatedSubtitle(
+      commonTrackId,
+      duration,
+      language,
     );
+    _translationCache[cacheKey] = request;
+    final translated = await request;
+    // Don't make a temporary network error or expired token suppress this
+    // translation for the lifetime of the provider instance.
+    if (translated == null) _translationCache.remove(cacheKey);
+    return translated;
   }
 
   Future<String?> _requestTranslatedSubtitle(
@@ -261,7 +268,11 @@ class MusixmatchLyricsProvider extends LyricsProvider {
     String duration,
     String language,
   ) async {
-    final uri = Uri.https(
+    if (_usertoken == null) await _fetchTokenIfNeeded();
+    if (_usertoken == null) return null;
+
+    final parsedDuration = int.tryParse(duration);
+    Uri makeUri() => Uri.https(
       'apic-appmobile.musixmatch.com',
       '/ws/1.1/track.subtitle.translation.get',
       {
@@ -270,15 +281,17 @@ class MusixmatchLyricsProvider extends LyricsProvider {
         'commontrack_id': commonTrackId,
         'selected_language': language,
         'min_completed': '0.7',
-        'f_subtitle_length': duration,
-        'f_subtitle_length_max_deviation': '10',
+        if (parsedDuration != null && parsedDuration > 0)
+          'f_subtitle_length': '$parsedDuration',
+        if (parsedDuration != null && parsedDuration > 0)
+          'f_subtitle_length_max_deviation': '10',
         'usertoken': _usertoken!,
       },
     );
 
     try {
-      final response = await http.get(
-        uri,
+      Future<http.Response> sendRequest() => http.get(
+        makeUri(),
         headers: {
           'Host': 'apic-appmobile.musixmatch.com',
           'X-User-Agent':
@@ -286,11 +299,24 @@ class MusixmatchLyricsProvider extends LyricsProvider {
           'Accept': 'application/json',
         },
       );
-      if (response.statusCode != 200) return null;
 
-      final data = jsonDecode(response.body);
-      if (data['message']?['header']?['status_code'] != 200) return null;
-      final translated = data['message']?['body']?['subtitle_translated'];
+      var response = await sendRequest();
+      if (response.statusCode != 200) return null;
+      var data = jsonDecode(response.body);
+      var status = data['message']?['header']?['status_code'];
+      if (status == 401) {
+        _usertoken = null;
+        await _fetchTokenIfNeeded();
+        if (_usertoken == null) return null;
+        response = await sendRequest();
+        if (response.statusCode != 200) return null;
+        data = jsonDecode(response.body);
+        status = data['message']?['header']?['status_code'];
+      }
+      if (status != 200) return null;
+
+      final body = data['message']?['body'];
+      final translated = body is Map ? body['subtitle_translated'] : null;
       if (translated is Map) {
         return translated['subtitle_body']?.toString();
       }

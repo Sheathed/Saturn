@@ -16,6 +16,7 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       ..enableEqualizer = json['enableEqualizer'] as bool? ?? false
       ..eastereggsDisabled = json['eastereggsDisabled'] as bool? ?? false
       ..spacebarPlaybackToggle = json['spacebarPlaybackToggle'] as bool? ?? true
+      ..playerVolume = (json['playerVolume'] as num?)?.toDouble() ?? 1.0
       ..wifiQuality =
           $enumDecodeNullable(_$AudioQualityEnumMap, json['wifiQuality']) ??
           AudioQuality.MP3_320
@@ -125,6 +126,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'enableEqualizer': instance.enableEqualizer,
   'eastereggsDisabled': instance.eastereggsDisabled,
   'spacebarPlaybackToggle': instance.spacebarPlaybackToggle,
+  'playerVolume': instance.playerVolume,
   'wifiQuality': _$AudioQualityEnumMap[instance.wifiQuality]!,
   'mobileQuality': _$AudioQualityEnumMap[instance.mobileQuality]!,
   'offlineQuality': _$AudioQualityEnumMap[instance.offlineQuality]!,

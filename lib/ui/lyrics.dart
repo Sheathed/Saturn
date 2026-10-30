@@ -107,7 +107,7 @@ class _OfflineLyricsProvider {
 const _offlineLyricsProvider = _OfflineLyricsProvider();
 
 class _LyricsScreenState extends State<LyricsScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   static const double _providerSwitcherHeight = 60;
   String appBarTitle = 'Lyrics'.i18n;
   Lyrics? lyrics;
@@ -149,8 +149,6 @@ class _LyricsScreenState extends State<LyricsScreen>
   List<GlobalKey> _lyricKeys = [];
   EdgeInsets _lyricEdgePadding = EdgeInsets.zero;
   bool _edgePaddingMeasurementScheduled = false;
-  late AnimationController _pulseController;
-
   @override
   void initState() {
     super.initState();
@@ -170,11 +168,6 @@ class _LyricsScreenState extends State<LyricsScreen>
       _setLyricsDisplayProvider('platform:${activePlatform.platformId}');
     }
     _hadRadioClock = handler.hasRadioClock;
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
 
     _load();
 
@@ -348,8 +341,6 @@ class _LyricsScreenState extends State<LyricsScreen>
     _scrollController.dispose();
     _providerScrollController.dispose();
     _positionNotifier.dispose();
-    _pulseController.dispose();
-
     if (!widget.embedded) {
       SystemChrome.setSystemUIOverlayStyle(
         SystemUiOverlayStyle(
@@ -1704,7 +1695,8 @@ class _LyricsScreenState extends State<LyricsScreen>
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       height: 44,
-      child: Center(
+      child: SizedBox(
+        width: double.infinity,
         child: ScrollConfiguration(
           // Flutter's default desktop behavior doesn't let a mouse drag a
           // scroll view. The provider strip should be draggable with a mouse
@@ -1717,28 +1709,20 @@ class _LyricsScreenState extends State<LyricsScreen>
             },
           ),
           child: Listener(
-            onPointerSignal: (event) {
-              if (event is! PointerScrollEvent ||
-                  !_providerScrollController.hasClients) {
-                return;
-              }
-              final delta = event.scrollDelta.dx != 0
-                  ? event.scrollDelta.dx
-                  : event.scrollDelta.dy;
-              _scrollProviderStripBy(delta);
-            },
+            behavior: HitTestBehavior.opaque,
             onPointerPanZoomUpdate: (event) {
               if (!_providerScrollController.hasClients) return;
-              // Trackpads send pan/zoom events instead of wheel events. A
-              // positive pan means the fingers moved right/down, so move the
-              // horizontal strip in the opposite direction.
-              final pan = event.panDelta.dx != 0
-                  ? event.panDelta.dx
-                  : event.panDelta.dy;
-              _scrollProviderStripBy(-pan);
+              // Silky handles horizontal trackpad pans. Native vertical pans
+              // need to be mapped onto this horizontal strip explicitly.
+              if (event.panDelta.dx == 0 && event.panDelta.dy != 0) {
+                _scrollProviderStripBy(-event.panDelta.dy);
+              }
             },
             child: SilkySingleChildScrollView(
-              silkyConfig: silkyHorizontalScrollConfig,
+              silkyConfig: silkyHorizontalScrollConfig.copyWith(
+                mouseWheelVerticalDeltaBehavior:
+                    MouseWheelVerticalDeltaBehavior.always,
+              ),
               controller: _providerScrollController,
               scrollDirection: Axis.horizontal,
               physics: const AlwaysScrollableScrollPhysics(),

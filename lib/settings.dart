@@ -38,6 +38,8 @@ class Settings {
   late bool eastereggsDisabled;
   @JsonKey(defaultValue: true)
   late bool spacebarPlaybackToggle;
+  @JsonKey(defaultValue: 1.0)
+  late double playerVolume;
 
   // Legacy Deezer ARL. Read only so startup can migrate old settings into
   // platformConfigs['deezer']; never write credentials back to the root.

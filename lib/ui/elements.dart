@@ -219,6 +219,8 @@ TextStyle popupMenuTextStyle() {
 class PlatformToggleIcon extends StatelessWidget {
   const PlatformToggleIcon({super.key});
 
+  static List<MusicPlatform>? _lastKnownLoggedInPlatforms;
+
   @override
   Widget build(BuildContext context) {
     if (MediaQuery.of(context).size.width >= 600) {
@@ -230,8 +232,14 @@ class PlatformToggleIcon extends StatelessWidget {
       builder: (context, _) {
         return FutureBuilder<List<MusicPlatform>>(
           future: PlatformRegistry.instance.loggedInPlatforms,
+          initialData: _lastKnownLoggedInPlatforms,
           builder: (context, snapshot) {
-            final platforms = snapshot.data ?? [];
+            final resolvedPlatforms = snapshot.data;
+            if (resolvedPlatforms != null) {
+              _lastKnownLoggedInPlatforms = resolvedPlatforms;
+            }
+            final platforms =
+                resolvedPlatforms ?? _lastKnownLoggedInPlatforms ?? const [];
             if (platforms.length <= 1) return const SizedBox.shrink();
 
             final activeId = PlatformManager.instance.activePlatformId;

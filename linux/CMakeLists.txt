@@ -146,11 +146,14 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
     COMPONENT Runtime)
 endif()
 
-# Keep the desktop entry window class aligned with the flavor-specific app ID.
+# Keep desktop identity and icons aligned with the selected application flavor.
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/share/applications/saturn.desktop"
-  "${PROJECT_BINARY_DIR}/saturn.desktop"
+  "${PROJECT_BINARY_DIR}/${APPLICATION_ID}.desktop"
   @ONLY
 )
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/share/icons" DESTINATION "share" COMPONENT Runtime)
-install(FILES "${PROJECT_BINARY_DIR}/saturn.desktop" DESTINATION "share/applications" COMPONENT Runtime)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../${APP_ICON_ASSET}"
+  DESTINATION "share/icons/hicolor/512x512/apps"
+  RENAME "${APPLICATION_ID}.png" COMPONENT Runtime)
+install(FILES "${PROJECT_BINARY_DIR}/${APPLICATION_ID}.desktop" DESTINATION "share/applications" COMPONENT Runtime)

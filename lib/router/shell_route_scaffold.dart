@@ -36,6 +36,7 @@ class ShellRouteScaffold extends StatefulWidget {
 }
 
 class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
+  static List<MusicPlatform>? _lastKnownLoggedInPlatforms;
   static const double _minimumExpandedSidebarWidth = 150;
   static const double _maximumExpandedSidebarWidth = 440;
   int _selectedIndex = 0;
@@ -45,6 +46,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
   bool _isRailExtended = false;
   bool _isHoveringSidebarResize = false;
   bool _isPageScrolledUnder = false;
+  bool _platformFallbackSwitchScheduled = false;
   GoRouter? _observedRouter;
   String? _observedLocation;
 
@@ -106,17 +108,61 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
     return false;
   }
 
-  void _forwardScrollToPage(Offset globalPosition, double deltaY) {
-    if (deltaY == 0) return;
+  void _forwardPointerEventToPage(PointerEvent sourceEvent) {
     final viewport = _pageViewportKey.currentContext?.findRenderObject();
     if (viewport is! RenderBox || !viewport.hasSize) return;
 
     final bounds = viewport.localToGlobal(Offset.zero) & viewport.size;
-    if (bounds.contains(globalPosition)) return;
+    if (bounds.contains(sourceEvent.position)) return;
 
     final position = _pageScrollPosition;
     if (position == null || !position.hasContentDimensions) return;
-    position.pointerScroll(deltaY);
+
+    // Re-dispatch the original input type inside the page viewport so Silky
+    // sees the same wheel or native trackpad gesture it receives over the page.
+    final forwardedEvent = switch (sourceEvent) {
+      PointerScrollEvent event => PointerScrollEvent(
+        viewId: sourceEvent.viewId,
+        timeStamp: sourceEvent.timeStamp,
+        kind: sourceEvent.kind,
+        device: sourceEvent.device,
+        position: bounds.center,
+        scrollDelta: event.scrollDelta,
+        embedderId: sourceEvent.embedderId,
+      ),
+      PointerPanZoomStartEvent event => PointerPanZoomStartEvent(
+        viewId: event.viewId,
+        timeStamp: event.timeStamp,
+        device: event.device,
+        pointer: event.pointer,
+        position: bounds.center,
+        embedderId: event.embedderId,
+      ),
+      PointerPanZoomUpdateEvent event => PointerPanZoomUpdateEvent(
+        viewId: event.viewId,
+        timeStamp: event.timeStamp,
+        device: event.device,
+        pointer: event.pointer,
+        position: bounds.center,
+        embedderId: event.embedderId,
+        pan: event.pan,
+        panDelta: event.panDelta,
+        scale: event.scale,
+        rotation: event.rotation,
+      ),
+      PointerPanZoomEndEvent event => PointerPanZoomEndEvent(
+        viewId: event.viewId,
+        timeStamp: event.timeStamp,
+        device: event.device,
+        pointer: event.pointer,
+        position: bounds.center,
+        embedderId: event.embedderId,
+      ),
+      _ => null,
+    };
+    if (forwardedEvent != null) {
+      GestureBinding.instance.handlePointerEvent(forwardedEvent);
+    }
   }
 
   bool _handlePageScrollNotification(ScrollNotification notification) {
@@ -215,6 +261,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
   }
 
   Future<List<MusicPlatform>>? _loggedInPlatformsFuture;
+  List<MusicPlatform> _knownLoggedInPlatforms = const [];
 
   @override
   void initState() {
@@ -250,7 +297,46 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
   }
 
   void _onPlatformChanged() async {
-    _loggedInPlatformsFuture = PlatformRegistry.instance.loggedInPlatforms;
+    // A normal active-platform switch does not change the logged-in list.
+    // Refresh only when authentication state changed, so the switcher keeps
+    // its stable items through the platform-scoped page rebuild.
+    if (PlatformManager.instance.loggedInCount !=
+        _knownLoggedInPlatforms.length) {
+      final refreshedPlatforms = PlatformRegistry.instance.loggedInPlatforms;
+      _loggedInPlatformsFuture = refreshedPlatforms;
+      refreshedPlatforms.then((platforms) {
+        if (!mounted ||
+            !identical(_loggedInPlatformsFuture, refreshedPlatforms)) {
+          return;
+        }
+        _knownLoggedInPlatforms = platforms;
+        setState(() {});
+      }).catchError((Object error) {
+        appLogger.warning('Could not refresh logged-in platforms', error);
+      });
+    } else {
+      final activePlatform = PlatformManager.instance.active;
+      if (!_knownLoggedInPlatforms.any(
+        (platform) => platform.platformId == activePlatform.platformId,
+      )) {
+        activePlatform.isLoggedIn().then((isLoggedIn) {
+          if (!mounted || !isLoggedIn) return;
+          if (_knownLoggedInPlatforms.any(
+            (platform) => platform.platformId == activePlatform.platformId,
+          )) {
+            return;
+          }
+          setState(() {
+            _knownLoggedInPlatforms = [
+              ..._knownLoggedInPlatforms,
+              activePlatform,
+            ];
+          });
+        }).catchError((Object error) {
+          appLogger.warning('Could not check active platform login', error);
+        });
+      }
+    }
     if (mounted) setState(() {});
     if (PlatformManager.instance.active.capabilities.supportsLibrarySync) {
       cache.activeLibraryTracks =
@@ -374,6 +460,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
     return FutureBuilder<List<MusicPlatform>>(
       future: _loggedInPlatformsFuture ??=
           PlatformRegistry.instance.loggedInPlatforms,
+      initialData: _lastKnownLoggedInPlatforms,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(
@@ -382,6 +469,8 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
         }
 
         final loggedInList = snapshot.data!;
+        _lastKnownLoggedInPlatforms = loggedInList;
+        _knownLoggedInPlatforms = loggedInList;
         if (loggedInList.isEmpty) {
           return PlatformLoginScreen(
             callback: () {
@@ -397,9 +486,7 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
         if (!loggedInList.any(
           (p) => p.platformId == PlatformManager.instance.activePlatformId,
         )) {
-          PlatformManager.instance.switchPlatform(
-            loggedInList.first.platformId,
-          );
+          _schedulePlatformFallbackSwitch(loggedInList.first.platformId);
         }
 
         return AppInitializer(
@@ -431,6 +518,18 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
         );
       },
     );
+  }
+
+  void _schedulePlatformFallbackSwitch(String platformId) {
+    if (_platformFallbackSwitchScheduled) return;
+    _platformFallbackSwitchScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _platformFallbackSwitchScheduled = false;
+      if (!mounted || PlatformManager.instance.activePlatformId == platformId) {
+        return;
+      }
+      PlatformManager.instance.switchPlatform(platformId);
+    });
   }
 
   void _submitSearch(String query) {
@@ -812,78 +911,72 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
   }
 
   Widget _buildPlatformSwitcher() {
-    return FutureBuilder<List<MusicPlatform>>(
-      future: _loggedInPlatformsFuture ??=
-          PlatformRegistry.instance.loggedInPlatforms,
-      builder: (context, snapshot) {
-        final platforms = List<MusicPlatform>.from(snapshot.data ?? []);
-        if (platforms.length <= 1) return const SizedBox.shrink();
+    final platforms = List<MusicPlatform>.from(_knownLoggedInPlatforms);
+    if (platforms.length <= 1) return const SizedBox.shrink();
 
-        // Ensure current active is in the list, otherwise add it so Dropdown doesn't crash
-        final activeId = PlatformManager.instance.activePlatformId;
-        final hasActive = platforms.any((p) => p.platformId == activeId);
-        if (!hasActive && PlatformManager.instance.isInitialized) {
-          platforms.add(PlatformManager.instance.active);
-        }
+    // Ensure current active is in the list, otherwise add it so Dropdown doesn't crash.
+    final activeId = PlatformManager.instance.activePlatformId;
+    final hasActive = platforms.any((p) => p.platformId == activeId);
+    if (!hasActive && PlatformManager.instance.isInitialized) {
+      platforms.add(PlatformManager.instance.active);
+    }
 
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(24.0),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: activeId,
-              icon: const Icon(Icons.arrow_drop_down, size: 20),
-              isDense: true,
-              items: [
-                ...platforms.map((platform) {
-                  return DropdownMenuItem<String>(
-                    value: platform.platformId,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        platform.buildPlatformIcon(size: 16),
-                        const SizedBox(width: 8),
-                        Text(
-                          platform.platformName,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(24.0),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: activeId,
+          icon: const Icon(Icons.arrow_drop_down, size: 20),
+          isDense: true,
+          items: [
+            ...platforms.map((platform) {
+              return DropdownMenuItem<String>(
+                value: platform.platformId,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    platform.buildPlatformIcon(size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      platform.platformName,
+                      style: const TextStyle(fontSize: 14),
                     ),
-                  );
-                }),
-                const DropdownMenuItem<String>(
-                  value: 'manage_accounts',
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.add_circle_outline, size: 16),
-                      SizedBox(width: 8),
-                      Text('Add Account...', style: TextStyle(fontSize: 14)),
-                    ],
-                  ),
+                  ],
                 ),
-              ],
-              onChanged: (String? newId) async {
-                if (newId == 'manage_accounts') {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          const PlatformLoginScreen(callback: null),
-                    ),
-                  );
-                  return;
-                }
-                if (newId != null && newId != activeId) {
-                  await selectPlatform(newId);
-                }
-              },
+              );
+            }),
+            const DropdownMenuItem<String>(
+              value: 'manage_accounts',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.add_circle_outline, size: 16),
+                  SizedBox(width: 8),
+                  Text('Add Account...', style: TextStyle(fontSize: 14)),
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          ],
+          onChanged: (String? newId) async {
+            if (newId == 'manage_accounts') {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) =>
+                      const PlatformLoginScreen(callback: null),
+                ),
+              );
+              return;
+            }
+            if (newId != null && newId != activeId) {
+              await selectPlatform(newId);
+            }
+          },
+        ),
+      ),
     );
   }
 
@@ -1017,17 +1110,17 @@ class _ShellRouteScaffoldState extends State<ShellRouteScaffold> {
                                 behavior: HitTestBehavior.opaque,
                                 onPointerSignal: (event) {
                                   if (event is PointerScrollEvent) {
-                                    _forwardScrollToPage(
-                                      event.position,
-                                      event.scrollDelta.dy,
-                                    );
+                                    _forwardPointerEventToPage(event);
                                   }
                                 },
+                                onPointerPanZoomStart: (event) {
+                                  _forwardPointerEventToPage(event);
+                                },
                                 onPointerPanZoomUpdate: (event) {
-                                  _forwardScrollToPage(
-                                    event.position,
-                                    event.panDelta.dy,
-                                  );
+                                  _forwardPointerEventToPage(event);
+                                },
+                                onPointerPanZoomEnd: (event) {
+                                  _forwardPointerEventToPage(event);
                                 },
                                 child: LayoutBuilder(
                                   builder: (context, constraints) {

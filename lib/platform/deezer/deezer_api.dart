@@ -789,11 +789,19 @@ query TrackFull($trackId: String!) {
 
   //Get users playlists
   Future<List<Playlist>> getPlaylists() async {
-    Map data = await callGwApi(
+    final data = await callGwApi(
       'deezer.pageProfile',
       params: {'nb': 100, 'tab': 'playlists', 'user_id': userId},
     );
-    return data['results']['TAB']['playlists']['data'].map<Playlist>((json) {
+    final results = data['results'];
+    final tab = results is Map ? results['TAB'] : null;
+    final playlistsSection = tab is Map ? tab['playlists'] : null;
+    final rawPlaylists = playlistsSection is Map
+        ? playlistsSection['data']
+        : null;
+    if (rawPlaylists is! List) return [];
+
+    return rawPlaylists.whereType<Map>().map<Playlist>((json) {
       final p = Playlist.fromPrivateJson(json, library: true);
       p.editable = true;
       return p;

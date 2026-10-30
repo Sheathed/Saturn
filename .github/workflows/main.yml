@@ -122,6 +122,7 @@ jobs:
             libmpv-dev \
             libwebkit2gtk-4.1-dev \
             libfuse2 \
+            imagemagick \
             rpm \
             patchelf
           pkg-config --modversion gtk+-3.0 x11 xi webkit2gtk-4.1

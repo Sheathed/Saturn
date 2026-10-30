@@ -787,7 +787,11 @@ class _ArtistDetailsState extends State<ArtistDetails> {
         a.library = artist.library == true || a.library == true;
         setState(() => artist = a);
       } catch (e, stackTrace) {
-        Logger.root.warning('Could not load artist ${artist.id}', e, stackTrace);
+        Logger.root.warning(
+          'Could not load artist ${artist.id}',
+          e,
+          stackTrace,
+        );
         setState(() => _error = true);
       }
     }
@@ -1355,7 +1359,7 @@ class _ArtistDetailsState extends State<ArtistDetails> {
                           artist.topTracks,
                           QueueSource(
                             id: artist.id,
-                            text: 'Top'.i18n + '${artist.name}',
+                            text: 'Top'.i18n + ' ' + '${artist.name}',
                             source: 'artist_top',
                           ),
                           loadTracks: () => PlatformManager.instance
@@ -1844,9 +1848,7 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
 
     if (hasFeaturedTab) {
       tabs.add(
-        Tab(
-          icon: Icon(Icons.recent_actors, semanticLabel: 'Featured'.i18n),
-        ),
+        Tab(icon: Icon(Icons.recent_actors, semanticLabel: 'Featured'.i18n)),
       );
       tabViews.add(
         //Featured
@@ -1875,13 +1877,13 @@ class _DiscographyScreenState extends State<DiscographyScreen> {
               //Load data if empty tabs
               int nSingles = hasSinglesTab
                   ? artist.albums
-                      .where((a) => a.type == AlbumType.SINGLE)
-                      .length
+                        .where((a) => a.type == AlbumType.SINGLE)
+                        .length
                   : 1;
               int nFeatures = hasFeaturedTab
                   ? artist.albums
-                      .where((a) => a.type == AlbumType.FEATURED)
-                      .length
+                        .where((a) => a.type == AlbumType.FEATURED)
+                        .length
                   : 1;
               if ((nSingles == 0 || nFeatures == 0) && !_loading) _load();
             }
@@ -1965,7 +1967,8 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
   //Load tracks from api
   Future<void> _loadTracks() async {
     // Got all tracks, return
-    if (_loading || !_hasMoreTracks ||
+    if (_loading ||
+        !_hasMoreTracks ||
         (playlist.trackCount != null &&
             (playlist.tracks ?? []).length >= playlist.trackCount!)) {
       return;
@@ -2084,14 +2087,16 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
   Future<void>? _fullLoad;
   Future<void> _ensureFullPlaylist() {
     if (_fullLoaded || playlist.id == null) return Future.value();
-    return _fullLoad ??= _loadFullPlaylist().whenComplete(() => _fullLoad = null);
+    return _fullLoad ??= _loadFullPlaylist().whenComplete(
+      () => _fullLoad = null,
+    );
   }
 
   Future<void> _loadFullPlaylist() async {
     if (mounted) setState(() => _loading = true);
     try {
-      final isLocal = playlist.platformId == 'local' ||
-          playlist.id!.startsWith('local_');
+      final isLocal =
+          playlist.platformId == 'local' || playlist.id!.startsWith('local_');
       if (isLocal) {
         final localId = playlist.id!.startsWith('local_')
             ? playlist.id!.substring(6)
@@ -2333,8 +2338,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                                 if (artworkCredit?.isNotEmpty == true) ...[
                                   const SizedBox(height: 4.0),
                                   Text(
-                                    'Artwork by'.i18n +
-                                        ' $artworkCredit',
+                                    'Artwork by'.i18n + ' $artworkCredit',
                                     textAlign: TextAlign.left,
                                     style: TextStyle(
                                       fontSize: 14.0,
@@ -2701,8 +2705,7 @@ class _PlaylistDetailsState extends State<PlaylistDetails> {
                               horizontal: 16.0,
                             ),
                             child: Text(
-                              'Artwork by'.i18n +
-                                  ' $artworkCredit',
+                              'Artwork by'.i18n + ' $artworkCredit',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13.0,
@@ -3026,7 +3029,9 @@ class _MakePlaylistOfflineState extends State<MakePlaylistOffline> {
   }
 
   Future<void> _refreshOfflineState() async {
-    final offline = await downloadManager.checkOffline(playlist: widget.playlist);
+    final offline = await downloadManager.checkOffline(
+      playlist: widget.playlist,
+    );
     if (mounted && offline != _offline) setState(() => _offline = offline);
   }
 

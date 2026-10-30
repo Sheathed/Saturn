@@ -97,5 +97,7 @@ if [ ! -f "$project_root/linux/packaging/appimage/AppRun" ]; then
 fi
 cp "$project_root/linux/packaging/appimage/AppRun" "$appdir/AppRun"
 chmod +x "$appdir/AppRun"
+chmod -R a+rX "$appdir"
+chmod a+rx "$appdir/AppRun"
 appimagetool -n "$appdir" "$appimage_file"
 echo "Patched $appimage_file with StartupWMClass=$STARTUP_WM_CLASS and the custom AppRun"

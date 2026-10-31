@@ -38,8 +38,7 @@ class MenuSheet {
         item?.id == track.id && item?.extras?['show'] is String;
 
     final handler = GetIt.I<AudioPlayerHandler>();
-    return matches(handler.mediaItem.value) ||
-        handler.queue.value.any(matches);
+    return matches(handler.mediaItem.value) || handler.queue.value.any(matches);
   }
 
   // Use no-op callback if not provided
@@ -53,13 +52,10 @@ class MenuSheet {
     if (currentItem == null) return false;
     final isRadio = AudioPlayerHandler.isRadioItem(currentItem);
     final radioTrackId = currentItem.extras?['radioTrackId'];
-    final currentTrackId = isRadio
-        ? radioTrackId?.toString()
-        : currentItem.id;
+    final currentTrackId = isRadio ? radioTrackId?.toString() : currentItem.id;
     final currentPlatformId =
         currentItem.extras?['platformId']?.toString() ?? track.platformId;
-    return currentTrackId == track.id &&
-        currentPlatformId == track.platformId;
+    return currentTrackId == track.id && currentPlatformId == track.platformId;
   }
 
   /// Extra menu entries a platform wants to show for [item] (generic hook).
@@ -97,7 +93,9 @@ class MenuSheet {
                 : 350,
           ),
           child: SilkySingleChildScrollView(
-        silkyConfig: silkyScrollConfig,child: Column(children: options)),
+            silkyConfig: silkyScrollConfig,
+            child: Column(children: options),
+          ),
         );
       },
     ).whenComplete(() {
@@ -239,7 +237,9 @@ class MenuSheet {
                     : 350,
               ),
               child: SilkySingleChildScrollView(
-            silkyConfig: silkyScrollConfig,child: Column(children: options)),
+                silkyConfig: silkyScrollConfig,
+                child: Column(children: options),
+              ),
             ),
           ],
         );
@@ -382,6 +382,15 @@ class MenuSheet {
         .get(effectiveTrack.platformId)
         ?.capabilities;
     final isPodcastEpisode = _isPodcastEpisodeTrack(effectiveTrack);
+    final canDownload =
+        !isPodcastEpisode && capabilities?.supportsDownload == true;
+    final isOffline = canDownload
+        ? await downloadManager.checkOffline(track: effectiveTrack)
+        : false;
+    final isQueued = canDownload
+        ? await downloadManager.isQueued(effectiveTrack.id ?? '')
+        : false;
+
     await showPopup(context, [
       ...leadingOptions,
       if (!AudioPlayerHandler.isRadioItem(mediaItem) &&
@@ -395,10 +404,50 @@ class MenuSheet {
             : addTrackFavorite(effectiveTrack, context),
       if (capabilities?.supportsPlaylistEdit == true)
         addToPlaylist(effectiveTrack, context),
-      if (!isPodcastEpisode && capabilities?.supportsDownload == true) ...[
-        offlineTrack(effectiveTrack, context),
-        downloadTrack(effectiveTrack, context),
-      ],
+      if (canDownload)
+        ListTile(
+          title: Text(isOffline ? 'Remove offline'.i18n : 'Offline'.i18n),
+          leading: const Icon(Icons.offline_pin),
+          onTap: () async {
+            if (!isOffline && effectiveTrack.unavailable == true) {
+              Fluttertoast.showToast(msg: effectiveTrack.unavailableMessage);
+              return;
+            }
+            if (isOffline) {
+              await downloadManager.removeOfflineTracks([effectiveTrack]);
+              Fluttertoast.showToast(
+                msg: 'Track removed from offline!'.i18n,
+                gravity: ToastGravity.BOTTOM,
+                toastLength: Toast.LENGTH_SHORT,
+              );
+            } else {
+              await downloadManager.addOfflineTrack(
+                effectiveTrack,
+                private: true,
+              );
+            }
+            if (context.mounted) _close(context);
+          },
+        ),
+      if (canDownload && !isQueued)
+        ListTile(
+          title: Text('Download'.i18n),
+          leading: const Icon(Icons.file_download),
+          onTap: () async {
+            if (effectiveTrack.unavailable == true) {
+              Fluttertoast.showToast(msg: effectiveTrack.unavailableMessage);
+              return;
+            }
+            if (await downloadManager.addOfflineTrack(
+              effectiveTrack,
+              private: false,
+              isSingleton: true,
+            )) {
+              showDownloadStartedToast();
+            }
+            if (context.mounted) _close(context);
+          },
+        ),
       shareTile(
         'track',
         effectiveTrack.id ?? '',
@@ -597,48 +646,49 @@ class MenuSheet {
     },
   );
 
-  Widget removeFavoriteTrack(Track t, BuildContext context, {onUpdate}) =>
-      ListTile(
-        title: Text('Remove favorite'.i18n),
-        leading: const Icon(Icons.delete),
-        onTap: () async {
-          Logger.root.info(
-            '[UI] MenuSheet removeFavoriteTrack: id=${t.id}, platformId=${t.platformId}',
-          );
-          try {
-            await PlatformRegistry.instance
-                .get(t.platformId)
-                ?.removeFavoriteTrack(t.id!);
-          } catch (error, stackTrace) {
-            Logger.root.warning(
-              'Could not unfavorite track ${t.id}',
-              error,
-              stackTrace,
-            );
-            Fluttertoast.showToast(
-              msg: 'Could not remove track favorite: $error',
-            );
-            return;
-          }
-          //Check if favorites playlist is offline, update it
-          Playlist p = Playlist(
-            id: 'favorites_${t.platformId}',
-            platformId: t.platformId,
-          );
-          if (await downloadManager.checkOffline(playlist: p)) {
-            await downloadManager.addOfflinePlaylist(p);
-          }
-          cache.updateTrackFavorite(t, favorite: false);
-          await cache.save();
-          Fluttertoast.showToast(
-            msg: 'Track removed from library'.i18n,
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-          );
-          if (onUpdate != null) onUpdate();
-          if (context.mounted) _close(context);
-        },
+  Widget removeFavoriteTrack(
+    Track t,
+    BuildContext context, {
+    onUpdate,
+  }) => ListTile(
+    title: Text('Remove favorite'.i18n),
+    leading: const Icon(Icons.delete),
+    onTap: () async {
+      Logger.root.info(
+        '[UI] MenuSheet removeFavoriteTrack: id=${t.id}, platformId=${t.platformId}',
       );
+      try {
+        await PlatformRegistry.instance
+            .get(t.platformId)
+            ?.removeFavoriteTrack(t.id!);
+      } catch (error, stackTrace) {
+        Logger.root.warning(
+          'Could not unfavorite track ${t.id}',
+          error,
+          stackTrace,
+        );
+        Fluttertoast.showToast(msg: 'Could not remove track favorite: $error');
+        return;
+      }
+      //Check if favorites playlist is offline, update it
+      Playlist p = Playlist(
+        id: 'favorites_${t.platformId}',
+        platformId: t.platformId,
+      );
+      if (await downloadManager.checkOffline(playlist: p)) {
+        await downloadManager.addOfflinePlaylist(p);
+      }
+      cache.updateTrackFavorite(t, favorite: false);
+      await cache.save();
+      Fluttertoast.showToast(
+        msg: 'Track removed from library'.i18n,
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+      );
+      if (onUpdate != null) onUpdate();
+      if (context.mounted) _close(context);
+    },
+  );
 
   //Redirect to artist page (ie from track)
   Widget showArtist(Artist a, BuildContext context) => ListTile(
@@ -801,7 +851,7 @@ class MenuSheet {
         return;
       }
       if (context.mounted) _close(context);
-      if (await downloadManager.addOfflineAlbum(a, private: false) != false) {
+      if (await downloadManager.addOfflineAlbum(a, private: false)) {
         showDownloadStartedToast();
       }
     },
@@ -836,8 +886,9 @@ class MenuSheet {
             await PlatformManager.instance
                 .getPlatform(a.platformId)
                 .addFavoriteAlbum(a.id!);
-            await downloadManager.addOfflineAlbum(a, private: true);
-            showDownloadStartedToast();
+            if (await downloadManager.addOfflineAlbum(a, private: true)) {
+              showDownloadStartedToast();
+            }
           }
           if (context.mounted) _close(context);
         },
@@ -1257,8 +1308,9 @@ class MenuSheet {
               cache.activeLibraryPlaylists.add(p.id!);
               cache.save();
             }
-            downloadManager.addOfflinePlaylist(p, private: true);
-            showDownloadStartedToast();
+            if (await downloadManager.addOfflinePlaylist(p, private: true)) {
+              showDownloadStartedToast();
+            }
           }
           if (context.mounted) _close(context);
         },
@@ -1281,8 +1333,7 @@ class MenuSheet {
         return;
       }
       if (context.mounted) _close(context);
-      if (await downloadManager.addOfflinePlaylist(p, private: false) !=
-          false) {
+      if (await downloadManager.addOfflinePlaylist(p, private: false)) {
         showDownloadStartedToast();
       }
     },
@@ -1858,12 +1909,21 @@ class _SelectPlaylistDialogState extends State<SelectPlaylistDialog> {
   }
 
   Future<List<dynamic>> _loadPlaylists() async {
-    final results = await Future.wait<Object>([
-      _platform.getUserPlaylists(),
-      downloadManager.localPlaylistManager.getAllPlaylists(),
-    ]);
-    final platformPlaylists = results[0] as List<Playlist>;
-    final localPlaylists = results[1] as List<LocalPlaylist>;
+    final platformPlaylists =
+        await _platform.getUserPlaylists() as List<Playlist>;
+    List<LocalPlaylist> localPlaylists = [];
+    try {
+      localPlaylists = await downloadManager.localPlaylistManager
+          .getAllPlaylists();
+    } catch (error, stackTrace) {
+      // The local playlist database can be unavailable if download database
+      // initialization failed. Keep platform playlists usable in that case.
+      Logger.root.warning(
+        'Could not load local playlists in the playlist picker',
+        error,
+        stackTrace,
+      );
+    }
 
     await Future.wait(
       localPlaylists
@@ -2027,191 +2087,194 @@ class _SelectPlaylistDialogState extends State<SelectPlaylistDialog> {
                 .toDouble(),
           ),
           child: FutureBuilder(
-          future: _playlistsFuture,
-          builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: ErrorScreen());
-          }
-          if (snapshot.connectionState != ConnectionState.done) {
-            return SizedBox(
-              child: Center(
-                child: CircularProgressIndicator(color: colors.primary),
-              ),
-            );
-          }
+            future: _playlistsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const Center(child: ErrorScreen());
+              }
+              if (snapshot.connectionState != ConnectionState.done) {
+                return SizedBox(
+                  child: Center(
+                    child: CircularProgressIndicator(color: colors.primary),
+                  ),
+                );
+              }
 
-          // Check if snapshot has data before accessing it
-          if (!snapshot.hasData || snapshot.data == null) {
-            return const Center(child: ErrorScreen());
-          }
+              // Check if snapshot has data before accessing it
+              if (!snapshot.hasData || snapshot.data == null) {
+                return const Center(child: ErrorScreen());
+              }
 
-          List<Playlist> editablePlaylists =
-              (snapshot.data![0] as List<Playlist>)
-                  .where((p) => p.editable == true)
-                  .toList();
-          List<LocalPlaylist> localPlaylists =
-              snapshot.data![1] as List<LocalPlaylist>;
+              List<Playlist> editablePlaylists =
+                  (snapshot.data![0] as List<Playlist>)
+                      .where((p) => p.editable == true)
+                      .toList();
+              List<LocalPlaylist> localPlaylists =
+                  snapshot.data![1] as List<LocalPlaylist>;
 
-          Widget sectionHeading(String label, int count) => Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: colors.primary,
-                      fontWeight: FontWeight.w700,
+              Widget sectionHeading(String label, int count) => Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: colors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ),
+                    Text(
+                      '$count',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  '$count',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          );
+              );
 
-          Widget playlistRow({
-            required String title,
-            required Widget leading,
-            required VoidCallback? onTap,
-          }) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 1),
-            child: Material(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              child: ListTile(
-                dense: false,
-                minLeadingWidth: 48,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                shape: RoundedRectangleBorder(
+              Widget playlistRow({
+                required String title,
+                required Widget leading,
+                required VoidCallback? onTap,
+              }) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 1),
+                child: Material(
+                  color: Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
-                ),
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: SizedBox(width: 48, height: 48, child: leading),
-                ),
-                title: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                trailing: Icon(
-                  Icons.chevron_right,
-                  color: colors.onSurfaceVariant,
-                ),
-                onTap: _adding ? null : onTap,
-              ),
-            ),
-          );
-
-          Widget localPlaylistArtwork(LocalPlaylist playlist) {
-            final mosaic = playlist.mosaicImages;
-            if (mosaic != null && mosaic.isNotEmpty) {
-              return MosaicImage(
-                urls: mosaic,
-                width: 48,
-                height: 48,
-                rounded: false,
-              );
-            }
-            return DecoratedBox(
-              decoration: BoxDecoration(color: colors.secondaryContainer),
-              child: Icon(
-                Icons.queue_music_rounded,
-                color: colors.onSecondaryContainer,
-                size: 25,
-              ),
-            );
-          }
-
-          Widget platformPlaylistArtwork(Playlist playlist) {
-            final mosaic = playlist.mosaicImages;
-            if (mosaic != null && mosaic.isNotEmpty) {
-              return MosaicImage(
-                urls: mosaic,
-                width: 48,
-                height: 48,
-                rounded: false,
-              );
-            }
-            return CachedImage(url: playlist.image?.thumb ?? '');
-          }
-
-          return SilkySingleChildScrollView(
-            silkyConfig: silkyScrollConfig,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                sectionHeading('Local Playlists'.i18n, localPlaylists.length),
-                ...localPlaylists.map(
-                  (playlist) => playlistRow(
-                    title: playlist.title,
-                    leading: localPlaylistArtwork(playlist),
-                    onTap: () => _addToLocalPlaylist(playlist),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                  child: OutlinedButton.icon(
-                    onPressed: _adding || _creatingLocal
-                        ? null
-                        : _createLocalPlaylist,
-                    icon: const Icon(Icons.add_rounded),
-                    label: Text('Create local playlist'.i18n),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(44),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  child: ListTile(
+                    dense: false,
+                    minLeadingWidth: 48,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: SizedBox(width: 48, height: 48, child: leading),
+                    ),
+                    title: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    onTap: _adding ? null : onTap,
                   ),
                 ),
-                if (editablePlaylists.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Divider(color: colors.outlineVariant),
+              );
+
+              Widget localPlaylistArtwork(LocalPlaylist playlist) {
+                final mosaic = playlist.mosaicImages;
+                if (mosaic != null && mosaic.isNotEmpty) {
+                  return MosaicImage(
+                    urls: mosaic,
+                    width: 48,
+                    height: 48,
+                    rounded: false,
+                  );
+                }
+                return DecoratedBox(
+                  decoration: BoxDecoration(color: colors.secondaryContainer),
+                  child: Icon(
+                    Icons.queue_music_rounded,
+                    color: colors.onSecondaryContainer,
+                    size: 25,
                   ),
-                  sectionHeading(
-                    '${platform.platformName} Playlists',
-                    editablePlaylists.length,
-                  ),
-                  ...editablePlaylists.map(
-                    (playlist) => playlistRow(
-                      title: playlist.title ?? '',
-                      leading: platformPlaylistArtwork(playlist),
-                      onTap: () => _addToPlaylist(playlist),
+                );
+              }
+
+              Widget platformPlaylistArtwork(Playlist playlist) {
+                final mosaic = playlist.mosaicImages;
+                if (mosaic != null && mosaic.isNotEmpty) {
+                  return MosaicImage(
+                    urls: mosaic,
+                    width: 48,
+                    height: 48,
+                    rounded: false,
+                  );
+                }
+                return CachedImage(url: playlist.image?.thumb ?? '');
+              }
+
+              return SilkySingleChildScrollView(
+                silkyConfig: silkyScrollConfig,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    sectionHeading(
+                      'Local Playlists'.i18n,
+                      localPlaylists.length,
                     ),
-                  ),
-                ],
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-                  child: FilledButton.tonalIcon(
-                    onPressed: _adding
-                        ? null
-                        : () => setState(() => createNew = true),
-                    icon: const Icon(Icons.add_rounded),
-                    label: Text('Create new playlist'.i18n),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                    ...localPlaylists.map(
+                      (playlist) => playlistRow(
+                        title: playlist.title,
+                        leading: localPlaylistArtwork(playlist),
+                        onTap: () => _addToLocalPlaylist(playlist),
                       ),
                     ),
-                  ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                      child: OutlinedButton.icon(
+                        onPressed: _adding || _creatingLocal
+                            ? null
+                            : _createLocalPlaylist,
+                        icon: const Icon(Icons.add_rounded),
+                        label: Text('Create local playlist'.i18n),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (editablePlaylists.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Divider(color: colors.outlineVariant),
+                      ),
+                      sectionHeading(
+                        '${platform.platformName} Playlists',
+                        editablePlaylists.length,
+                      ),
+                      ...editablePlaylists.map(
+                        (playlist) => playlistRow(
+                          title: playlist.title ?? '',
+                          leading: platformPlaylistArtwork(playlist),
+                          onTap: () => _addToPlaylist(playlist),
+                        ),
+                      ),
+                    ],
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                      child: FilledButton.tonalIcon(
+                        onPressed: _adding
+                            ? null
+                            : () => setState(() => createNew = true),
+                        icon: const Icon(Icons.add_rounded),
+                        label: Text('Create new playlist'.i18n),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-                const SizedBox(height: 16),
-              ],
-            ),
-          );
-          },
+              );
+            },
           ),
         ),
       ),

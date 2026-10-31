@@ -42,13 +42,16 @@ class DownloadServiceDart {
 
   DownloadBackgroundService? _backgroundService;
   bool _backgroundServiceRunning = false;
+  bool _initialized = false;
 
+  bool get isInitialized => _initialized;
   int get maxThreads => settings.downloadThreads;
 
   Stream<Map<String, dynamic>> get serviceEvents => _serviceEvents.stream;
 
   /// Initialize the download service
   Future<void> init(Database db) async {
+    _initialized = false;
     _db = db;
     _logger = DownloadLog();
     await _logger!.open();
@@ -97,6 +100,7 @@ class DownloadServiceDart {
     _isolateManager!.sendMessage(CoordinatorMessage(type: 'getDownloads'));
     _logger!.log('[DownloadService] Requested initial downloads list');
 
+    _initialized = true;
     _logger!.log('[DownloadService] Download service fully initialized');
   }
 

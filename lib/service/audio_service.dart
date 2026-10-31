@@ -213,8 +213,8 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   Scrobblenaut? _scrobblenaut;
   bool _scrobblenautReady = false;
-  static const _lastFmScrobbleCooldown = Duration(minutes: 4);
   final Map<String, DateTime> _recentLastFmScrobbles = {};
+  static const _lastFmDuplicateScrobbleCooldown = Duration(minutes: 4);
   // Last logged track id
   String? _loggedTrackId;
   bool emptied = false;
@@ -1240,6 +1240,15 @@ class AudioPlayerHandler extends BaseAudioHandler
       }
 
       _currentTrackListenedSeconds++;
+
+      // History entries may be created as soon as a track is selected. Keep
+      // Last.fm scrobbling separate from that, and submit once the configured
+      // percentage of the track has actually been listened to.
+      final activeItem = mediaItem.value;
+      if (activeItem != null &&
+          _lastFmScrobbleThresholdReached(activeItem)) {
+        unawaited(_addToHistory(activeItem));
+      }
 
       final positionMs = position.inMilliseconds;
       if (currentIndex != _lastSavedQueueIndex ||
@@ -3646,7 +3655,9 @@ class AudioPlayerHandler extends BaseAudioHandler
 
     final historyTrack = Track.fromMediaItem(item);
     final historyId = historyTrack.id ?? item.id;
-    if (_scrobblenautReady && _loggedTrackId != historyId) {
+    if (_scrobblenautReady &&
+        _loggedTrackId != historyId &&
+        _lastFmScrobbleThresholdReached(item)) {
       Logger.root.info('scrobbling track $historyId to recently LastFM');
       final platformId = item.extras?['platformId'] as String?;
       final platform = platformId == null
@@ -3665,7 +3676,9 @@ class AudioPlayerHandler extends BaseAudioHandler
       final now = DateTime.now().toUtc();
       final previousScrobble = _recentLastFmScrobbles[scrobbleKey];
       if (previousScrobble != null &&
-          now.difference(previousScrobble) < _lastFmScrobbleCooldown) {
+          now.difference(previousScrobble) <
+              _lastFmDuplicateScrobbleCooldown) {
+        _loggedTrackId = historyId;
         Logger.root.fine(
           'Skipping duplicate Last.fm scrobble for ${scrobble.artist} - '
           '${scrobble.title}',
@@ -3702,6 +3715,15 @@ class AudioPlayerHandler extends BaseAudioHandler
     Logger.root.info('adding track $historyId to recently played history');
     cache.history.add(historyTrack);
     cache.scheduleSave();
+  }
+
+  bool _lastFmScrobbleThresholdReached(MediaItem item) {
+    final duration = item.duration ?? _player.duration;
+    if (duration == null || duration <= Duration.zero) return true;
+
+    final threshold = settings.lastFMScrobbleThresholdPercent.clamp(1, 100);
+    return _currentTrackListenedSeconds * 100 >=
+        duration.inSeconds * threshold;
   }
 
   Future<void> _updateDiscordRPC(MediaItem item) async {

@@ -403,6 +403,7 @@ class DownloadManager {
     }
 
     String dbPath = p.join(await getFlavorDatabaseDirectory(), 'offline2.db');
+    _downloadLog!.log('[DownloadManager] Opening database at: $dbPath');
     //Open db
     db = await openDatabase(
       dbPath,
@@ -1095,6 +1096,12 @@ class DownloadManager {
     _downloadLog?.log(
       '[DownloadManager] addOfflineTrack called - trackId: ${track.id}, title: ${track.title}, private: $private, isSingleton: $isSingleton',
     );
+    if (db == null || !_downloadService.isInitialized) {
+      _downloadLog?.warn(
+        '[DownloadManager] Cannot add track download because the download database/service is not initialized',
+      );
+      return false;
+    }
 
     final musicPlatform = PlatformRegistry.instance.get(track.platformId);
     if (musicPlatform == null || !musicPlatform.capabilities.supportsDownload) {
@@ -1173,7 +1180,7 @@ class DownloadManager {
     return true;
   }
 
-  Future addOfflineAlbum(
+  Future<bool> addOfflineAlbum(
     Album album, {
     private = true,
     AudioQuality? quality,
@@ -1181,6 +1188,12 @@ class DownloadManager {
     _downloadLog?.log(
       '[DownloadManager] addOfflineAlbum called - albumId: ${album.id}, title: ${album.title}, private: $private',
     );
+    if (db == null || !_downloadService.isInitialized) {
+      _downloadLog?.warn(
+        '[DownloadManager] Cannot add album download because the download database/service is not initialized',
+      );
+      return false;
+    }
 
     final musicPlatform = PlatformRegistry.instance.get(album.platformId);
     if (musicPlatform == null || !musicPlatform.capabilities.supportsDownload) {
@@ -1192,7 +1205,7 @@ class DownloadManager {
       _downloadLog?.warn(
         '[DownloadManager] addOfflineAlbum - Permission denied for public download',
       );
-      return;
+      return false;
     }
 
     //Ask for quality
@@ -1267,6 +1280,7 @@ class DownloadManager {
     } else if (private) {
       await _refreshOfflineContainers(album.platformId);
     }
+    return true;
   }
 
   Future<List<Track>> loadLocalPlaylistTracks(
@@ -1352,6 +1366,12 @@ class DownloadManager {
     _downloadLog?.log(
       '[DownloadManager] addOfflinePlaylist called - playlistId: ${playlist.id}, title: ${playlist.title}, private: $private, trackCount: ${playlist.trackCount}',
     );
+    if (db == null || !_downloadService.isInitialized) {
+      _downloadLog?.warn(
+        '[DownloadManager] Cannot add playlist download because the download database/service is not initialized',
+      );
+      return false;
+    }
 
     final isLocal =
         playlist.platformId == 'local' ||
@@ -2055,6 +2075,11 @@ class DownloadManager {
     Track? track,
     Playlist? playlist,
   }) async {
+    // Database initialization can fail (for example, if the desktop database
+    // path is unavailable). Treat content as not offline rather than allowing
+    // callers in tiles to hit a null database assertion.
+    if (db == null) return false;
+
     if (track != null) {
       if (track.id == null) return false;
       final key = '${track.platformId}:${track.id}';

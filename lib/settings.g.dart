@@ -90,6 +90,7 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       ..colorGradientBackground =
           json['colorGradientBackground'] as bool? ?? false
       ..blurPlayerBackground = json['blurPlayerBackground'] as bool? ?? true
+      ..selectablePlayerText = json['selectablePlayerText'] as bool? ?? false
       ..themeAdditonalItems = json['themeAdditonalItems'] as bool? ?? true
       ..font = json['font'] as String? ?? 'Deezer'
       ..keepSidebarOpen = json['keepSidebarOpen'] as bool? ?? false
@@ -113,6 +114,8 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       ..lastFMPassword = json['lastFMPassword'] as String?
       ..lastFMAPIKey = json['lastFMAPIKey'] as String?
       ..lastFMAPISecret = json['lastFMAPISecret'] as String?
+      ..lastFMScrobbleThresholdPercent =
+          (json['lastFMScrobbleThresholdPercent'] as num?)?.toInt() ?? 50
       ..enableDiscordRPC = json['enableDiscordRPC'] as bool? ?? false
       ..noPremium = json['noPremium'] as bool? ?? false
       ..tier = json['tier'] as String?
@@ -169,6 +172,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'useSystemTheme': instance.useSystemTheme,
   'colorGradientBackground': instance.colorGradientBackground,
   'blurPlayerBackground': instance.blurPlayerBackground,
+  'selectablePlayerText': instance.selectablePlayerText,
   'themeAdditonalItems': instance.themeAdditonalItems,
   'font': instance.font,
   'keepSidebarOpen': instance.keepSidebarOpen,
@@ -189,6 +193,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'lastFMPassword': instance.lastFMPassword,
   'lastFMAPIKey': instance.lastFMAPIKey,
   'lastFMAPISecret': instance.lastFMAPISecret,
+  'lastFMScrobbleThresholdPercent': instance.lastFMScrobbleThresholdPercent,
   'enableDiscordRPC': instance.enableDiscordRPC,
   'noPremium': instance.noPremium,
   'tier': instance.tier,

@@ -570,5 +570,13 @@ const language_en_US = {
     'Crop downloaded artwork': 'Crop downloaded artwork',
     'Crop artwork to a square before embedding or saving it.':
         'Crop artwork to a square before embedding or saving it.',
+    'LastFM scrobble threshold': 'LastFM scrobble threshold',
+    'listened': 'listened',
+    'Save album art': 'Save album art',
+    'Album art saved': 'Album art saved',
+    'Could not save album art': 'Could not save album art',
+    'Selectable player text': 'Selectable player text',
+    'Allow selecting the song title and artist on the fullscreen player.':
+        'Allow selecting the song title and artist on the fullscreen player.',
   },
 };

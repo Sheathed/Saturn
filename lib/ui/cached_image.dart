@@ -2,6 +2,9 @@ import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:palette_generator_master/palette_generator_master.dart';
 import '../translations.i18n.dart';
 
@@ -223,6 +226,7 @@ class ZoomableImage extends StatefulWidget {
   final double? height;
   final bool? enabled;
   final String? caption;
+  final String? downloadFileName;
   final BoxFit? fit;
   final bool circular;
 
@@ -234,6 +238,7 @@ class ZoomableImage extends StatefulWidget {
     this.height,
     this.enabled = true,
     this.caption,
+    this.downloadFileName,
     this.fit,
     this.circular = false,
   });
@@ -267,6 +272,69 @@ class _ZoomableImageState extends State<ZoomableImage> {
       if (mounted) {
         Navigator.pop(context);
       }
+    }
+  }
+
+  String _safeFileName() {
+    final name = (widget.downloadFileName ?? 'album_art')
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .trim();
+    return name.isEmpty ? 'album_art' : name;
+  }
+
+  String _extensionForSource() {
+    final uri = Uri.tryParse(widget.url);
+    final path = uri?.path ?? widget.url;
+    final match = RegExp(r'\.([a-zA-Z0-9]+)$').firstMatch(path);
+    final extension = match?.group(1)?.toLowerCase();
+    if (extension == 'png' ||
+        extension == 'webp' ||
+        extension == 'gif' ||
+        extension == 'jpeg' ||
+        extension == 'jpg') {
+      return extension == 'jpeg' ? 'jpg' : extension!;
+    }
+    return 'jpg';
+  }
+
+  Future<Uint8List> _loadImageBytes() async {
+    final uri = Uri.tryParse(widget.url);
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      final response = await http.get(uri);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Image request failed with ${response.statusCode}');
+      }
+      return response.bodyBytes;
+    }
+    if (uri != null && uri.scheme == 'file') {
+      return File.fromUri(uri).readAsBytes();
+    }
+    if (widget.url.isNotEmpty && await File(widget.url).exists()) {
+      return File(widget.url).readAsBytes();
+    }
+    return (await rootBundle.load(widget.url)).buffer.asUint8List();
+  }
+
+  Future<void> _saveImage(BuildContext context) async {
+    try {
+      final bytes = await _loadImageBytes();
+      final extension = _extensionForSource();
+      final path = await FilePicker.saveFile(
+        dialogTitle: 'Save album art'.i18n,
+        fileName: '${_safeFileName()}.$extension',
+        bytes: bytes,
+      );
+      if (!context.mounted || path == null) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Album art saved'.i18n)));
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${'Could not save album art'.i18n}: $error'),
+        ),
+      );
     }
   }
 
@@ -336,6 +404,24 @@ class _ZoomableImageState extends State<ZoomableImage> {
                             fullThumb: true,
                             fit: BoxFit.contain,
                           ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 16.0,
+                    left: 16.0,
+                    child: SafeArea(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.download,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                          tooltip: 'Save album art'.i18n,
+                          onPressed: () => _saveImage(context),
                         ),
                       ),
                     ),

@@ -509,6 +509,21 @@ class _AppearanceSettingsState extends State<AppearanceSettings> {
             ),
           ),
           ListTile(
+            title: Text('Selectable player text'.i18n),
+            subtitle: Text(
+              'Allow selecting the song title and artist on the fullscreen player.'
+                  .i18n,
+            ),
+            leading: const Icon(Icons.text_fields),
+            trailing: Switch(
+              value: settings.selectablePlayerText,
+              onChanged: (bool v) async {
+                setState(() => settings.selectablePlayerText = v);
+                await settings.save();
+              },
+            ),
+          ),
+          ListTile(
             title: Text('Theme Additonal Items'.i18n),
             subtitle: Text(
               'Themes additional items like mini player and lyrics'.i18n,
@@ -1071,8 +1086,9 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
       ordered.insert(0, 'platform:origin');
     }
     final musixmatchIndex = ordered.indexOf('musixmatch');
-    var platformInsertIndex =
-        musixmatchIndex < 0 ? ordered.length : musixmatchIndex + 1;
+    var platformInsertIndex = musixmatchIndex < 0
+        ? ordered.length
+        : musixmatchIndex + 1;
     for (final platform in loggedIn) {
       final id = 'platform:${platform.platformId}';
       if (!ordered.contains(id)) {
@@ -1118,7 +1134,9 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    settings.downloadLyricsProviders = List<String>.from(ordered);
+                    settings.downloadLyricsProviders = List<String>.from(
+                      ordered,
+                    );
                     await settings.save();
                     if (dialogContext.mounted) {
                       Navigator.of(dialogContext).pop();
@@ -1419,8 +1437,7 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
           ListTile(
             title: Text('Crop downloaded artwork'.i18n),
             subtitle: Text(
-              'Crop artwork to a square before embedding or saving it.'
-                  .i18n,
+              'Crop artwork to a square before embedding or saving it.'.i18n,
             ),
             trailing: Switch(
               value: settings.cropDownloadArtwork,
@@ -1961,6 +1978,31 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                 ),
               );
             },
+          ),
+          ListTile(
+            title: Text('LastFM scrobble threshold'.i18n),
+            subtitle: Text(
+              '${settings.lastFMScrobbleThresholdPercent}% ${'listened'.i18n}',
+            ),
+            leading: const Icon(Icons.percent),
+            trailing: DropdownButton<int>(
+              value: settings.lastFMScrobbleThresholdPercent,
+              items: [10, 25, 50, 75, 90, 100]
+                  .map(
+                    (percent) => DropdownMenuItem<int>(
+                      value: percent,
+                      child: Text('$percent%'),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (percent) async {
+                if (percent == null) return;
+                setState(
+                  () => settings.lastFMScrobbleThresholdPercent = percent,
+                );
+                await settings.save();
+              },
+            ),
           ),
           ListTile(
             title: Text('Ignore interruptions'.i18n),

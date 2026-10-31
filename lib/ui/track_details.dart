@@ -1392,7 +1392,11 @@ class _MakeTrackOfflineState extends State<MakeTrackOffline> {
 
   Future<void> _toggleOffline() async {
     if (!_offline) {
-      await downloadManager.addOfflineTrack(widget.track, private: true);
+      final added = await downloadManager.addOfflineTrack(
+        widget.track,
+        private: true,
+      );
+      if (!added) return;
       MenuSheet().showDownloadStartedToast();
       if (mounted) setState(() => _offline = true);
     } else {

@@ -149,6 +149,8 @@ class Settings {
   late bool colorGradientBackground;
   @JsonKey(defaultValue: true)
   late bool blurPlayerBackground;
+  @JsonKey(defaultValue: false)
+  late bool selectablePlayerText;
   @JsonKey(defaultValue: true)
   late bool themeAdditonalItems;
   @JsonKey(defaultValue: 'Deezer')
@@ -209,6 +211,8 @@ class Settings {
   String? lastFMAPIKey;
   @JsonKey(defaultValue: null)
   String? lastFMAPISecret;
+  @JsonKey(defaultValue: 50)
+  int lastFMScrobbleThresholdPercent = 50;
 
   //Discord RPC
   @JsonKey(defaultValue: false)

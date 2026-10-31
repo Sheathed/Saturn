@@ -599,6 +599,157 @@ class _SeasonalEffectsPainter extends CustomPainter {
 late Function updateColor;
 late Color scaffoldBackgroundColor;
 
+class _SelectableMarquee extends StatefulWidget {
+  final String text;
+  final TextStyle? style;
+  final double height;
+
+  const _SelectableMarquee({
+    required this.text,
+    required this.style,
+    required this.height,
+  });
+
+  @override
+  State<_SelectableMarquee> createState() => _SelectableMarqueeState();
+}
+
+class _SelectableMarqueeState extends State<_SelectableMarquee> {
+  final ScrollController _scrollController = ScrollController();
+  static const _gap = 32.0;
+  int _animationRun = 0;
+  bool _isHovered = false;
+  bool _isPointerDown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startMarquee());
+  }
+
+  @override
+  void didUpdateWidget(covariant _SelectableMarquee oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _scrollController.jumpTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startMarquee());
+    }
+  }
+
+  void _startMarquee() {
+    final run = ++_animationRun;
+    unawaited(_animateMarquee(run));
+  }
+
+  void _pauseMarquee() {
+    _animationRun++;
+  }
+
+  void _resumeMarquee() {
+    if (_isHovered || _isPointerDown) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startMarquee();
+    });
+  }
+
+  Future<void> _animateMarquee(int run) async {
+    final textDirection = Directionality.of(context);
+    await Future<void>.delayed(const Duration(seconds: 1));
+    while (mounted && run == _animationRun) {
+      if (!_scrollController.hasClients ||
+          _scrollController.position.maxScrollExtent <= 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        continue;
+      }
+      final painter = TextPainter(
+        text: TextSpan(text: widget.text, style: widget.style),
+        maxLines: 1,
+        textDirection: textDirection,
+      )..layout();
+      final maxScrollExtent = _scrollController.position.maxScrollExtent;
+      final distance = painter.width + _gap;
+      if (distance <= 0 || maxScrollExtent < distance) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        continue;
+      }
+      final milliseconds = (distance * 18).clamp(2500, 12000).toInt();
+      await _scrollController.animateTo(
+        distance,
+        duration: Duration(milliseconds: milliseconds),
+        curve: Curves.linear,
+      );
+      if (!mounted || run != _animationRun) return;
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (!mounted || run != _animationRun) return;
+      _scrollController.jumpTo(0);
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationRun++;
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: widget.height,
+    child: MouseRegion(
+      onEnter: (_) {
+        _isHovered = true;
+        _pauseMarquee();
+      },
+      onExit: (_) {
+        _isHovered = false;
+        _resumeMarquee();
+      },
+      child: Listener(
+        onPointerDown: (_) {
+          _isPointerDown = true;
+          _pauseMarquee();
+        },
+        onPointerUp: (_) {
+          _isPointerDown = false;
+          _resumeMarquee();
+        },
+        onPointerCancel: (_) {
+          _isPointerDown = false;
+          _resumeMarquee();
+        },
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SelectableText(widget.text, maxLines: 1, style: widget.style),
+              const SizedBox(width: _gap),
+              SelectableText(widget.text, maxLines: 1, style: widget.style),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+bool _playerTextOverflows(
+  String text,
+  TextStyle? style,
+  TextDirection direction,
+  double maxWidth,
+) {
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    maxLines: 1,
+    textDirection: direction,
+  )..layout(maxWidth: maxWidth);
+  return painter.didExceedMaxLines;
+}
+
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({super.key});
 
@@ -914,6 +1065,20 @@ class PlayerScreenDesktop extends StatelessWidget {
                             maxLines: 1,
                             textDirection: Directionality.of(context),
                           )..layout(maxWidth: constraints.maxWidth);
+                          if (settings.selectablePlayerText) {
+                            return painter.didExceedMaxLines
+                                ? _SelectableMarquee(
+                                    text: title,
+                                    style: style,
+                                    height: 34,
+                                  )
+                                : SelectableText(
+                                    title,
+                                    maxLines: 1,
+                                    textAlign: TextAlign.center,
+                                    style: style,
+                                  );
+                          }
                           if (painter.didExceedMaxLines) {
                             return SizedBox(
                               height: 34,
@@ -939,16 +1104,30 @@ class PlayerScreenDesktop extends StatelessWidget {
                         },
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        item.displaySubtitle ?? item.artist ?? '',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
+                      settings.selectablePlayerText
+                          ? SelectableText(
+                              item.displaySubtitle ?? item.artist ?? '',
+                              maxLines: 1,
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                            )
+                          : Text(
+                              item.displaySubtitle ?? item.artist ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
                             ),
-                      ),
                       const SizedBox(height: 12),
                       const SeekBar(11, horizontalPadding: 24),
                       const SizedBox(height: 8),
@@ -1329,7 +1508,8 @@ class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
                                       : const SizedBox.shrink(),
                                 ),
                                 _QueuePositionIndicator(
-                                  queueState: snapshot.data ?? handler.queueState,
+                                  queueState:
+                                      snapshot.data ?? handler.queueState,
                                 ),
                                 IconButton(
                                   tooltip: 'Shuffle'.i18n,
@@ -2037,55 +2217,85 @@ class _PlayerScreenHorizontalState extends State<PlayerScreenHorizontal> {
                 children: <Widget>[
                   SizedBox(
                     height: ScreenUtil().setSp(56),
-                    child:
-                        GetIt.I<AudioPlayerHandler>()
-                                .mediaItem
-                                .value!
-                                .displayTitle!
-                                .length >=
-                            22
-                        ? Marquee(
-                            text: GetIt.I<AudioPlayerHandler>()
-                                .mediaItem
-                                .value!
-                                .displayTitle!,
-                            style: TextStyle(
-                              fontSize: ScreenUtil().setSp(40),
-                              fontWeight: FontWeight.bold,
-                            ),
-                            blankSpace: 32.0,
-                            startPadding: 10.0,
-                            accelerationDuration: const Duration(seconds: 1),
-                            pauseAfterRound: const Duration(seconds: 2),
-                          )
-                        : Text(
-                            GetIt.I<AudioPlayerHandler>()
-                                .mediaItem
-                                .value!
-                                .displayTitle!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: ScreenUtil().setSp(40),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                  Container(height: 4),
-                  Text(
-                    GetIt.I<AudioPlayerHandler>()
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final title = GetIt.I<AudioPlayerHandler>()
                             .mediaItem
                             .value!
-                            .displaySubtitle ??
-                        '',
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(
-                      fontSize: ScreenUtil().setSp(32),
-                      color: Theme.of(context).primaryColor,
+                            .displayTitle!;
+                        final style = TextStyle(
+                          fontSize: ScreenUtil().setSp(40),
+                          fontWeight: FontWeight.bold,
+                        );
+                        final overflowing = _playerTextOverflows(
+                          title,
+                          style,
+                          Directionality.of(context),
+                          constraints.maxWidth,
+                        );
+                        if (settings.selectablePlayerText) {
+                          return overflowing
+                              ? _SelectableMarquee(
+                                  text: title,
+                                  height: ScreenUtil().setSp(56),
+                                  style: style,
+                                )
+                              : SelectableText(
+                                  title,
+                                  maxLines: 1,
+                                  textAlign: TextAlign.center,
+                                  style: style,
+                                );
+                        }
+                        return overflowing
+                            ? Marquee(
+                                text: title,
+                                style: style,
+                                blankSpace: 32.0,
+                                startPadding: 10.0,
+                                accelerationDuration: const Duration(
+                                  seconds: 1,
+                                ),
+                                pauseAfterRound: const Duration(seconds: 2),
+                              )
+                            : Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: style,
+                              );
+                      },
                     ),
                   ),
+                  Container(height: 4),
+                  settings.selectablePlayerText
+                      ? SelectableText(
+                          GetIt.I<AudioPlayerHandler>()
+                                  .mediaItem
+                                  .value!
+                                  .displaySubtitle ??
+                              '',
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: ScreenUtil().setSp(32),
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        )
+                      : Text(
+                          GetIt.I<AudioPlayerHandler>()
+                                  .mediaItem
+                                  .value!
+                                  .displaySubtitle ??
+                              '',
+                          maxLines: 1,
+                          overflow: TextOverflow.clip,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: ScreenUtil().setSp(32),
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        ),
                 ],
               ),
               Container(
@@ -2208,56 +2418,85 @@ class _PlayerScreenVerticalState extends State<PlayerScreenVertical> {
           children: <Widget>[
             SizedBox(
               height: ScreenUtil().setSp(32),
-              child:
-                  (GetIt.I<AudioPlayerHandler>()
-                                  .mediaItem
-                                  .value
-                                  ?.displayTitle ??
-                              '')
-                          .length >=
-                      26
-                  ? Marquee(
-                      text:
-                          GetIt.I<AudioPlayerHandler>()
-                              .mediaItem
-                              .value
-                              ?.displayTitle ??
-                          '',
-                      style: TextStyle(
-                        fontSize: ScreenUtil().setSp(22),
-                        fontWeight: FontWeight.bold,
-                      ),
-                      blankSpace: 32.0,
-                      startPadding: 10.0,
-                      accelerationDuration: const Duration(seconds: 1),
-                      pauseAfterRound: const Duration(seconds: 2),
-                    )
-                  : Text(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final title =
                       GetIt.I<AudioPlayerHandler>()
-                              .mediaItem
-                              .value
-                              ?.displayTitle ??
-                          '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: ScreenUtil().setSp(22),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-            ),
-            Container(height: 4),
-            Text(
-              GetIt.I<AudioPlayerHandler>().mediaItem.value?.displaySubtitle ??
-                  '',
-              maxLines: 1,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.clip,
-              style: TextStyle(
-                fontSize: ScreenUtil().setSp(16),
-                color: Theme.of(context).primaryColor,
+                          .mediaItem
+                          .value
+                          ?.displayTitle ??
+                      '';
+                  final style = TextStyle(
+                    fontSize: ScreenUtil().setSp(22),
+                    fontWeight: FontWeight.bold,
+                  );
+                  final overflowing = _playerTextOverflows(
+                    title,
+                    style,
+                    Directionality.of(context),
+                    constraints.maxWidth,
+                  );
+                  if (settings.selectablePlayerText) {
+                    return overflowing
+                        ? _SelectableMarquee(
+                            text: title,
+                            height: ScreenUtil().setSp(32),
+                            style: style,
+                          )
+                        : SelectableText(
+                            title,
+                            maxLines: 1,
+                            textAlign: TextAlign.center,
+                            style: style,
+                          );
+                  }
+                  return overflowing
+                      ? Marquee(
+                          text: title,
+                          style: style,
+                          blankSpace: 32.0,
+                          startPadding: 10.0,
+                          accelerationDuration: const Duration(seconds: 1),
+                          pauseAfterRound: const Duration(seconds: 2),
+                        )
+                      : Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: style,
+                        );
+                },
               ),
             ),
+            Container(height: 4),
+            settings.selectablePlayerText
+                ? SelectableText(
+                    GetIt.I<AudioPlayerHandler>()
+                            .mediaItem
+                            .value
+                            ?.displaySubtitle ??
+                        '',
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: ScreenUtil().setSp(16),
+                      color: Theme.of(context).primaryColor,
+                    ),
+                  )
+                : Text(
+                    GetIt.I<AudioPlayerHandler>()
+                            .mediaItem
+                            .value
+                            ?.displaySubtitle ??
+                        '',
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.clip,
+                    style: TextStyle(
+                      fontSize: ScreenUtil().setSp(16),
+                      color: Theme.of(context).primaryColor,
+                    ),
+                  ),
           ],
         ),
         const SeekBar(12.0),
@@ -3015,6 +3254,8 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
                   key: pageKeys[index],
                   url: _displayArtworkSource(item) ?? '',
                   caption: item.extras?['caption'] as String?,
+                  downloadFileName:
+                      '${item.artist ?? 'Unknown artist'} - ${item.title}',
                 );
               },
               onPageChanged: (int index) {

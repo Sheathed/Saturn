@@ -493,20 +493,26 @@ class YouTubeMusicPlatform extends MusicPlatform {
   Future<List<Track>> getAllFavoriteTracks() => _api.getAllLikedTracks();
 
   @override
-  Future<PaginatedTrackList> getFavoriteTracks({
+  Future<TrackPageResponse> getFavoriteTracks({
     int start = 0,
     int limit = 100,
     Sorting? sort,
   }) async {
     if (!_api.client.isAuthenticated) {
-      return PaginatedTrackList(tracks: [], hasMore: false);
+      return const TrackPageResponse(tracks: [], hasMore: false);
     }
     final needsSort =
         sort != null && (sort.reverse || sort.type != SortType.DEFAULT);
     if (needsSort) {
       return super.getFavoriteTracks(start: start, limit: limit, sort: sort);
     }
-    return _api.getFavoriteTracks(start: start, limit: limit);
+    final page = await _api.getFavoriteTracks(start: start, limit: limit);
+    if (page.totalCount != null) return page;
+    return TrackPageResponse(
+      tracks: page.tracks,
+      hasMore: page.hasMore,
+      totalCount: await getFavoriteTrackCount(),
+    );
   }
 
   @override

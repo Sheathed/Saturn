@@ -213,6 +213,8 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   Scrobblenaut? _scrobblenaut;
   bool _scrobblenautReady = false;
+  static const _lastFmScrobbleCooldown = Duration(minutes: 4);
+  final Map<String, DateTime> _recentLastFmScrobbles = {};
   // Last logged track id
   String? _loggedTrackId;
   bool emptied = false;
@@ -1045,12 +1047,23 @@ class AudioPlayerHandler extends BaseAudioHandler
                       shuffleIndices.length == queue.length
                   ? shuffleIndices
                   : null;
+              final source = queueSource?.source;
+              final isUnboundedSource =
+                  source == 'flow' ||
+                  source == 'smartradio' ||
+                  source == 'artist_smartradio' ||
+                  source == 'mix' ||
+                  source == 'track_mix_contextual' ||
+                  source == 'smarttracklist';
               return QueueState(
                 queue,
                 playbackState.queueIndex,
                 validShuffleIndices,
                 playbackState.repeatMode,
                 playbackState.shuffleMode,
+                totalCount: queueSource?.totalCount,
+                showPosition:
+                    !isUnboundedSource && queueSource?.totalCount != null,
                 canLoadMore: canLoadMoreQueue,
               );
             })
@@ -1365,6 +1378,15 @@ class AudioPlayerHandler extends BaseAudioHandler
     if (_player.playing) return;
     if (isRadioActive) {
       await _playTrackAtIndex(currentIndex, autoPlay: true);
+      return;
+    }
+    if (_player.processingState == ProcessingState.completed ||
+        _playerAtTrackEnd()) {
+      await _playTrackAtIndex(
+        currentIndex,
+        position: Duration.zero,
+        autoPlay: true,
+      );
       return;
     }
     unawaited(_player.play());
@@ -1866,6 +1888,17 @@ class AudioPlayerHandler extends BaseAudioHandler
   @override
   Future<void> skipToQueueItem(int index) async {
     if (index < 0 || index >= currentQueue.length) return;
+    if (index == currentIndex &&
+        (_player.processingState == ProcessingState.completed ||
+            _player.processingState == ProcessingState.idle ||
+            _playerAtTrackEnd())) {
+      await _playTrackAtIndex(
+        index,
+        position: Duration.zero,
+        autoPlay: true,
+      );
+      return;
+    }
     if (_playerQueueCanSeekTo(index) &&
         _requestedIndex < 0 &&
         _player.processingState != ProcessingState.idle &&
@@ -3295,6 +3328,11 @@ class AudioPlayerHandler extends BaseAudioHandler
       );
       tracks = page.tracks;
       consumedPageCount = tracks.length;
+      if (page.totalCount != null &&
+          (queueSource?.totalCount == null ||
+              page.totalCount! > queueSource!.totalCount!)) {
+        queueSource?.totalCount = page.totalCount;
+      }
       if (!page.hasMore) {
         _queueSourceExhausted = true;
       }
@@ -3610,19 +3648,53 @@ class AudioPlayerHandler extends BaseAudioHandler
     final historyId = historyTrack.id ?? item.id;
     if (_scrobblenautReady && _loggedTrackId != historyId) {
       Logger.root.info('scrobbling track $historyId to recently LastFM');
-      _loggedTrackId = historyId;
-      try {
-        await _scrobblenaut?.track.scrobble(
-          track: item.title,
-          artist: item.artist ?? '',
-          album: item.album,
+      final platformId = item.extras?['platformId'] as String?;
+      final platform = platformId == null
+          ? null
+          : PlatformRegistry.instance.get(platformId);
+      final scrobble =
+          platform?.scrobbleMetadata(item) ??
+          ScrobbleMetadata(
+            title: item.title,
+            artist: item.artist ?? '',
+            album: item.album,
+          );
+      final scrobbleKey =
+          '${scrobble.artist.trim().toLowerCase()}\u0000'
+          '${scrobble.title.trim().toLowerCase()}';
+      final now = DateTime.now().toUtc();
+      final previousScrobble = _recentLastFmScrobbles[scrobbleKey];
+      if (previousScrobble != null &&
+          now.difference(previousScrobble) < _lastFmScrobbleCooldown) {
+        Logger.root.fine(
+          'Skipping duplicate Last.fm scrobble for ${scrobble.artist} - '
+          '${scrobble.title}',
         );
-      } catch (error, stack) {
-        Logger.root.warning(
-          'Could not scrobble ${item.id} to Last.fm',
-          error,
-          stack,
-        );
+      } else {
+        // Set both guards before awaiting the network request. Radio metadata
+        // can trigger overlapping callbacks for the same song.
+        _loggedTrackId = historyId;
+        _recentLastFmScrobbles[scrobbleKey] = now;
+        try {
+          await _scrobblenaut?.track.scrobble(
+            track: scrobble.title,
+            artist: scrobble.artist,
+            album: scrobble.album,
+          );
+        } catch (error, stack) {
+          // Allow a later playback callback to retry a transient Last.fm
+          // failure, while keeping the early assignment above as a duplicate
+          // guard for concurrent playback callbacks.
+          if (_loggedTrackId == historyId) _loggedTrackId = null;
+          if (_recentLastFmScrobbles[scrobbleKey] == now) {
+            _recentLastFmScrobbles.remove(scrobbleKey);
+          }
+          Logger.root.warning(
+            'Could not scrobble ${item.id} to Last.fm',
+            error,
+            stack,
+          );
+        }
       }
     }
 
@@ -3965,7 +4037,12 @@ class AudioPlayerHandler extends BaseAudioHandler
     await playFromTrackList(
       album.tracks ?? [],
       trackId,
-      QueueSource(id: album.id, text: album.title, source: 'album_page'),
+      QueueSource(
+        id: album.id,
+        text: album.title,
+        source: 'album_page',
+        totalCount: album.tracks?.length,
+      ),
     );
   }
 
@@ -4086,6 +4163,7 @@ class AudioPlayerHandler extends BaseAudioHandler
           text: playlist.title,
           source: 'playlist_page',
           sort: sort,
+          totalCount: playlist.trackCount,
         ),
       );
       return;
@@ -4098,6 +4176,7 @@ class AudioPlayerHandler extends BaseAudioHandler
         text: playlist.title,
         source: 'playlist_page',
         sort: sort,
+        totalCount: playlist.trackCount,
       ),
     );
   }
@@ -4131,7 +4210,7 @@ class AudioPlayerHandler extends BaseAudioHandler
         );
 
     if (isSameQueue) {
-      await skipToQueueItem(index);
+      await _replayOrSkipToQueueItem(index);
     } else {
       //Load and play
       await _loadQueueAndPlayAtIndex(showQueueSource, episodeQueue, index);
@@ -4172,6 +4251,39 @@ class AudioPlayerHandler extends BaseAudioHandler
         .map<MediaItem>((track) => track.toMediaItem())
         .toList();
 
+    if (trackQueue.isNotEmpty) {
+      final platformId =
+          trackQueue.first.extras?['platformId'] as String? ??
+          PlatformManager.instance.active.platformId;
+      final platform = PlatformRegistry.instance.get(platformId);
+      final isFavoritesQueue =
+          platform != null &&
+          (trackQueueSource.source == 'favorites_page' ||
+              trackQueueSource.id == platform.favoritesQueueSource.id);
+      if (isFavoritesQueue) {
+        final sort = trackQueueSource.sort;
+        final fullListWasLoaded =
+            sort != null && (sort.reverse || sort.type != SortType.DEFAULT);
+        int? resolvedCount;
+        if (fullListWasLoaded) {
+          // Sorted favorites are materialized in full before they are
+          // reordered, so this is the exact collection size.
+          resolvedCount = trackQueue.length;
+        } else {
+          try {
+            resolvedCount = await platform.getFavoriteTrackCount();
+          } catch (error) {
+            Logger.root.fine('Could not resolve favorite track count: $error');
+          }
+        }
+        if (resolvedCount != null &&
+            (trackQueueSource.totalCount == null ||
+                resolvedCount > trackQueueSource.totalCount!)) {
+          trackQueueSource.totalCount = resolvedCount;
+        }
+      }
+    }
+
     // Check if queue is the same by comparing MediaItem IDs
     bool isSameQueue =
         queueSource?.id != null &&
@@ -4182,7 +4294,9 @@ class AudioPlayerHandler extends BaseAudioHandler
         );
 
     if (isSameQueue) {
-      await skipToQueueItem(trackQueue.indexWhere((m) => m.id == trackId));
+      await _replayOrSkipToQueueItem(
+        trackQueue.indexWhere((m) => m.id == trackId),
+      );
     } else {
       //Load and play
       await _loadQueueAndPlayAtIndex(
@@ -4192,6 +4306,24 @@ class AudioPlayerHandler extends BaseAudioHandler
         sourceItemsConsumed: tracks.length,
       );
     }
+  }
+
+  Future<void> _replayOrSkipToQueueItem(int index) async {
+    if (index < 0 || index >= currentQueue.length) return;
+    // A completed/idle player may still have the same queue installed, but a
+    // normal queue seek does not reliably restart its final item. Reinstall
+    // that item at zero so tapping it behaves like a fresh play request.
+    if (_player.processingState == ProcessingState.completed ||
+        _player.processingState == ProcessingState.idle ||
+        (index == currentIndex && _playerAtTrackEnd())) {
+      await _playTrackAtIndex(
+        index,
+        position: Duration.zero,
+        autoPlay: true,
+      );
+      return;
+    }
+    await skipToQueueItem(index);
   }
 
   //Load smart track list as queue, start from beginning
@@ -4499,7 +4631,9 @@ class QueueState {
     [],
     AudioServiceRepeatMode.none,
     AudioServiceShuffleMode.none,
+    totalCount: 0,
     canLoadMore: false,
+    showPosition: true,
   );
 
   final List<MediaItem> queue;
@@ -4507,7 +4641,9 @@ class QueueState {
   final List<int>? shuffleIndices;
   final AudioServiceRepeatMode repeatMode;
   final AudioServiceShuffleMode shuffleMode;
+  final int? totalCount;
   final bool canLoadMore;
+  final bool showPosition;
 
   const QueueState(
     this.queue,
@@ -4515,7 +4651,9 @@ class QueueState {
     this.shuffleIndices,
     this.repeatMode,
     this.shuffleMode, {
+    this.totalCount,
     this.canLoadMore = false,
+    this.showPosition = true,
   });
 
   // Same items are usually the very same instances; avoid deep MediaItem
@@ -4532,7 +4670,11 @@ class QueueState {
   List<int> get indices =>
       shuffleIndices ?? List.generate(queue.length, (i) => i);
 
-  int get currentOrderIndex => indices.indexOf(queueIndex ?? 0);
+  int get currentOrderIndex {
+    final current = queueIndex ?? 0;
+    final shuffled = shuffleIndices;
+    return shuffled == null ? current : shuffled.indexOf(current);
+  }
 
   bool get hasPrevious =>
       repeatMode != AudioServiceRepeatMode.none || currentOrderIndex > 0;
@@ -4552,7 +4694,9 @@ class QueueState {
           listEquals(shuffleIndices, other.shuffleIndices) &&
           repeatMode == other.repeatMode &&
           shuffleMode == other.shuffleMode &&
-          canLoadMore == other.canLoadMore;
+          totalCount == other.totalCount &&
+          canLoadMore == other.canLoadMore &&
+          showPosition == other.showPosition;
 
   @override
   int get hashCode => Object.hash(
@@ -4561,6 +4705,8 @@ class QueueState {
     shuffleIndices == null ? null : Object.hashAll(shuffleIndices!),
     repeatMode,
     shuffleMode,
+    totalCount,
     canLoadMore,
+    showPosition,
   );
 }

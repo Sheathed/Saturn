@@ -86,6 +86,18 @@ class Settings {
   late bool downloadEnhancedLrc;
   @JsonKey(defaultValue: false)
   late bool saveOfflineTrackLyrics;
+  @JsonKey(
+    defaultValue: [
+      'platform:origin',
+      'lrclib',
+      'musixmatch',
+      'netease',
+      'kugou',
+      'qq',
+      'genius',
+    ],
+  )
+  late List<String> downloadLyricsProviders;
   @JsonKey(defaultValue: false)
   late bool trackCover;
   @JsonKey(defaultValue: true)
@@ -161,6 +173,8 @@ class Settings {
   bool useArtColor = false;
   @JsonKey(defaultValue: true)
   bool cropMediaArtwork = true;
+  @JsonKey(defaultValue: false)
+  bool cropDownloadArtwork = false;
   StreamSubscription? _useArtColorSub;
   StreamSubscription? _playbackStateSub;
   Color? _activeArtColor;

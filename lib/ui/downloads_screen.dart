@@ -64,6 +64,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   Timer? _reloadDebouncer;
   bool _needsReload = false;
   final Map<int, Map<String, dynamic>> _latestActiveProgress = {};
+  final Set<int> _terminalDownloadIds = <int>{};
 
   //Sublists
   List<Download> get downloading => downloads
@@ -138,6 +139,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
               'UI received progress for id ${su['id']}: received=${su['received']}, total=${su['filesize']}, state=${su['state']}',
             );
             final id = su['id'];
+            if (id is int && _terminalDownloadIds.contains(id)) continue;
             if (id is int &&
                 (su['state'] == DownloadState.DOWNLOADING.index ||
                     su['state'] == DownloadState.POST.index)) {
@@ -152,15 +154,39 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           }
         });
       }
-      //Download completed - reload to show in "Done" section
-      if (e['type'] == 'downloadComplete' || e['type'] == 'downloadError') {
+      if (e['type'] == 'downloadComplete') {
         final id = e['id'];
-        if (id is int) _latestActiveProgress.remove(id);
+        if (id is int) {
+          _terminalDownloadIds.add(id);
+          _latestActiveProgress.remove(id);
+          final raw = e['download'];
+          final index = downloads.indexWhere((download) => download.id == id);
+          if (raw is Map) {
+            if (index >= 0) {
+              downloads[index].updateFromJson(raw);
+            } else {
+              downloads.add(Download.fromJson(raw));
+            }
+          }
+        }
+        _debouncedReload();
+      }
+      if (e['type'] == 'downloadError') {
+        final id = e['id'];
+        if (id is int) {
+          _terminalDownloadIds.add(id);
+          _latestActiveProgress.remove(id);
+          final index = downloads.indexWhere((download) => download.id == id);
+          if (index >= 0) {
+            downloads[index].updateFromJson({'state': e['state']});
+          }
+        }
         _debouncedReload();
       }
 
       //Downloads added - reload to show new downloads
       if (e['type'] == 'downloadsAdded') {
+        _terminalDownloadIds.clear();
         _debouncedReload();
       }
 

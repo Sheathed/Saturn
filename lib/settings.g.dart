@@ -41,6 +41,19 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       ..downloadEnhancedLrc = json['downloadEnhancedLrc'] as bool? ?? false
       ..saveOfflineTrackLyrics =
           json['saveOfflineTrackLyrics'] as bool? ?? false
+      ..downloadLyricsProviders =
+          (json['downloadLyricsProviders'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [
+            'platform:origin',
+            'lrclib',
+            'musixmatch',
+            'netease',
+            'kugou',
+            'qq',
+            'genius',
+          ]
       ..trackCover = json['trackCover'] as bool? ?? false
       ..albumCover = json['albumCover'] as bool? ?? true
       ..nomediaFiles = json['nomediaFiles'] as bool? ?? false
@@ -89,6 +102,7 @@ Settings _$SettingsFromJson(Map<String, dynamic> json) =>
       )
       ..useArtColor = json['useArtColor'] as bool? ?? true
       ..cropMediaArtwork = json['cropMediaArtwork'] as bool? ?? true
+      ..cropDownloadArtwork = json['cropDownloadArtwork'] as bool? ?? false
       ..deezerLanguage = json['deezerLanguage'] as String? ?? 'en'
       ..deezerCountry = json['deezerCountry'] as String? ?? 'US'
       ..logListen = json['logListen'] as bool? ?? true
@@ -142,6 +156,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'downloadLyrics': instance.downloadLyrics,
   'downloadEnhancedLrc': instance.downloadEnhancedLrc,
   'saveOfflineTrackLyrics': instance.saveOfflineTrackLyrics,
+  'downloadLyricsProviders': instance.downloadLyricsProviders,
   'trackCover': instance.trackCover,
   'albumCover': instance.albumCover,
   'nomediaFiles': instance.nomediaFiles,
@@ -163,6 +178,7 @@ Map<String, dynamic> _$SettingsToJson(Settings instance) => <String, dynamic>{
   'primaryColor': Settings._colorToJson(instance.primaryColor),
   'useArtColor': instance.useArtColor,
   'cropMediaArtwork': instance.cropMediaArtwork,
+  'cropDownloadArtwork': instance.cropDownloadArtwork,
   'deezerLanguage': instance.deezerLanguage,
   'deezerCountry': instance.deezerCountry,
   'logListen': instance.logListen,

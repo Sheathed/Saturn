@@ -33,6 +33,7 @@ import '../service/audio_service.dart';
 import '../settings.dart';
 import '../platform/platform_registry.dart';
 import '../platform/platform_settings.dart';
+import '../lyrics/lyrics_registry.dart';
 import '../ui/login_screen.dart';
 import '../translations.i18n.dart';
 import '../ui/downloads_screen.dart';
@@ -1052,6 +1053,88 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
   final TextEditingController _artistSeparatorController =
       TextEditingController(text: settings.artistSeparator);
 
+  Future<void> _editDownloadLyricsProviders() async {
+    final registered = LyricsRegistry.instance.getAll();
+    final loggedIn = await PlatformRegistry.instance.loggedInPlatforms;
+    if (!mounted) return;
+    final labels = <String, String>{
+      for (final provider in registered) provider.id: provider.name,
+      'platform:origin': 'Origin platform'.i18n,
+      for (final platform in loggedIn)
+        'platform:${platform.platformId}': platform.platformName,
+    };
+    final knownIds = labels.keys.toSet();
+    final ordered = settings.downloadLyricsProviders
+        .where(knownIds.contains)
+        .toList();
+    if (!ordered.contains('platform:origin')) {
+      ordered.insert(0, 'platform:origin');
+    }
+    final musixmatchIndex = ordered.indexOf('musixmatch');
+    var platformInsertIndex =
+        musixmatchIndex < 0 ? ordered.length : musixmatchIndex + 1;
+    for (final platform in loggedIn) {
+      final id = 'platform:${platform.platformId}';
+      if (!ordered.contains(id)) {
+        ordered.insert(platformInsertIndex++, id);
+      }
+    }
+    for (final provider in registered) {
+      if (!ordered.contains(provider.id)) ordered.add(provider.id);
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Lyrics provider priority'.i18n),
+              content: SizedBox(
+                width: 420,
+                height: 360,
+                child: ReorderableListView.builder(
+                  itemCount: ordered.length,
+                  onReorderItem: (oldIndex, newIndex) {
+                    setDialogState(() {
+                      final provider = ordered.removeAt(oldIndex);
+                      ordered.insert(newIndex, provider);
+                    });
+                  },
+                  itemBuilder: (context, index) {
+                    final id = ordered[index];
+                    return ListTile(
+                      key: ValueKey(id),
+                      title: Text(labels[id] ?? id),
+                      subtitle: Text(id),
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text('Cancel'.i18n),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    settings.downloadLyricsProviders = List<String>.from(ordered);
+                    await settings.save();
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                    if (mounted) setState(() {});
+                  },
+                  child: Text('Save'.i18n),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1300,6 +1383,16 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
             ),
             leading: const Icon(Icons.library_music),
           ),
+          ListTile(
+            title: Text('Lyrics provider priority'.i18n),
+            subtitle: Text(
+              settings.downloadLyricsProviders
+                  .map((id) => LyricsRegistry.instance.get(id)?.name ?? id)
+                  .join(' → '),
+            ),
+            leading: const Icon(Icons.format_list_numbered),
+            onTap: _editDownloadLyricsProviders,
+          ),
           const FreezerDivider(),
           ListTile(
             title: Text('Save cover file for every track'.i18n),
@@ -1322,6 +1415,21 @@ class _DownloadsSettingsState extends State<DownloadsSettings> {
               },
             ),
             leading: const Icon(Icons.image),
+          ),
+          ListTile(
+            title: Text('Crop downloaded artwork'.i18n),
+            subtitle: Text(
+              'Crop artwork to a square before embedding or saving it.'
+                  .i18n,
+            ),
+            trailing: Switch(
+              value: settings.cropDownloadArtwork,
+              onChanged: (v) {
+                setState(() => settings.cropDownloadArtwork = v);
+                settings.save();
+              },
+            ),
+            leading: const Icon(Icons.crop),
           ),
           ListTile(
             title: Text('Album cover resolution'.i18n),
@@ -1817,6 +1925,42 @@ class _GeneralSettingsState extends State<GeneralSettings> {
                 ),
               ),
             ),
+          ),
+          ListTile(
+            title: Text('LastFM setup guide'.i18n),
+            subtitle: Text('How to set up LastFM scrobbling.'.i18n),
+            leading: const Icon(Icons.help_outline),
+            onTap: () {
+              showDialog<void>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('LastFM setup guide'.i18n),
+                  content: SingleChildScrollView(
+                    child: Text(
+                      '''
+1. Open last.fm/api/account/create and sign in.
+2. Create an application and copy its API Key and Shared Secret into the fields above.
+3. Saturn does not use Last.fm web OAuth, so no callback URL is needed. You only need to enter app name nothing else.
+4. Tap LastFM, then sign in with your Last.fm username and password.
+'''
+                          .i18n,
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => launchUrlString(
+                        'https://www.last.fm/api/account/create',
+                      ),
+                      child: Text('Open LastFM API account page'.i18n),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text('Close'.i18n),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
           ListTile(
             title: Text('Ignore interruptions'.i18n),

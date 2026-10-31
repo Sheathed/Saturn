@@ -1328,7 +1328,7 @@ class YouTubeMusicApi {
   }
 
   /// Fetches the user's Liked Music (LM / VLLM) tracks page.
-  Future<PaginatedTrackList> getFavoriteTracks({
+  Future<TrackPageResponse> getFavoriteTracks({
     int start = 0,
     int limit = 100,
   }) async {
@@ -1339,13 +1339,14 @@ class YouTubeMusicApi {
         start: start,
         limit: limit,
       );
-      return PaginatedTrackList(
+      return TrackPageResponse(
         tracks: _tracksFromParsedItems(parsed['tracks']),
         hasMore: parsed['hasMore'] == true,
+        totalCount: int.tryParse(parsed['trackCount']?.toString() ?? ''),
       );
     } catch (e) {
       _log.warning('Error fetching favorite tracks: $e');
-      return PaginatedTrackList(tracks: [], hasMore: false);
+      return const TrackPageResponse(tracks: [], hasMore: false);
     }
   }
 

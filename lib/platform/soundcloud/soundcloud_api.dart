@@ -977,7 +977,7 @@ class SoundCloudApi {
       )
       .toList();
 
-  Future<PaginatedTrackList> getLikedTracks({
+  Future<TrackPageResponse> getLikedTracks({
     required String userId,
     int start = 0,
     int limit = 100,
@@ -989,15 +989,21 @@ class SoundCloudApi {
         limit: limit,
       );
       final next = response is Map ? response['next_href'] as String? : null;
-      return PaginatedTrackList(
+      return TrackPageResponse(
         tracks: _tracks(_collection(response), liked: true),
         hasMore: next != null && next.isNotEmpty,
+        totalCount: response is Map
+            ? (response['total_results'] as num?)?.toInt()
+            : null,
       );
     }
     // SoundCloud's next_href uses an opaque timestamp cursor rather than a
     // numeric offset. Follow it until we have enough visible tracks.
     final items = <dynamic>[];
     dynamic response = await _page('/users/$userId/track_likes', limit: limit);
+    final reportedTotal = response is Map
+        ? (response['total_results'] as num?)?.toInt()
+        : null;
     String? next;
     for (var page = 0; page < 100; page++) {
       items.addAll(_collection(response));
@@ -1010,11 +1016,19 @@ class SoundCloudApi {
       response = await client.getNext(next);
     }
     final allTracks = _tracks(items, liked: true);
-    return PaginatedTrackList(
+    return TrackPageResponse(
       tracks: allTracks.skip(start).take(limit).toList(),
       hasMore:
           allTracks.length > start + limit || (next != null && next.isNotEmpty),
+      totalCount: reportedTotal ?? allTracks.length,
     );
+  }
+
+  Future<int?> getLikedTrackCount(String userId) async {
+    final response = await _page('/users/$userId/track_likes', limit: 1);
+    return response is Map
+        ? (response['total_results'] as num?)?.toInt()
+        : null;
   }
 
   Future<List<String>> getLikedTrackIds() async {

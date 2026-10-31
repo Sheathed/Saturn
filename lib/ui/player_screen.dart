@@ -47,6 +47,36 @@ bool _queueHasMixedPlatforms(Iterable<MediaItem> items) =>
         .length >
     1;
 
+class _QueuePositionIndicator extends StatelessWidget {
+  final QueueState queueState;
+
+  const _QueuePositionIndicator({required this.queueState});
+
+  @override
+  Widget build(BuildContext context) {
+    if (queueState.queue.isEmpty ||
+        !queueState.showPosition ||
+        queueState.totalCount == null) {
+      return const SizedBox.shrink();
+    }
+    final currentPosition = queueState.currentOrderIndex + 1;
+    return Tooltip(
+      message: 'Current song in queue'.i18n,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.queue_music, size: 20),
+            const SizedBox(width: 4),
+            Text('$currentPosition / ${queueState.totalCount}'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 String _playbackSourceLabel(MediaItem item) {
   final source = item.extras?['source']?.toString().toLowerCase();
   final streamUrl = Uri.tryParse(item.extras?['streamUrl']?.toString() ?? '');
@@ -1297,6 +1327,9 @@ class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
                                           ),
                                         )
                                       : const SizedBox.shrink(),
+                                ),
+                                _QueuePositionIndicator(
+                                  queueState: snapshot.data ?? handler.queueState,
                                 ),
                                 IconButton(
                                   tooltip: 'Shuffle'.i18n,
@@ -3365,6 +3398,8 @@ class _QueueScreenState extends State<QueueScreen> with WidgetsBindingObserver {
               ),
             ),
 
+          _QueuePositionIndicator(queueState: queueState),
+
           Padding(
             padding: const EdgeInsets.fromLTRB(0, 4, 0, 0),
             child: IconButton(
@@ -3507,7 +3542,13 @@ class _QueueScreenNoDRGState extends State<QueueScreenNoDRG> {
     final showPlatformBadges = _queueHasMixedPlatforms(queueState.queue);
 
     return Scaffold(
-      appBar: FreezerAppBar('Queue'.i18n),
+      appBar: FreezerAppBar(
+        'Queue'.i18n,
+        actions: [
+          _QueuePositionIndicator(queueState: queueState),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: ListTileTheme(
         data: ListTileTheme.of(
           context,

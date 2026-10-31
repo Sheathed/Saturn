@@ -12,6 +12,8 @@ import '../../utils/logging.dart';
 const String _kNeuroApiBaseUrl = 'https://api.neurokaraoke.com/api';
 const String _kNeuroStorageBaseUrl = 'https://storage.neurokaraoke.com';
 const String _kNeuroImageBaseUrl = 'https://images.neurokaraoke.com';
+/// Neuro's recommendation feed is a fixed 50-song mix, returned in pages.
+const int neuroYourMixTotal = 50;
 
 String _formatNeuroImageUrl(
   dynamic path, {
@@ -747,7 +749,7 @@ class NeuroKaraokeAPI {
         description:
             'Personalized song recommendations based on your listening history',
         tracks: tracks,
-        trackCount: tracks.length,
+        trackCount: neuroYourMixTotal,
         duration: Duration(seconds: totalSeconds),
         image: tracks.isNotEmpty
             ? (tracks.first.albumArt ??

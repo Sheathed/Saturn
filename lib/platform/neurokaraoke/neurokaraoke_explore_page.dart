@@ -1,13 +1,12 @@
 import '../../utils/app_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:go_router/go_router.dart';
 import 'package:get_it/get_it.dart';
 import '../../utils/logging.dart';
 import '../../api/definitions.dart';
 import '../../service/audio_service.dart';
 import '../../ui/details_screens.dart';
-import '../../ui/home_screen.dart';
-import '../../platform/platform_manager.dart';
 import '../../ui/mosaic_image.dart';
 import '../../ui/tiles.dart';
 import '../../ui/menu.dart';
@@ -195,7 +194,7 @@ class _NeuroKaraokeExplorePageState extends State<NeuroKaraokeExplorePage> {
             description:
                 'Personalized song recommendations based on your listening history',
             tracks: _suggestions,
-            trackCount: _suggestions.length,
+            trackCount: neuroYourMixTotal,
             image:
                 _suggestions.first.albumArt ??
                 ImageDetails(
@@ -299,30 +298,23 @@ class _NeuroKaraokeExplorePageState extends State<NeuroKaraokeExplorePage> {
             Row(
               children: [
                 if (title == 'Recent Setlist') ...[
-                  TextButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.download, size: 16),
-                    label: const Text(
-                      'Download Setlist',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                  if (constraints.maxWidth >= 600) ...[
+                    TextButton.icon(
+                      onPressed: () {},
+                      icon: const Icon(Icons.download, size: 16),
+                      label: const Text(
+                        'Download Setlist',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
+                    const SizedBox(width: 8),
+                  ],
                   TextButton(
                     onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => HomePageScreen(
-                            loadPage: () =>
-                                PlatformManager.instance.active.getChannel(
-                                  'public_playlists?startIndex=0&isSetlist=true',
-                                ),
-                          ),
-                        ),
-                      );
+                      context.go('/browse?tab=setlists');
                     },
                     child: const Text(
                       'Show All Setlists',

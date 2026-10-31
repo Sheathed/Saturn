@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:fluttericon/font_awesome5_icons.dart';
 import 'package:fluttericon/typicons_icons.dart';
@@ -159,6 +160,21 @@ class SoundCloudPlatform extends MusicPlatform {
 
   @override
   String get platformName => 'SoundCloud';
+
+  @override
+  ScrobbleMetadata scrobbleMetadata(MediaItem item) {
+    var title = item.title.trim();
+    var artist = (item.artist ?? item.displaySubtitle ?? '').trim();
+    final separator = title.indexOf(' - ');
+    // SoundCloud's artist field may be the uploader account. When the title
+    // uses the common "Artist - Track" format, prefer its artist portion for
+    // Last.fm even when the API supplied a different, non-empty artist.
+    if (separator > 0) {
+      artist = title.substring(0, separator).trim();
+      title = title.substring(separator + 3).trim();
+    }
+    return ScrobbleMetadata(title: title, artist: artist, album: item.album);
+  }
 
   @override
   IconData get platformIcon => FontAwesome5.soundcloud;
@@ -419,11 +435,11 @@ class SoundCloudPlatform extends MusicPlatform {
     if (_userId == null) await isLoggedIn();
     final uid = _userId;
     if (uid == null) return [];
-    return _api.getAllLikedTracks(uid);
+    return _api.getAllLikedTracks(uid, max: 100000);
   }
 
   @override
-  Future<PaginatedTrackList> getFavoriteTracks({
+  Future<TrackPageResponse> getFavoriteTracks({
     int start = 0,
     int limit = 100,
     Sorting? sort,
@@ -431,14 +447,33 @@ class SoundCloudPlatform extends MusicPlatform {
     if (_userId == null) await isLoggedIn();
     final uid = _userId;
     if (uid == null) {
-      return PaginatedTrackList(tracks: [], hasMore: false);
+      return const TrackPageResponse(tracks: [], hasMore: false);
     }
     final needsSort =
         sort != null && (sort.reverse || sort.type != SortType.DEFAULT);
     if (needsSort) {
       return super.getFavoriteTracks(start: start, limit: limit, sort: sort);
     }
-    return _api.getLikedTracks(userId: uid, start: start, limit: limit);
+    final page = await _api.getLikedTracks(
+      userId: uid,
+      start: start,
+      limit: limit,
+    );
+    if (page.totalCount != null) return page;
+    return TrackPageResponse(
+      tracks: page.tracks,
+      hasMore: page.hasMore,
+      totalCount: await getFavoriteTrackCount(),
+    );
+  }
+
+  @override
+  Future<int?> getFavoriteTrackCount() async {
+    if (_userId == null) await isLoggedIn();
+    final uid = _userId;
+    if (uid == null) return null;
+    return await _api.getLikedTrackCount(uid) ??
+        (await _api.getLikedTrackIds()).length;
   }
 
   @override

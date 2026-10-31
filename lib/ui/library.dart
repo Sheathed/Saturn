@@ -364,7 +364,7 @@ class _LibraryTracksState extends State<LibraryTracks> {
         !connectivity.contains(ConnectivityResult.none)) {
       if (mounted) setState(() {});
 
-      PaginatedTrackList? page;
+      TrackPageResponse? page;
       final platform = PlatformManager.instance.active;
       final start = tracks.length;
       try {
@@ -403,7 +403,12 @@ class _LibraryTracksState extends State<LibraryTracks> {
       if (mounted) {
         setState(() {
           tracks.addAll(page!.tracks);
-          if (page.hasMore) {
+          final cachedCount = cache.activeLibraryTracks.length;
+          if (page.totalCount != null && page.totalCount! >= cachedCount) {
+            trackCount = page.totalCount;
+          } else if (cachedCount > (page.totalCount ?? 0)) {
+            trackCount = cachedCount;
+          } else if (page.hasMore) {
             trackCount = tracks.length + 1;
           } else {
             trackCount = tracks.length;
@@ -597,7 +602,8 @@ class _LibraryTracksState extends State<LibraryTracks> {
                     tracks,
                     t.id!,
                     (PlatformManager.instance.active.favoritesQueueSource
-                      ..sort = _sort),
+                      ..sort = _sort
+                      ..totalCount = trackCount),
                   );
                 },
                 onHold: () {

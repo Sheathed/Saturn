@@ -549,6 +549,26 @@ const language_en_US = {
     'Spacebar playback control': 'Spacebar playback control',
     'Press Space to play or pause when no text field is selected.':
         'Press Space to play or pause when no text field is selected.',
+    'LastFM setup guide': 'LastFM setup guide',
+    'How to set up LastFM scrobbling.': 'How to set up LastFM scrobbling.',
+    '''
+1. Open last.fm/api/account/create and sign in.
+2. Create an application and copy its API Key and Shared Secret into the fields above.
+3. Saturn does not use Last.fm web OAuth, so no callback URL is needed. You only need to enter app name nothing else.
+4. Tap LastFM, then sign in with your Last.fm username and password.
+''': '''
+1. Open last.fm/api/account/create and sign in.
+2. Create an application and copy its API Key and Shared Secret into the fields above.
+3. Saturn does not use Last.fm web OAuth, so no callback URL is needed. You only need to enter app name nothing else.
+4. Tap LastFM, then sign in with your Last.fm username and password.
+''',
+    'Open LastFM API account page': 'Open LastFM API account page',
+    'Current song in queue': 'Current song in queue',
     'Trending': 'Trending',
+    'Lyrics provider priority': 'Lyrics provider priority',
+    'Origin platform': 'Origin platform',
+    'Crop downloaded artwork': 'Crop downloaded artwork',
+    'Crop artwork to a square before embedding or saving it.':
+        'Crop artwork to a square before embedding or saving it.',
   },
 };

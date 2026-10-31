@@ -2212,6 +2212,8 @@ fragment PinItem on QuickAccessItem {
       id
       cover {
         ...PictureSmall
+        ...PictureMedium
+        ...PictureLarge
         __typename
       }
       __typename

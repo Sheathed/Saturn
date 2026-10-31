@@ -56,7 +56,7 @@ class Track {
   /// Returns a list of search queries optimized for finding lyrics,
   /// from most specific to most broad.
   List<String> get lyricSearchQueries {
-    final t = title ?? '';
+    final t = metadataTitle;
     final a = artistString ?? '';
 
     final cleanTitle = t
@@ -113,6 +113,19 @@ class Track {
   String get unavailableMessage => unavailableReason == 'drm'
       ? 'Track is unavailable due to DRM'
       : 'Track is unavailable'.i18n;
+
+  /// Title used for external metadata providers. Neuro Karaoke can append a
+  /// stream-source label to playable titles; it is not part of the song name.
+  String get metadataTitle {
+    final value = (title ?? '').trim();
+    if (platformId != 'neurokaraoke') return value;
+    return value
+        .replaceFirst(
+          RegExp(r'\s*\(Temporary Stream Audio\)\s*$', caseSensitive: false),
+          '',
+        )
+        .trim();
+  }
 
   List<Artist>? get displayArtists =>
       artists?.isNotEmpty == true ? artists : navigableArtists;
@@ -1685,8 +1698,9 @@ class QueueSource {
   String? text;
   String? source;
   Sorting? sort;
+  int? totalCount;
 
-  QueueSource({this.id, this.text, this.source, this.sort});
+  QueueSource({this.id, this.text, this.source, this.sort, this.totalCount});
 
   factory QueueSource.fromJson(Map<String, dynamic> json) {
     final rawSort = json['sort'];
@@ -1701,6 +1715,7 @@ class QueueSource {
           : rawSort is Map
           ? Sorting.fromJson(Map<String, dynamic>.from(rawSort))
           : null,
+      totalCount: json['totalCount'] as int?,
     );
   }
 
@@ -1709,6 +1724,7 @@ class QueueSource {
     'text': text,
     'source': source,
     'sort': sort?.toJson(),
+    'totalCount': totalCount,
   };
 }
 

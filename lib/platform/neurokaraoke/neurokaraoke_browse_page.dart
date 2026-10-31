@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:go_router/go_router.dart';
 import '../../api/definitions.dart';
 import '../../ui/home_screen.dart';
 import '../../ui/tiles.dart';
@@ -18,6 +19,19 @@ class NeuroKaraokeBrowsePage extends StatefulWidget {
 
 class _NeuroKaraokeBrowsePageState extends State<NeuroKaraokeBrowsePage> {
   BrowseTab _selectedTab = BrowseTab.playlists;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final requestedTab = GoRouterState.of(context).uri.queryParameters['tab'];
+    if (requestedTab == 'setlists') {
+      _selectedTab = BrowseTab.setlists;
+    } else if (requestedTab == 'artists') {
+      _selectedTab = BrowseTab.artists;
+    } else if (requestedTab == 'playlists') {
+      _selectedTab = BrowseTab.playlists;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,14 +66,14 @@ class _NeuroKaraokeBrowsePageState extends State<NeuroKaraokeBrowsePage> {
           ),
         ),
         Expanded(
-          child: _selectedTab == BrowseTab.artists 
-            ? const NeuroKaraokeArtistsGrid()
-            : HomePageScreen(
-                key: ValueKey(_selectedTab),
-                loadPage: () => PlatformManager.instance.active.getChannel(
-                  'public_playlists?startIndex=0&isSetlist=${_selectedTab == BrowseTab.setlists}',
+          child: _selectedTab == BrowseTab.artists
+              ? const NeuroKaraokeArtistsGrid()
+              : HomePageScreen(
+                  key: ValueKey(_selectedTab),
+                  loadPage: () => PlatformManager.instance.active.getChannel(
+                    'public_playlists?startIndex=0&isSetlist=${_selectedTab == BrowseTab.setlists}',
+                  ),
                 ),
-              ),
         ),
       ],
     );
@@ -70,7 +84,8 @@ class NeuroKaraokeArtistsGrid extends StatefulWidget {
   const NeuroKaraokeArtistsGrid({super.key});
 
   @override
-  State<NeuroKaraokeArtistsGrid> createState() => _NeuroKaraokeArtistsGridState();
+  State<NeuroKaraokeArtistsGrid> createState() =>
+      _NeuroKaraokeArtistsGridState();
 }
 
 class _NeuroKaraokeArtistsGridState extends State<NeuroKaraokeArtistsGrid> {
@@ -87,7 +102,10 @@ class _NeuroKaraokeArtistsGridState extends State<NeuroKaraokeArtistsGrid> {
     super.initState();
     _fetchArtists();
     _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && !_isLoading && _hasMore) {
+      if (_scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 200 &&
+          !_isLoading &&
+          _hasMore) {
         _fetchArtists();
       }
     });
@@ -100,7 +118,10 @@ class _NeuroKaraokeArtistsGridState extends State<NeuroKaraokeArtistsGrid> {
     });
 
     try {
-      final newArtists = await _api.getArtists(startIndex: _startIndex, pageSize: _pageSize);
+      final newArtists = await _api.getArtists(
+        startIndex: _startIndex,
+        pageSize: _pageSize,
+      );
       setState(() {
         _artists.addAll(newArtists);
         _startIndex += newArtists.length;
@@ -130,7 +151,7 @@ class _NeuroKaraokeArtistsGridState extends State<NeuroKaraokeArtistsGrid> {
     if (_artists.isEmpty && _isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     return ResponsiveMediaGrid.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(16.0),
@@ -146,9 +167,7 @@ class _NeuroKaraokeArtistsGridState extends State<NeuroKaraokeArtistsGrid> {
           item: artist,
           onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => ArtistDetails(artist),
-              ),
+              MaterialPageRoute(builder: (context) => ArtistDetails(artist)),
             );
           },
           onHold: () {

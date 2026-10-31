@@ -5,6 +5,7 @@ import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import 'package:metatagger/metatagger.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -655,24 +656,6 @@ class _DownloadCoordinator {
           'Worker state message for id $downloadId: '
           '${previous.name} -> ${download.state.name}',
         );
-        if (download.state == DownloadStateDart.DONE &&
-            previous != DownloadStateDart.DONE) {
-          _logger?.log(
-            'Forwarding downloadComplete for id $downloadId to the app',
-          );
-          _sendResponse(
-            IsolateResponse(
-              type: 'downloadComplete',
-              data: {
-                'id': download.id,
-                'platformId': download.platformId,
-                'trackId': download.trackId,
-                'title': download.title,
-                'download': download.toMap(),
-              },
-            ),
-          );
-        }
         if (_isTerminal(download.state)) {
           // Persist the terminal state before notifying the app. The app may
           // immediately refresh offline playlists in response to this event.
@@ -691,6 +674,24 @@ class _DownloadCoordinator {
               ),
             );
           }
+        }
+        if (download.state == DownloadStateDart.DONE &&
+            previous != DownloadStateDart.DONE) {
+          _logger?.log(
+            'Forwarding downloadComplete for id $downloadId after persistence',
+          );
+          _sendResponse(
+            IsolateResponse(
+              type: 'downloadComplete',
+              data: {
+                'id': download.id,
+                'platformId': download.platformId,
+                'trackId': download.trackId,
+                'title': download.title,
+                'download': download.toMap(),
+              },
+            ),
+          );
         }
         break;
       case 'log':
@@ -1106,17 +1107,23 @@ class _DownloadWorker {
   Future<LyricsFull?> _resolveOfflineLyrics(
     MusicPlatform nativePlatform,
     PlatformDownloadMetadata metadata,
+    {bool allowWhenDisabled = false}
   ) async {
     final track = metadata.track;
-    if (!(settings['saveOfflineTrackLyrics'] as bool? ?? false)) {
+    if (!allowWhenDisabled &&
+        !(settings['saveOfflineTrackLyrics'] as bool? ?? false)) {
       _log('Skipping offline lyrics: saveOfflineTrackLyrics is disabled');
       return null;
     }
     final savedChoice = _savedLyricsChoice(track);
+    final configuredPriority = settings['downloadLyricsProviders'];
+    final hasConfiguredPriority =
+        configuredPriority is List && configuredPriority.isNotEmpty;
     var resolvedSource = savedChoice ?? 'default';
     try {
       Lyrics? lyrics;
-      if (savedChoice != null &&
+      if (!hasConfiguredPriority &&
+          savedChoice != null &&
           savedChoice != 'default' &&
           savedChoice != 'native' &&
           savedChoice.startsWith('platform:')) {
@@ -1140,11 +1147,14 @@ class _DownloadWorker {
             final results = await provider.search(query);
             final result = results.tracks?.firstOrNull;
             if (result?.id == null) continue;
-            lyrics = await provider.getLyrics(result!.id!);
+            lyrics = await provider.getLyrics(result!.id!).timeout(
+              const Duration(seconds: 15),
+            );
             if (lyrics.isLoaded()) break;
           }
         }
-      } else if (savedChoice != null &&
+      } else if (!hasConfiguredPriority &&
+          savedChoice != null &&
           savedChoice != 'default' &&
           savedChoice != 'native') {
         final separator = savedChoice.indexOf('|');
@@ -1157,13 +1167,133 @@ class _DownloadWorker {
         final lyricProvider = LyricsRegistry.instance.get(providerId);
         if (lyricProvider != null) {
           resolvedSource = providerId;
-          final candidates = await lyricProvider.getLyricsCandidates(track);
+          final lookupTrack = _lyricsLookupTrack(nativePlatform, track);
+          final candidates = await lyricProvider.getLyricsCandidates(
+            lookupTrack,
+          );
           final selected = candidateId == null
               ? null
               : candidates
                     .where((candidate) => candidate.id == candidateId)
                     .firstOrNull;
-          lyrics = selected?.lyrics ?? await lyricProvider.getLyrics(track);
+          lyrics =
+              selected?.lyrics ??
+              await lyricProvider.getLyrics(lookupTrack).timeout(
+                const Duration(seconds: 15),
+              );
+        }
+      }
+
+      if (lyrics?.isLoaded() != true) {
+        final configuredProviders = (settings['downloadLyricsProviders']
+                as List<dynamic>? ??
+            const [])
+            .whereType<String>()
+            .toList();
+        final providerIds = configuredProviders.isNotEmpty
+            ? [
+                if (!configuredProviders.contains('platform:origin'))
+                  'platform:origin',
+                ...configuredProviders,
+              ]
+            : [
+                'platform:origin',
+                ...LyricsRegistry.instance
+                    .getAll()
+                    .map((provider) => provider.id),
+              ];
+        for (final providerId in providerIds) {
+          try {
+            if (providerId == 'platform:origin') {
+              resolvedSource = 'platform:${nativePlatform.platformId}';
+              lyrics = await _getNativeLyrics(nativePlatform, metadata);
+            } else if (providerId.startsWith('platform:')) {
+              final platformId = providerId.substring('platform:'.length);
+              // The origin placeholder is the only entry that represents the
+              // source platform; never try that platform a second time.
+              if (platformId == nativePlatform.platformId) continue;
+              final provider = await createDownloadPlatform(
+                platformId,
+                settings,
+                executeJavaScriptOnRootIsolate:
+                    executeJavaScriptOnRootIsolate,
+              );
+              resolvedSource = 'platform:${provider.platformId}';
+              lyrics = await _getPlatformDownloadLyrics(
+                provider,
+                metadata,
+                searchPlatform: nativePlatform,
+              );
+            } else {
+              final provider = LyricsRegistry.instance.get(providerId);
+              if (provider == null) continue;
+              final lookupTrack = _lyricsLookupTrack(nativePlatform, track);
+              final candidate = await provider.getLyrics(lookupTrack).timeout(
+                const Duration(seconds: 15),
+              );
+              if (candidate.isLoaded()) {
+                resolvedSource = provider.id;
+                lyrics = candidate;
+              }
+            }
+            if (lyrics?.isLoaded() == true) {
+              break;
+            }
+          } catch (error) {
+            _log('Lyrics provider $providerId failed: $error');
+          }
+        }
+      }
+
+      // A configured download priority is authoritative. A previously chosen
+      // interactive lyrics record is only a fallback when that priority did
+      // not produce usable lyrics, so downloads do not appear to ignore the
+      // order selected in Download Settings.
+      if (lyrics?.isLoaded() != true &&
+          hasConfiguredPriority &&
+          savedChoice != null &&
+          savedChoice != 'default' &&
+          savedChoice != 'native') {
+        if (savedChoice.startsWith('platform:')) {
+          final platformId = savedChoice.substring('platform:'.length);
+          final provider = platformId == nativePlatform.platformId
+              ? nativePlatform
+              : await createDownloadPlatform(
+                  platformId,
+                  settings,
+                  executeJavaScriptOnRootIsolate:
+                      executeJavaScriptOnRootIsolate,
+                );
+          resolvedSource = 'platform:${provider.platformId}';
+          lyrics = provider.platformId == nativePlatform.platformId
+              ? await _getNativeLyrics(provider, metadata)
+              : await _getPlatformDownloadLyrics(provider, metadata);
+        } else {
+          final separator = savedChoice.indexOf('|');
+          final providerId = separator > 0
+              ? savedChoice.substring(0, separator)
+              : savedChoice;
+          final lyricProvider = LyricsRegistry.instance.get(providerId);
+          if (lyricProvider != null) {
+            resolvedSource = providerId;
+            final lookupTrack = _lyricsLookupTrack(nativePlatform, track);
+            final candidates = await lyricProvider.getLyricsCandidates(
+              lookupTrack,
+            );
+            final candidateId = separator > 0
+                ? savedChoice.substring(separator + 1)
+                : null;
+            final selected = candidateId == null
+                ? null
+                : candidates
+                      .where((candidate) => candidate.id == candidateId)
+                      .firstOrNull;
+            lyrics =
+                selected?.lyrics ??
+                await lyricProvider.getLyrics(lookupTrack).timeout(
+                  const Duration(seconds: 15),
+                );
+          }
         }
       }
 
@@ -1174,7 +1304,11 @@ class _DownloadWorker {
         } else {
           final lrclib = LyricsRegistry.instance.get('lrclib');
           resolvedSource = 'lrclib';
-          lyrics = lrclib == null ? null : await lrclib.getLyrics(track);
+          lyrics = lrclib == null
+              ? null
+              : await lrclib
+                    .getLyrics(_lyricsLookupTrack(nativePlatform, track))
+                    .timeout(const Duration(seconds: 15));
         }
       }
       if (lyrics?.isLoaded() != true) {
@@ -1217,11 +1351,73 @@ class _DownloadWorker {
     }
     final trackId = metadata.lyricsTrackId ?? metadata.track.id;
     if (trackId == null) return null;
-    var lyrics = await platform.getLyrics(trackId);
+    var lyrics = await platform.getLyrics(trackId).timeout(
+      const Duration(seconds: 15),
+    );
     if (!lyrics.isLoaded() && metadata.track.fallback?.id != null) {
-      lyrics = await platform.getLyrics(metadata.track.fallback!.id!);
+      lyrics = await platform.getLyrics(metadata.track.fallback!.id!).timeout(
+        const Duration(seconds: 15),
+      );
     }
     return lyrics;
+  }
+
+  Track _lyricsLookupTrack(MusicPlatform originPlatform, Track track) {
+    final query = originPlatform.getLyricsSearchQuery(track).trim();
+    if (query.isEmpty || originPlatform.platformId != 'neurokaraoke') {
+      return track;
+    }
+    final separator = query.indexOf(' - ');
+    final artist = separator > 0
+        ? query.substring(0, separator).trim()
+        : track.artistString?.trim() ?? '';
+    final title = separator > 0
+        ? query.substring(separator + 3).trim()
+        : query;
+    if (title.isEmpty) return track;
+    return Track(
+      id: track.id,
+      title: title,
+      album: track.album,
+      duration: track.duration,
+      albumArt: track.albumArt,
+      artists: artist.isEmpty
+          ? track.artists
+          : [Artist(name: artist, platformId: track.platformId)],
+      displayArtistName: artist.isEmpty ? track.displayArtistName : artist,
+      platformId: track.platformId,
+    );
+  }
+
+  Future<Lyrics?> _getPlatformDownloadLyrics(
+    MusicPlatform platform,
+    PlatformDownloadMetadata metadata,
+    {MusicPlatform? searchPlatform}
+  ) async {
+    final track = metadata.track;
+    if (platform.platformId == metadata.track.platformId) {
+      return _getNativeLyrics(platform, metadata);
+    }
+    final lookupTrack = searchPlatform == null
+        ? track
+        : _lyricsLookupTrack(searchPlatform, track);
+    final queries = <String>{
+      searchPlatform?.getLyricsSearchQuery(track) ??
+          platform.getLyricsSearchQuery(track),
+      ...lookupTrack.lyricSearchQueries,
+    }..removeWhere((query) => query.trim().isEmpty);
+    for (final query in queries) {
+      final results = await platform.search(query).timeout(
+        const Duration(seconds: 15),
+      );
+      final result = results.tracks?.firstOrNull;
+      if (result?.id == null) continue;
+      final lyrics = await platform.getLyrics(result!.id!).timeout(
+        const Duration(seconds: 15),
+      );
+      if (lyrics.isLoaded()) return lyrics;
+    }
+    return null;
   }
 
   String? _savedLyricsChoice(Track track) {
@@ -1383,16 +1579,23 @@ class _DownloadWorker {
       }
     }
 
+    if ((settings['cropDownloadArtwork'] as bool? ?? false) &&
+        coverBytes != null) {
+      coverBytes = _cropArtwork(coverBytes);
+    }
+
     Lyrics? lyrics;
     final enabledTags = (settings['tags'] as List<dynamic>? ?? const []);
     final needsLyrics =
         (settings['downloadLyrics'] as bool? ?? false) ||
         enabledTags.contains('lyrics');
-    if (needsLyrics &&
-        platform.capabilities.supportsLyrics &&
-        metadata.lyricsTrackId != null) {
+    if (needsLyrics && metadata.lyricsTrackId != null) {
       try {
-        lyrics = await platform.getLyrics(metadata.lyricsTrackId!);
+        lyrics = await _resolveOfflineLyrics(
+          platform,
+          metadata,
+          allowWhenDisabled: true,
+        ).timeout(const Duration(seconds: 60));
       } catch (error) {
         _error('Lyrics download failed: $error');
       }
@@ -1420,6 +1623,25 @@ class _DownloadWorker {
       await File(_sidecarPath(outputFile, 'lrc')).writeAsString(
         _generateLrc(metadata, lyrics!, enhanced: useEnhancedLrc),
       );
+    }
+  }
+
+  Uint8List _cropArtwork(Uint8List bytes) {
+    try {
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null || decoded.width == decoded.height) return bytes;
+      final side = decoded.width < decoded.height ? decoded.width : decoded.height;
+      final cropped = img.copyCrop(
+        decoded,
+        x: (decoded.width - side) ~/ 2,
+        y: (decoded.height - side) ~/ 2,
+        width: side,
+        height: side,
+      );
+      return Uint8List.fromList(img.encodeJpg(cropped, quality: 95));
+    } catch (error) {
+      _log('Artwork crop failed; keeping original artwork: $error');
+      return bytes;
     }
   }
 

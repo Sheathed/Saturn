@@ -134,7 +134,6 @@ class _LyricsScreenState extends State<LyricsScreen>
   Timer? _syncTimer;
   final ScrollController _scrollController = ScrollController();
   final ScrollController _providerScrollController = ScrollController();
-  final Map<String, FocusNode> _providerChipFocusNodes = {};
   final GlobalKey _miniPlayerKey = GlobalKey();
   double? _miniPlayerHeight;
   final ValueNotifier<Duration> _positionNotifier = ValueNotifier(
@@ -341,9 +340,6 @@ class _LyricsScreenState extends State<LyricsScreen>
     _radioStateSub?.cancel();
     _scrollController.dispose();
     _providerScrollController.dispose();
-    for (final focusNode in _providerChipFocusNodes.values) {
-      focusNode.dispose();
-    }
     _positionNotifier.dispose();
     if (!widget.embedded) {
       SystemChrome.setSystemUIOverlayStyle(
@@ -1715,6 +1711,18 @@ class _LyricsScreenState extends State<LyricsScreen>
             ),
             child: Listener(
               behavior: HitTestBehavior.opaque,
+              onPointerSignal: (event) {
+                if (event is PointerScrollEvent &&
+                    event.scrollDelta.dx.abs() > 0) {
+                  // Silky handles this horizontal trackpad delta for the
+                  // provider strip. Claim it so the surrounding player tabs
+                  // don't also interpret it as a page switch.
+                  GestureBinding.instance.pointerSignalResolver.register(
+                    event,
+                    (_) {},
+                  );
+                }
+              },
               onPointerPanZoomUpdate: (event) {
                 if (!_providerScrollController.hasClients) return;
                 // Silky handles horizontal trackpad pans. Map vertical or
@@ -1768,23 +1776,6 @@ class _LyricsScreenState extends State<LyricsScreen>
                         : theme.colorScheme.outlineVariant.withValues(
                             alpha: 0.45,
                           );
-                    final providerKey = provider is MusicPlatform
-                        ? 'platform:${provider.platformId}'
-                        : provider is _OfflineLyricsProvider
-                        ? 'offline'
-                        : 'provider:${(provider as LyricsProvider).id}';
-                    final focusNode = _providerChipFocusNodes.putIfAbsent(
-                      providerKey,
-                      () => FocusNode(
-                        debugLabel: 'lyrics-provider-$providerKey',
-                        onKeyEvent: (_, event) =>
-                            event.logicalKey == LogicalKeyboardKey.space &&
-                                !settings.spacebarPlaybackToggle
-                            ? KeyEventResult.handled
-                            : KeyEventResult.ignored,
-                      ),
-                    );
-
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: AnimatedContainer(
@@ -1811,7 +1802,6 @@ class _LyricsScreenState extends State<LyricsScreen>
                           clipBehavior: Clip.antiAlias,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(22),
-                            focusNode: focusNode,
                             onTap: () async {
                               final mediaItem =
                                   GetIt.I<AudioPlayerHandler>().mediaItem.value;
@@ -2262,13 +2252,24 @@ class _LyricsScreenState extends State<LyricsScreen>
       curve: Curves.easeInOutCubic,
       alignment: Alignment.topCenter,
       onEnd: _onInstrumentalLayoutAnimationEnd,
-      child: visible
-          ? _buildInstrumentalCard(
+      // Keep every break mounted in the lyrics list so its place is stable.
+      // The size/opacity transition still removes inactive breaks visually,
+      // while [onSkip] is only supplied by the active break below.
+      child: ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: visible ? 1 : 0,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: visible ? 1 : 0,
+            child: _buildInstrumentalCard(
               secondsRemaining: secondsRemaining,
               onSkip: onSkip,
               isIntro: isIntro,
-            )
-          : const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -2584,7 +2585,14 @@ class _LyricsScreenState extends State<LyricsScreen>
                                                             currentPosMs) /
                                                         1000)
                                                     .ceil(),
-                                            onSkip: isRadioPlayback
+                                            onSkip:
+                                                isRadioPlayback ||
+                                                    currentPosMs >=
+                                                        (syncedList
+                                                                .first
+                                                                .offset
+                                                                ?.inMilliseconds ??
+                                                            0)
                                                 ? null
                                                 : () {
                                                     final target =
@@ -2633,15 +2641,23 @@ class _LyricsScreenState extends State<LyricsScreen>
                                                     ?.offset
                                                     ?.inMilliseconds ??
                                                 lineEndMs;
-                                            final showBreakAfter =
+                                            final breakIsActive =
                                                 nextStartMs - lineEndMs >=
                                                     5000 &&
                                                 currentPosMs >= lineEndMs &&
                                                 currentPosMs < nextStartMs;
+                                            final hasInstrumentalBreak =
+                                                nextStartMs - lineEndMs >= 5000;
+                                            final showBreakAfter =
+                                                hasInstrumentalBreak &&
+                                                currentPosMs < nextStartMs;
                                             final breakSecondsRemaining =
-                                                ((nextStartMs - currentPosMs) /
-                                                        1000)
-                                                    .ceil();
+                                                (breakIsActive
+                                                        ? nextStartMs -
+                                                              currentPosMs
+                                                        : nextStartMs -
+                                                              lineEndMs) /
+                                                    1000;
 
                                             return Column(
                                               children: [
@@ -2724,8 +2740,11 @@ class _LyricsScreenState extends State<LyricsScreen>
                                                 _buildAnimatedInstrumentalCard(
                                                   visible: showBreakAfter,
                                                   secondsRemaining:
-                                                      breakSecondsRemaining,
-                                                  onSkip: isRadioPlayback
+                                                      breakSecondsRemaining
+                                                          .ceil(),
+                                                  onSkip:
+                                                      isRadioPlayback ||
+                                                          !breakIsActive
                                                       ? null
                                                       : () {
                                                           final target =

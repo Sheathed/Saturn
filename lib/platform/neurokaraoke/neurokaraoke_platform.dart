@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
@@ -72,6 +73,39 @@ class NeuroKaraokePlatform extends MusicPlatform {
 
   @override
   String get platformName => 'Neuro Karaoke';
+
+  @override
+  ScrobbleMetadata scrobbleMetadata(MediaItem item) {
+    var artist = '';
+    final encodedArtists = item.extras?['navigableArtists'];
+    if (encodedArtists is String && encodedArtists.isNotEmpty) {
+      try {
+        final artists = jsonDecode(encodedArtists);
+        if (artists is List) {
+          artist = artists
+              .whereType<Map>()
+              .map((a) => a['name']?.toString().trim() ?? '')
+              .where((name) => name.isNotEmpty)
+              .join(', ');
+        }
+      } catch (_) {}
+    }
+
+    final cleanTitle = item.title
+        .replaceFirst(
+          RegExp(r'\s*\(Temporary Stream Audio\)\s*$', caseSensitive: false),
+          '',
+        )
+        .trim();
+    final separator = cleanTitle.indexOf(' - ');
+    final title = separator > 0
+        ? cleanTitle.substring(separator + 3).trim()
+        : cleanTitle;
+    if (artist.isEmpty && separator > 0) {
+      artist = cleanTitle.substring(0, separator).trim();
+    }
+    return ScrobbleMetadata(title: title, artist: artist, album: item.album);
+  }
 
   @override
   IconData get platformIcon => Icons.music_note;
@@ -186,6 +220,10 @@ class NeuroKaraokePlatform extends MusicPlatform {
   }
 
   @override
+  Future<int?> getFavoriteTrackCount() async =>
+      (await getAllFavoriteTracks()).length;
+
+  @override
   Widget buildLoginWidget({required VoidCallback onSuccess}) {
     return _NeuroKaraokeLoginForm(onSuccess: onSuccess, platform: this);
   }
@@ -271,7 +309,7 @@ class NeuroKaraokePlatform extends MusicPlatform {
 
   @override
   String getLyricsSearchQuery(Track track) {
-    String title = (track.title ?? '').trim();
+    String title = track.metadataTitle;
     // The radio display can be "Artist - Song (Cover artist)". Remove the
     // performer credit before searching, including names such as Neuro x Evil.
     final coverTag = RegExp(

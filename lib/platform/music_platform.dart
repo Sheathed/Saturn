@@ -22,6 +22,33 @@ class PlatformLinkResponse {
 
 enum PlatformLinkType { track, album, artist, playlist }
 
+/// A page from the tracks library. Unlike playlist pages, this carries the
+/// provider's authoritative total when one is available.
+class TrackPageResponse {
+  final List<Track> tracks;
+  final bool hasMore;
+  final int? totalCount;
+
+  const TrackPageResponse({
+    required this.tracks,
+    required this.hasMore,
+    this.totalCount,
+  });
+}
+
+/// Metadata sent to Last.fm when a track is scrobbled.
+class ScrobbleMetadata {
+  final String title;
+  final String artist;
+  final String? album;
+
+  const ScrobbleMetadata({
+    required this.title,
+    required this.artist,
+    this.album,
+  });
+}
+
 /// One page of a platform's listening history. Cursors are opaque to the UI.
 class HistoryTrackPage {
   final List<Track> tracks;
@@ -227,6 +254,15 @@ abstract class MusicPlatform {
   /// Human-readable display name, e.g. "Deezer", "SoundCloud".
   String get platformName;
 
+  /// Allows a platform to convert display metadata into Last.fm metadata.
+  /// Platforms can use this for feeds whose display title contains the artist
+  /// or whose playback artist differs from the original recording artist.
+  ScrobbleMetadata scrobbleMetadata(MediaItem item) => ScrobbleMetadata(
+    title: item.title,
+    artist: item.artist ?? item.displaySubtitle ?? '',
+    album: item.album,
+  );
+
   /// Icon to show in the platform switcher.
   IconData get platformIcon;
 
@@ -317,7 +353,7 @@ abstract class MusicPlatform {
   /// Gets favorite tracks for the currently active user.
   /// When [sort] is active, fetches [getAllFavoriteTracks], applies [applySorting],
   /// and returns the requested page slice.
-  Future<PaginatedTrackList> getFavoriteTracks({
+  Future<TrackPageResponse> getFavoriteTracks({
     int start = 0,
     int limit = 100,
     Sorting? sort,
@@ -339,9 +375,17 @@ abstract class MusicPlatform {
         );
       }
       final all = _cachedSortedFavorites!;
-      return PaginatedTrackList(
+      final reportedCount = await getFavoriteTrackCount();
+      // A provider can return a page-sized or otherwise stale count. The
+      // sorted snapshot is the complete liked-track collection, so it is the
+      // minimum trustworthy total whenever it is larger.
+      final totalCount = reportedCount == null || reportedCount < all.length
+          ? all.length
+          : reportedCount;
+      return TrackPageResponse(
         tracks: all.skip(start).take(limit).toList(),
         hasMore: all.length > start + limit,
+        totalCount: totalCount,
       );
     }
     _cachedSortedFavorites = null;
@@ -349,16 +393,28 @@ abstract class MusicPlatform {
     final favId = favoritesPlaylistId;
     if (favId != null) {
       final tracks = await getPlaylistTracks(favId, start, nb: limit + 1);
-      return PaginatedTrackList(
+      return TrackPageResponse(
         tracks: tracks.take(limit).toList(),
         hasMore: tracks.length > limit,
+        totalCount: await getFavoriteTrackCount(),
       );
     }
     final all = await getAllFavoriteTracks();
-    return PaginatedTrackList(
+    return TrackPageResponse(
       tracks: all.skip(start).take(limit).toList(),
       hasMore: all.length > start + limit,
+      totalCount: all.length,
     );
+  }
+
+  /// Returns the provider's authoritative favourites count when available.
+  /// This is deliberately part of the tracks-library contract, not playlist
+  /// pagination.
+  Future<int?> getFavoriteTrackCount() async {
+    final id = favoritesPlaylistId;
+    if (id == null) return null;
+    final playlist = await getPlaylist(id, limit: 1);
+    return playlist.trackCount;
   }
 
   /// Builds the login UI widget for this platform.

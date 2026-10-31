@@ -1327,6 +1327,14 @@ class DeezerPlatform extends MusicPlatform {
   );
 
   @override
+  Future<int?> getFavoriteTrackCount() async {
+    final id = _api.favoritesPlaylistId;
+    if (id == null) return null;
+    final playlist = await getPlaylist(id.toString(), limit: 1);
+    return playlist.trackCount;
+  }
+
+  @override
   Future<void> logListen(
     String trackId,
     QueueSource? queue, {

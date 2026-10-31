@@ -281,11 +281,12 @@ class _SaturnAppState extends State<SaturnApp> {
   KeyEventResult _handleGlobalPlaybackKey(KeyEvent event) {
     if (event.logicalKey != LogicalKeyboardKey.space ||
         !_supportsDesktopSpacebar ||
-        !settings.spacebarPlaybackToggle ||
         _textEntryHasFocus()) {
       return KeyEventResult.ignored;
     }
-    if (event is KeyDownEvent && GetIt.I.isRegistered<AudioPlayerHandler>()) {
+    if (settings.spacebarPlaybackToggle &&
+        event is KeyDownEvent &&
+        GetIt.I.isRegistered<AudioPlayerHandler>()) {
       final player = GetIt.I<AudioPlayerHandler>();
       unawaited(player.isPlaybackActive ? player.pause() : player.play());
     }

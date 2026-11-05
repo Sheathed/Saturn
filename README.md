@@ -50,6 +50,12 @@ See the [Saturn website](https://saturn.kim/) or the [releases page](https://git
       libayatana-appindicator3-dev libmpv-dev libwebkit2gtk-4.1-dev
     ```
 
+Linux builds use the system WebKit2GTK 4.1 runtime; it is not bundled. Install it before launching Saturn. On Debian or Ubuntu:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-0
+```
+
 ### Prepare the checkout
 
 ```sh

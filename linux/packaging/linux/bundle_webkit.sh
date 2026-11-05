@@ -76,7 +76,8 @@ for plugin_library in "$bundle_dir"/lib/*.so; do
   [ -f "$plugin_library" ] || continue
   deploy_args+=(--library "$plugin_library")
 done
-PATH="$(dirname "$(command -v linuxdeploy)"):$PATH" \
+LD_LIBRARY_PATH="$bundle_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+  PATH="$(dirname "$(command -v linuxdeploy)"):$PATH" \
   DEPLOY_GTK_VERSION=3 APPIMAGE_EXTRACT_AND_RUN=1 linuxdeploy "${deploy_args[@]}"
 
 mkdir -p "$bundle_dir/usr/lib" "$bundle_dir/usr/share" "$bundle_dir/apprun-hooks"

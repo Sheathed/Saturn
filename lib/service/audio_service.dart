@@ -56,7 +56,7 @@ Future<AudioPlayerHandler> initAudioService() async {
       canPause: true,
       canControl: true,
       onRaiseRequest: () => unawaited(_raiseWindowFromMpris()),
-      onQuitRequest: () => unawaited(_quitFromMpris(handler)),
+      onQuitRequest: () => unawaited(_quitFromMpris()),
     );
   }
   handler = await AudioService.init(
@@ -97,17 +97,18 @@ Future<void> _raiseWindowFromMpris() async {
   }
 }
 
-Future<void> _quitFromMpris(AudioPlayerHandler? handler) async {
+Future<void> _quitFromMpris() async {
   try {
-    await handler?.stop();
+    // Use the same orderly close path as the window manager. exit(0) tears
+    // down Flutter while MPV and its Dart callbacks are still live.
+    await windowManager.close();
   } catch (error, stack) {
     Logger.root.warning(
-      'Could not stop playback before quitting: $error',
+      'Could not close Saturn from MPRIS: $error',
       error,
       stack,
     );
   }
-  exit(0);
 }
 
 /// State of live radio playback. Non-null on the handler while a radio
@@ -772,12 +773,15 @@ class AudioPlayerHandler extends BaseAudioHandler
     _radioStateSubject.add(
       RadioState(stationId: id, stationName: title, platformId: pId),
     );
+    // Start the now-playing subscription as soon as the station is selected.
+    // Loading the audio source can take long enough for the hub's initial
+    // update to be missed or delayed, especially on a cold app launch.
+    _startRadioPolling();
     await _loadQueueAndPlayAtIndex(
       QueueSource(id: id, text: title, source: 'radio'),
       [station],
       0,
     );
-    _startRadioPolling();
   }
 
   void _startRadioPolling() {
@@ -2032,6 +2036,11 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   @override
   Future<void> onTaskRemoved() async {
+    // Android may remove the Activity task while audio is still playing.
+    // Keep the started media service and its player alive in that case; the
+    // audio_service foreground notification owns their lifecycle. When
+    // playback is stopped, dispose normally so the saved queue can be resumed.
+    if (_playbackRequested || _player.playing) return;
     await dispose();
   }
 

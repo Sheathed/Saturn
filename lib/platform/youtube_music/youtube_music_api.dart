@@ -218,7 +218,7 @@ class YouTubeMusicApi {
   // ---------------------------------------------------------------------------
 
   /// Fetches track metadata by YouTube videoId.
-  Future<Track> getTrack(String id) async {
+  Future<Track> getTrack(String id, {bool includeCredits = false}) async {
     _log.fine('Fetching track details for id=$id');
     final realId = id.startsWith('radio:')
         ? id.substring(6)
@@ -236,6 +236,15 @@ class YouTubeMusicApi {
           Map<String, dynamic>.from(value),
         );
         if (track != null) {
+          if (includeCredits && value['creditsBrowseId'] is String) {
+            try {
+              track.contributors = await _contributorsFromCredits(
+                value['creditsBrowseId'] as String,
+              );
+            } catch (error) {
+              _log.fine('Could not load YouTube Music song credits: $error');
+            }
+          }
           if (id.startsWith('radio:')) {
             track.id = 'radio:$realId';
           }
@@ -473,7 +482,8 @@ class YouTubeMusicApi {
     final videos = _parseArtistVideos(parsed);
     final videoSection = _asMap(parsed['videos']);
     final rawBrowseId = videoSection?['browseId'] as String?;
-    final videoPlaylistId = (rawBrowseId != null &&
+    final videoPlaylistId =
+        (rawBrowseId != null &&
             (rawBrowseId.startsWith('VL') ||
                 rawBrowseId.startsWith('PL') ||
                 rawBrowseId.startsWith('OLAK5uy_')))
@@ -521,7 +531,8 @@ class YouTubeMusicApi {
         final refreshed = await getArtist(artist.id!);
         artist.customData = refreshed.customData;
         cached = List<Track>.of(
-          (artist.customData['videos'] as List?)?.whereType<Track>() ?? const [],
+          (artist.customData['videos'] as List?)?.whereType<Track>() ??
+              const [],
         );
       } catch (e, st) {
         _log.warning('Failed to refresh artist videos for ${artist.id}', e, st);
@@ -902,6 +913,29 @@ class YouTubeMusicApi {
       }
     }
     return null;
+  }
+
+  Future<Contributors?> _contributorsFromCredits(String browseId) async {
+    final credits = await ytmusicapi.browsing.getSongCredits(browseId);
+    List<String>? values(String key) {
+      final section = _asMap(credits[key]);
+      final data = section?['data'];
+      if (data is! List) return null;
+      final names = data
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .toList();
+      return names.isEmpty ? null : names;
+    }
+
+    final writtenBy = values('written_by');
+    final result = Contributors(
+      composers: writtenBy,
+      writers: writtenBy,
+      producers: values('produced_by'),
+    );
+    return result.composers == null && result.producers == null ? null : result;
   }
 
   Future<List<SynchronizedLyric>> _timedLyrics(String browseId) async {

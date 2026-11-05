@@ -192,11 +192,8 @@ class SoundCloudPlatform extends MusicPlatform {
     _applyLanguage(_currentLanguage);
     final cfg = app_settings.settings.platformConfigs['soundcloud'];
     if (cfg is Map && cfg['guest'] == true) {
-      _api.client.oauthToken = null;
-      _userId = null;
-      _userName = 'Guest';
-      _api.userId = null;
-      return true;
+      app_settings.settings.platformConfigs.remove('soundcloud');
+      await app_settings.settings.save();
     }
     final token = cfg is Map ? cfg['oauth_token'] as String? : null;
     if (token == null || token.isEmpty) {
@@ -311,15 +308,6 @@ class SoundCloudPlatform extends MusicPlatform {
   Future<AuthResult> login(Map<String, dynamic> credentials) async {
     _lastExpiredToken = null;
     _lastRecoveredToken = null;
-    if (credentials['guest'] == true) {
-      _api.client.oauthToken = null;
-      _userId = null;
-      _userName = 'Guest';
-      _api.userId = null;
-      app_settings.settings.platformConfigs['soundcloud'] = {'guest': true};
-      await app_settings.settings.save();
-      return const AuthResult.success();
-    }
     SoundCloudMobileTokens? nativeTokens;
     if (_api.client case final SoundCloudMobileClient mobile) {
       final code = credentials['authorization_code'];

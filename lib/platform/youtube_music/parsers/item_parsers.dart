@@ -60,6 +60,49 @@ class YouTubeMusicParsers {
     return null;
   }
 
+  static Contributors? _contributorsFromParsed(Map<String, dynamic> parsed) {
+    final raw = parsed['contributors'] ?? parsed['credits'];
+    final source = raw is Map ? raw : parsed;
+    List<String>? names(List<String> keys) {
+      dynamic value;
+      for (final key in keys) {
+        if (source[key] != null) {
+          value = source[key];
+          break;
+        }
+      }
+      if (value == null) return null;
+      final values = value is List ? value : [value];
+      final result = values
+          .map((entry) {
+            if (entry is Map) {
+              return (entry['name'] ?? entry['artist'] ?? entry['title'])
+                  ?.toString()
+                  .trim();
+            }
+            return entry.toString().trim();
+          })
+          .whereType<String>()
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .toList();
+      return result.isEmpty ? null : result;
+    }
+
+    final result = Contributors(
+      composers: names(const ['composer', 'composers']),
+      producers: names(const ['producer', 'producers']),
+      authors: names(const ['author', 'authors']),
+      writers: names(const ['writer', 'writers', 'lyricist', 'lyricists']),
+    );
+    return result.composers == null &&
+            result.producers == null &&
+            result.authors == null &&
+            result.writers == null
+        ? null
+        : result;
+  }
+
   static YouTubeMusicListenAgainData? listenAgainDataFor(String? itemId) {
     if (itemId == null || itemId.isEmpty) {
       return null;
@@ -716,9 +759,11 @@ class YouTubeMusicParsers {
       pinned: _pinnedForItem(videoId, renderer),
       unavailable: parsed['isAvailable'] == false,
       platformId: 'youtube_music',
-      trackNumber: (parsed['trackNumber'] as int?) ??
+      trackNumber:
+          (parsed['trackNumber'] as int?) ??
           int.tryParse(parsed['rank']?.toString() ?? ''),
       variation: _chartVariation(renderer) ?? _chartVariation(parsed),
+      contributors: _contributorsFromParsed(parsed),
     );
   }
 
@@ -758,9 +803,11 @@ class YouTubeMusicParsers {
       favorite: parsed['likeStatus'] == 'LIKE',
       pinned: parsed['pinnedToListenAgain'] == true,
       platformId: 'youtube_music',
-      trackNumber: (parsed['trackNumber'] as int?) ??
+      trackNumber:
+          (parsed['trackNumber'] as int?) ??
           int.tryParse(parsed['rank']?.toString() ?? ''),
       variation: _chartVariation(parsed),
+      contributors: _contributorsFromParsed(parsed),
     );
   }
 
@@ -815,7 +862,8 @@ class YouTubeMusicParsers {
         (playlistId != null &&
             playlistId.startsWith('RD') &&
             data['videoId'] == null)) {
-      final id = playlistId ??
+      final id =
+          playlistId ??
           (browseId?.startsWith('VL') == true
               ? browseId!.substring(2)
               : browseId);
@@ -963,20 +1011,27 @@ class YouTubeMusicParsers {
         rawItem['musicTwoRowItemRenderer'] as Map,
       );
       final nav = twoRow['navigationEndpoint']?['browseEndpoint'];
-      final pageType = nav?['browseEndpointContextSupportedConfigs']
-              ?['browseEndpointContextMusicConfig']?['pageType'] as String?;
+      final pageType =
+          nav?['browseEndpointContextSupportedConfigs']?['browseEndpointContextMusicConfig']?['pageType']
+              as String?;
       final browseId = nav?['browseId'] as String?;
 
       if (pageType == 'MUSIC_PAGE_TYPE_ALBUM' ||
           (browseId != null && browseId.startsWith('MPRE'))) {
         final a = parseAlbumFromTwoRowItem(twoRow);
-        if (a != null) return HomePageItem(type: HomePageItemType.ALBUM, value: a);
+        if (a != null) {
+          return HomePageItem(type: HomePageItemType.ALBUM, value: a);
+        }
       } else if (browseId != null &&
           (browseId.startsWith('VLRD') || browseId.startsWith('RD'))) {
         final title = parseRuns(twoRow['title']);
         final subtitle = parseRuns(twoRow['subtitle']);
-        final art = parseImageDetails(twoRow['thumbnailRenderer'] ?? twoRow['thumbnail']);
-        final cleanId = browseId.startsWith('VL') ? browseId.substring(2) : browseId;
+        final art = parseImageDetails(
+          twoRow['thumbnailRenderer'] ?? twoRow['thumbnail'],
+        );
+        final cleanId = browseId.startsWith('VL')
+            ? browseId.substring(2)
+            : browseId;
         final radio = LiveRadio(
           id: cleanId,
           title: title.isNotEmpty ? title : 'Mix',
@@ -986,12 +1041,18 @@ class YouTubeMusicParsers {
           platformId: 'youtube_music',
           isMix: true,
         );
-        return HomePageItem(type: HomePageItemType.RADIO, value: radio, playMix: true);
+        return HomePageItem(
+          type: HomePageItemType.RADIO,
+          value: radio,
+          playMix: true,
+        );
       } else if (pageType == 'MUSIC_PAGE_TYPE_PLAYLIST' ||
           (browseId != null && browseId.startsWith('VL'))) {
         final p = parsePlaylistFromTwoRowItem(twoRow);
         if (p != null) {
-          final isMix = p.id != null && (p.id!.startsWith('VLRD') || p.id!.startsWith('RD'));
+          final isMix =
+              p.id != null &&
+              (p.id!.startsWith('VLRD') || p.id!.startsWith('RD'));
           return HomePageItem(
             type: isMix ? HomePageItemType.RADIO : HomePageItemType.PLAYLIST,
             value: isMix
@@ -1008,19 +1069,29 @@ class YouTubeMusicParsers {
           );
         }
       } else if (pageType == 'MUSIC_PAGE_TYPE_ARTIST' ||
-          (browseId != null && (browseId.startsWith('UC') || browseId.startsWith('MPLA')))) {
+          (browseId != null &&
+              (browseId.startsWith('UC') || browseId.startsWith('MPLA')))) {
         final art = parseArtistFromTwoRowItem(twoRow);
-        if (art != null) return HomePageItem(type: HomePageItemType.ARTIST, value: art);
+        if (art != null) {
+          return HomePageItem(type: HomePageItemType.ARTIST, value: art);
+        }
       } else if (pageType == 'MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE' ||
           (browseId != null && browseId.startsWith('MPSP'))) {
         final s = parseShowFromTwoRowItem(twoRow);
-        if (s != null) return HomePageItem(type: HomePageItemType.SHOW, value: s);
+        if (s != null) {
+          return HomePageItem(type: HomePageItemType.SHOW, value: s);
+        }
       } else if (pageType == 'MUSIC_PAGE_TYPE_NON_MUSIC_AUDIO_TRACK_PAGE' ||
           (browseId != null && browseId.startsWith('MPED'))) {
-        final ep = parseEpisodeFromTwoRowItem(Map<String, dynamic>.from(twoRow));
-        if (ep != null) return HomePageItem(type: HomePageItemType.EPISODE, value: ep);
+        final ep = parseEpisodeFromTwoRowItem(
+          Map<String, dynamic>.from(twoRow),
+        );
+        if (ep != null) {
+          return HomePageItem(type: HomePageItemType.EPISODE, value: ep);
+        }
       } else {
-        final watch = twoRow['navigationEndpoint']?['watchEndpoint'] ??
+        final watch =
+            twoRow['navigationEndpoint']?['watchEndpoint'] ??
             twoRow['thumbnailOverlay']?['musicItemThumbnailOverlayRenderer']?['content']?['musicPlayButtonRenderer']?['playNavigationEndpoint']?['watchEndpoint'] ??
             twoRow['onTap']?['watchEndpoint'];
         final watchPlaylistId = watch?['playlistId'] as String?;
@@ -1030,7 +1101,9 @@ class YouTubeMusicParsers {
         if (isLive && videoId != null) {
           final t = parseRuns(twoRow['title']);
           final s = parseRuns(twoRow['subtitle']);
-          final art = parseImageDetails(twoRow['thumbnailRenderer'] ?? twoRow['thumbnail']);
+          final art = parseImageDetails(
+            twoRow['thumbnailRenderer'] ?? twoRow['thumbnail'],
+          );
           final radio = LiveRadio(
             id: videoId,
             title: t.isNotEmpty ? t : 'Station',
@@ -1043,13 +1116,25 @@ class YouTubeMusicParsers {
         }
         if (videoId != null) {
           final t = parseTrackFromTwoRowItem(twoRow);
-          if (t != null) return HomePageItem(type: HomePageItemType.TRACK, value: t, playMix: true);
+          if (t != null) {
+            return HomePageItem(
+              type: HomePageItemType.TRACK,
+              value: t,
+              playMix: true,
+            );
+          }
         }
-        if (watchPlaylistId != null && (watchPlaylistId.startsWith('RD') || watchPlaylistId.startsWith('VLRD'))) {
-          final cleanId = watchPlaylistId.startsWith('VL') ? watchPlaylistId.substring(2) : watchPlaylistId;
+        if (watchPlaylistId != null &&
+            (watchPlaylistId.startsWith('RD') ||
+                watchPlaylistId.startsWith('VLRD'))) {
+          final cleanId = watchPlaylistId.startsWith('VL')
+              ? watchPlaylistId.substring(2)
+              : watchPlaylistId;
           final t = parseRuns(twoRow['title']);
           final s = parseRuns(twoRow['subtitle']);
-          final art = parseImageDetails(twoRow['thumbnailRenderer'] ?? twoRow['thumbnail']);
+          final art = parseImageDetails(
+            twoRow['thumbnailRenderer'] ?? twoRow['thumbnail'],
+          );
           final radio = LiveRadio(
             id: cleanId,
             title: t.isNotEmpty ? t : 'Mix',
@@ -1059,50 +1144,86 @@ class YouTubeMusicParsers {
             platformId: 'youtube_music',
             isMix: true,
           );
-          return HomePageItem(type: HomePageItemType.RADIO, value: radio, playMix: true);
+          return HomePageItem(
+            type: HomePageItemType.RADIO,
+            value: radio,
+            playMix: true,
+          );
         }
         final t = parseTrackFromTwoRowItem(twoRow);
-        if (t != null) return HomePageItem(type: HomePageItemType.TRACK, value: t, playMix: true);
+        if (t != null) {
+          return HomePageItem(
+            type: HomePageItemType.TRACK,
+            value: t,
+            playMix: true,
+          );
+        }
       }
     }
 
     if (rawItem['musicResponsiveListItemRenderer'] != null) {
-      final renderer = Map<String, dynamic>.from(rawItem['musicResponsiveListItemRenderer'] as Map);
+      final renderer = Map<String, dynamic>.from(
+        rawItem['musicResponsiveListItemRenderer'] as Map,
+      );
       final navigation = renderer['navigationEndpoint'];
       final endpoint = navigation is Map ? navigation['browseEndpoint'] : null;
-      final endpointConfig = endpoint is Map ? endpoint['browseEndpointContextSupportedConfigs'] : null;
-      final musicConfig = endpointConfig is Map ? endpointConfig['browseEndpointContextMusicConfig'] : null;
+      final endpointConfig = endpoint is Map
+          ? endpoint['browseEndpointContextSupportedConfigs']
+          : null;
+      final musicConfig = endpointConfig is Map
+          ? endpointConfig['browseEndpointContextMusicConfig']
+          : null;
       final pageType = musicConfig is Map ? musicConfig['pageType'] : null;
 
       if (pageType == 'MUSIC_PAGE_TYPE_ARTIST') {
-        final art = parseChartArtistFromResponsiveListItem(renderer) ??
+        final art =
+            parseChartArtistFromResponsiveListItem(renderer) ??
             (endpoint is Map && endpoint['browseId'] != null
                 ? Artist(
                     id: endpoint['browseId'] as String?,
-                    name: parseRuns(renderer['flexColumns']?[0]?['musicResponsiveListItemFlexColumnRenderer']?['text']),
-                    picture: parseImageDetails(renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail']),
+                    name: parseRuns(
+                      renderer['flexColumns']?[0]?['musicResponsiveListItemFlexColumnRenderer']?['text'],
+                    ),
+                    picture: parseImageDetails(
+                      renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail'],
+                    ),
                     platformId: 'youtube_music',
                   )
                 : null);
-        if (art != null) return HomePageItem(type: HomePageItemType.ARTIST, value: art);
+        if (art != null) {
+          return HomePageItem(type: HomePageItemType.ARTIST, value: art);
+        }
       }
 
       final browseId = endpoint is Map ? endpoint['browseId'] as String? : null;
-      final isEpisode = (browseId != null && browseId.startsWith('MPED')) ||
+      final isEpisode =
+          (browseId != null && browseId.startsWith('MPED')) ||
           responsiveItemHasPodcastShow(renderer);
       if (isEpisode) {
         final ep = parseEpisodeFromResponsiveListItem(renderer);
-        if (ep != null) return HomePageItem(type: HomePageItemType.EPISODE, value: ep);
+        if (ep != null) {
+          return HomePageItem(type: HomePageItemType.EPISODE, value: ep);
+        }
       }
 
       final t = parseTrackFromResponsiveListItem(renderer);
-      if (t != null) return HomePageItem(type: HomePageItemType.TRACK, value: t, playMix: true);
+      if (t != null) {
+        return HomePageItem(
+          type: HomePageItemType.TRACK,
+          value: t,
+          playMix: true,
+        );
+      }
     }
 
     if (rawItem['musicMultiRowListItemRenderer'] != null) {
-      final renderer = Map<String, dynamic>.from(rawItem['musicMultiRowListItemRenderer'] as Map);
+      final renderer = Map<String, dynamic>.from(
+        rawItem['musicMultiRowListItemRenderer'] as Map,
+      );
       final ep = parseEpisodeFromMultiRowListItem(renderer);
-      if (ep != null) return HomePageItem(type: HomePageItemType.EPISODE, value: ep);
+      if (ep != null) {
+        return HomePageItem(type: HomePageItemType.EPISODE, value: ep);
+      }
     }
 
     if (rawItem['musicNavigationButtonRenderer'] != null) {
@@ -1138,16 +1259,19 @@ class YouTubeMusicParsers {
   static HomePageSection? parseBrowseSection(Map section) {
     if (section['musicCarouselShelfRenderer'] != null) {
       final carousel = section['musicCarouselShelfRenderer'] as Map;
-      final header = carousel['header']?['musicCarouselShelfBasicHeaderRenderer'];
+      final header =
+          carousel['header']?['musicCarouselShelfBasicHeaderRenderer'];
       final title = parseRuns(header?['title']);
       final strapline = parseRuns(header?['strapline']);
       final thumbObj = header?['thumbnail'];
-      final headerThumb = thumbObj?['musicThumbnailRenderer']?['thumbnail'] ?? thumbObj;
+      final headerThumb =
+          thumbObj?['musicThumbnailRenderer']?['thumbnail'] ?? thumbObj;
       final headerImageUrl = parseImageDetails(headerThumb)?.fullUrl;
 
       final moreBtn = header?['moreContentButton']?['buttonRenderer'];
       final titleRuns = header?['title']?['runs'] as List? ?? [];
-      final titleNav = (titleRuns.isNotEmpty && titleRuns[0]['navigationEndpoint'] != null)
+      final titleNav =
+          (titleRuns.isNotEmpty && titleRuns[0]['navigationEndpoint'] != null)
           ? titleRuns[0]['navigationEndpoint']
           : null;
       final nav = moreBtn?['navigationEndpoint'] ?? titleNav;
@@ -1212,7 +1336,8 @@ class YouTubeMusicParsers {
     if (section['musicShelfRenderer'] != null) {
       final shelf = section['musicShelfRenderer'] as Map;
       final title = parseRuns(
-        shelf['title'] ?? shelf['header']?['musicShelfHeaderRenderer']?['title'],
+        shelf['title'] ??
+            shelf['header']?['musicShelfHeaderRenderer']?['title'],
       );
       final items = shelf['contents'] as List? ?? [];
       final parsedItems = <HomePageItem>[];
@@ -1232,7 +1357,8 @@ class YouTubeMusicParsers {
     if (section['musicPlaylistShelfRenderer'] != null) {
       final shelf = section['musicPlaylistShelfRenderer'] as Map;
       final title = parseRuns(
-        shelf['title'] ?? shelf['header']?['musicShelfHeaderRenderer']?['title'],
+        shelf['title'] ??
+            shelf['header']?['musicShelfHeaderRenderer']?['title'],
       );
       final items = shelf['contents'] as List? ?? [];
       final parsedItems = <HomePageItem>[];
@@ -1508,8 +1634,10 @@ class YouTubeMusicParsers {
 
   static int? _parseCompactCount(String? value) {
     if (value == null) return null;
-    final match = RegExp(r'([\d,.]+)\s*([KMB]?)', caseSensitive: false)
-        .firstMatch(value.replaceAll(',', ''));
+    final match = RegExp(
+      r'([\d,.]+)\s*([KMB]?)',
+      caseSensitive: false,
+    ).firstMatch(value.replaceAll(',', ''));
     if (match == null) return int.tryParse(value);
     final number = double.tryParse(match.group(1)!) ?? 0;
     final multiplier = switch (match.group(2)?.toUpperCase()) {
@@ -1730,7 +1858,8 @@ class YouTubeMusicParsers {
       favorite: likeStatus == null ? null : likeStatus == 'LIKE',
       pinned: _pinnedForItem(videoId, renderer),
       platformId: 'youtube_music',
-      trackNumber: (parsed['trackNumber'] as int?) ??
+      trackNumber:
+          (parsed['trackNumber'] as int?) ??
           int.tryParse(parsed['rank']?.toString() ?? ''),
       variation: _chartVariation(renderer) ?? _chartVariation(parsed),
     );
@@ -1784,7 +1913,8 @@ class YouTubeMusicParsers {
         if (colorStyle is String) {
           colorStyles.add(colorStyle.toUpperCase());
         }
-        final label = value['accessibilityData']?['label'] ??
+        final label =
+            value['accessibilityData']?['label'] ??
             value['accessibilityData']?['accessibilityData']?['label'] ??
             value['accessibility']?['accessibilityData']?['label'];
         if (label is String) {
@@ -1872,10 +2002,14 @@ class YouTubeMusicParsers {
     ).hasMatch(status)) {
       return 0;
     }
-    if (RegExp(r'\b(increased|ascended|moved up|moving up)\b').hasMatch(status)) {
+    if (RegExp(
+      r'\b(increased|ascended|moved up|moving up)\b',
+    ).hasMatch(status)) {
       return 1;
     }
-    if (RegExp(r'\b(decreased|descended|moved down|moving down)\b').hasMatch(status)) {
+    if (RegExp(
+      r'\b(decreased|descended|moved down|moving down)\b',
+    ).hasMatch(status)) {
       return -1;
     }
 

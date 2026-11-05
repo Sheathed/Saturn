@@ -250,7 +250,43 @@ class DeezerAPI {
         'sng_ids': [id],
       },
     );
-    return Track.fromPrivateJson(data['results']['data'][0]);
+    final rawTrack = data['results']['data'][0] as Map;
+    final track = Track.fromPrivateJson(rawTrack);
+    return track;
+  }
+
+  Future<Map<String, dynamic>?> downloadAlbumContributors(
+    String albumId,
+    String trackId,
+  ) async {
+    const method = 'deezer.pageAlbum';
+    final params = {
+      'alb_id': albumId,
+      'header': true,
+      'lang': _deezerLanguage,
+    };
+    final response = await callGwApi(method, params: params);
+    final results = response['results'];
+    final album = results is Map ? results['DATA'] : null;
+    final songs = results is Map ? results['SONGS'] : null;
+    final songList = songs is Map ? songs['data'] : null;
+    Map? matchingSong;
+    if (songList is List) {
+      for (final item in songList) {
+        if (item is Map && item['SNG_ID']?.toString() == trackId) {
+          matchingSong = item;
+          break;
+        }
+      }
+    }
+    final albumContributors = album is Map
+        ? album['ALB_CONTRIBUTORS']
+        : null;
+    final trackContributors = matchingSong?['SNG_CONTRIBUTORS'];
+    return {
+      'albumContributors': albumContributors,
+      'trackContributors': trackContributors,
+    };
   }
 
   Future<Map<String, dynamic>?> trackFull(String id) async {

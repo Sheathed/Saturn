@@ -52,6 +52,7 @@ class LyricsScreenController {
   VoidCallback? _showLyricsChoices;
   VoidCallback? _toggleTranslation;
   VoidCallback? _toggleRomanization;
+  VoidCallback? _scrollToCurrentLyric;
   bool _disposed = false;
 
   void _updateToolbar({
@@ -59,23 +60,27 @@ class LyricsScreenController {
     required VoidCallback? showLyricsChoices,
     required VoidCallback? toggleTranslation,
     required VoidCallback? toggleRomanization,
+    required VoidCallback? scrollToCurrentLyric,
   }) {
     if (_disposed) return;
     toolbarState.value = state;
     _showLyricsChoices = showLyricsChoices;
     _toggleTranslation = toggleTranslation;
     _toggleRomanization = toggleRomanization;
+    _scrollToCurrentLyric = scrollToCurrentLyric;
   }
 
   void showLyricsChoices() => _showLyricsChoices?.call();
   void toggleTranslation() => _toggleTranslation?.call();
   void toggleRomanization() => _toggleRomanization?.call();
+  void scrollToCurrentLyric() => _scrollToCurrentLyric?.call();
 
   void dispose() {
     _disposed = true;
     _showLyricsChoices = null;
     _toggleTranslation = null;
     _toggleRomanization = null;
+    _scrollToCurrentLyric = null;
     toolbarState.dispose();
   }
 }
@@ -119,7 +124,6 @@ class _LyricsScreenState extends State<LyricsScreen>
   int _currentIndex = 0;
   Duration _currentPosition = Duration.zero;
   bool _isUserScrolling = false;
-  bool _instrumentalLayoutAnimating = false;
   int? _pendingAutoScrollIndex;
   int _selectedProviderIndex = -1;
   List<LyricsCandidate> _lyricsCandidates = const [];
@@ -147,6 +151,8 @@ class _LyricsScreenState extends State<LyricsScreen>
   ImageProvider? _blurImage;
 
   List<GlobalKey> _lyricKeys = [];
+  final GlobalKey _introInstrumentalKey = GlobalKey();
+  List<GlobalKey> _instrumentalBreakKeys = [];
   EdgeInsets _lyricEdgePadding = EdgeInsets.zero;
   bool _edgePaddingMeasurementScheduled = false;
   @override
@@ -227,7 +233,6 @@ class _LyricsScreenState extends State<LyricsScreen>
             ? handler.syncedPosition
             : handler.player.position;
         _isUserScrolling = false;
-        _instrumentalLayoutAnimating = false;
         _pendingAutoScrollIndex = null;
         _selectedProviderIndex =
             activePlatform?.capabilities.supportsLyrics == true ? 0 : -1;
@@ -276,6 +281,7 @@ class _LyricsScreenState extends State<LyricsScreen>
       toggleRomanization: _hasRomanization
           ? () => _setRomanizationVisibility(!_showRomanization)
           : null,
+      scrollToCurrentLyric: _scrollToCurrentLyricOnOpen,
     );
   }
 
@@ -333,6 +339,7 @@ class _LyricsScreenState extends State<LyricsScreen>
       showLyricsChoices: null,
       toggleTranslation: null,
       toggleRomanization: null,
+      scrollToCurrentLyric: null,
     );
     WidgetsBinding.instance.removeObserver(this);
     _syncTimer?.cancel();
@@ -875,6 +882,10 @@ class _LyricsScreenState extends State<LyricsScreen>
       newLyrics.syncedLyrics?.length ?? 0,
       (_) => GlobalKey(),
     );
+    _instrumentalBreakKeys = List.generate(
+      newLyrics.syncedLyrics?.length ?? 0,
+      (_) => GlobalKey(),
+    );
     _lyricEdgePadding = EdgeInsets.zero;
 
     _syncTimer?.cancel();
@@ -906,11 +917,12 @@ class _LyricsScreenState extends State<LyricsScreen>
         _currentIndex = initialIndex;
       });
       _syncLyricsChoicesButton();
-      if (newLyrics.syncedLyrics?.isNotEmpty == true &&
-          initialIndex >= 0 &&
-          _instrumentalCardAt(position) == null) {
+      if (newLyrics.syncedLyrics?.isNotEmpty == true) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _scrollToIndex(initialIndex);
+          if (!mounted) return;
+          // Keep the first lyric as the opening anchor, even when an intro
+          // instrumental block precedes it in the list.
+          _scrollToIndex(initialIndex >= 0 ? initialIndex : 0, animated: false);
         });
       }
     }
@@ -1346,14 +1358,7 @@ class _LyricsScreenState extends State<LyricsScreen>
 
       if (indexChanged && newIndex >= 0 && !_isUserScrolling) {
         _pendingAutoScrollIndex = newIndex;
-        final instrumentalLayoutChanged =
-            _instrumentalCardAt(previousPosition, activeIndex: previousIndex) !=
-            _instrumentalCardAt(position, activeIndex: newIndex);
-        if (instrumentalLayoutChanged) {
-          _instrumentalLayoutAnimating = true;
-        } else if (!_instrumentalLayoutAnimating) {
-          _schedulePendingAutoScroll();
-        }
+        _schedulePendingAutoScroll();
       }
     });
   }
@@ -1405,10 +1410,7 @@ class _LyricsScreenState extends State<LyricsScreen>
   void _schedulePendingAutoScroll() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final index = _pendingAutoScrollIndex;
-      if (!mounted ||
-          _isUserScrolling ||
-          _instrumentalLayoutAnimating ||
-          index == null) {
+      if (!mounted || _isUserScrolling || index == null) {
         return;
       }
       _pendingAutoScrollIndex = null;
@@ -1416,9 +1418,31 @@ class _LyricsScreenState extends State<LyricsScreen>
     });
   }
 
-  void _onInstrumentalLayoutAnimationEnd() {
-    _instrumentalLayoutAnimating = false;
-    _schedulePendingAutoScroll();
+  void _scrollToCurrentLyricOnOpen() {
+    final lines = lyrics?.syncedLyrics;
+    if (lines == null || lines.isEmpty) return;
+
+    final handler = GetIt.I<AudioPlayerHandler>();
+    final position = handler.isRadio
+        ? handler.syncedPosition
+        : handler.player.position;
+    final index = _lyricIndexAt(position);
+    final instrumentalIndex = _instrumentalCardAt(position);
+    setState(() {
+      _isUserScrolling = false;
+      _currentPosition = position;
+      _positionNotifier.value = position;
+      _currentIndex = index;
+      _pendingAutoScrollIndex = null;
+    });
+    if (index < 0 && instrumentalIndex == -1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToIndex(0);
+      });
+    } else if (index >= 0) {
+      _pendingAutoScrollIndex = index;
+      _schedulePendingAutoScroll();
+    }
   }
 
   /// The lyric viewport sits below the provider strip. Keep the lyric center
@@ -1436,7 +1460,10 @@ class _LyricsScreenState extends State<LyricsScreen>
       }
     }
     if (index >= _lyricKeys.length) return;
-    final key = _lyricKeys[index];
+    _scrollToKey(_lyricKeys[index], animated: animated);
+  }
+
+  void _scrollToKey(GlobalKey key, {bool animated = true}) {
     final keyContext = key.currentContext;
     if (keyContext == null) return;
 
@@ -1488,6 +1515,39 @@ class _LyricsScreenState extends State<LyricsScreen>
     );
   }
 
+  void _scrollToCurrentSyncTarget() {
+    final handler = GetIt.I<AudioPlayerHandler>();
+    final position = handler.isRadio
+        ? handler.syncedPosition
+        : handler.player.position;
+    final instrumentalIndex = _instrumentalCardAt(position);
+    setState(() {
+      _isUserScrolling = false;
+      _currentPosition = position;
+      _positionNotifier.value = position;
+      _currentIndex = _lyricIndexAt(position);
+      _pendingAutoScrollIndex = null;
+    });
+
+    if (instrumentalIndex != null && instrumentalIndex >= 0) {
+      final key = instrumentalIndex < _instrumentalBreakKeys.length
+          ? _instrumentalBreakKeys[instrumentalIndex]
+          : null;
+      if (key != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _scrollToKey(key);
+        });
+        return;
+      }
+    }
+    final index = _lyricIndexAt(position);
+    if (index >= 0 || instrumentalIndex == -1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToIndex(index >= 0 ? index : 0);
+      });
+    }
+  }
+
   void _scheduleLyricsEdgePaddingMeasurement() {
     if (_edgePaddingMeasurementScheduled || _lyricKeys.isEmpty) {
       return;
@@ -1498,8 +1558,9 @@ class _LyricsScreenState extends State<LyricsScreen>
       if (!mounted || !_scrollController.hasClients || _lyricKeys.isEmpty) {
         return;
       }
-      final firstBox =
+      final firstLyricBox =
           _lyricKeys.first.currentContext?.findRenderObject() as RenderBox?;
+      final firstBox = firstLyricBox;
       final lastBox =
           _lyricKeys.last.currentContext?.findRenderObject() as RenderBox?;
       final position = _scrollController.position;
@@ -1545,14 +1606,10 @@ class _LyricsScreenState extends State<LyricsScreen>
         // the corrected padding has been laid out so early lyrics do not get
         // clamped against the start of the scroll range.
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted ||
-              _isUserScrolling ||
-              _instrumentalLayoutAnimating ||
-              _currentIndex < 0 ||
-              _instrumentalCardAt(_currentPosition) != null) {
+          if (!mounted || _isUserScrolling || _pendingAutoScrollIndex != null) {
             return;
           }
-          _scrollToIndex(_currentIndex, animated: false);
+          _scrollToIndex(_currentIndex >= 0 ? _currentIndex : 0);
         });
       }
     });
@@ -2242,31 +2299,25 @@ class _LyricsScreenState extends State<LyricsScreen>
   }
 
   Widget _buildAnimatedInstrumentalCard({
+    Key? key,
     required bool visible,
+    required bool preserveSpace,
     required int secondsRemaining,
     VoidCallback? onSkip,
     bool isIntro = false,
   }) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeInOutCubic,
-      alignment: Alignment.topCenter,
-      onEnd: _onInstrumentalLayoutAnimationEnd,
-      // Keep every break mounted in the lyrics list so its place is stable.
-      // The size/opacity transition still removes inactive breaks visually,
-      // while [onSkip] is only supplied by the active break below.
-      child: ClipRect(
-        child: Align(
-          alignment: Alignment.topCenter,
-          heightFactor: visible ? 1 : 0,
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 160),
-            opacity: visible ? 1 : 0,
-            child: _buildInstrumentalCard(
-              secondsRemaining: secondsRemaining,
-              onSkip: onSkip,
-              isIntro: isIntro,
-            ),
+    if (!preserveSpace) return SizedBox.shrink(key: key);
+    return SizedBox(
+      key: key,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: visible ? 1 : 0,
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: _buildInstrumentalCard(
+            secondsRemaining: secondsRemaining,
+            onSkip: onSkip,
+            isIntro: isIntro,
           ),
         ),
       ),
@@ -2569,6 +2620,8 @@ class _LyricsScreenState extends State<LyricsScreen>
                                                     0) >=
                                                 5000)
                                           _buildAnimatedInstrumentalCard(
+                                            key: _introInstrumentalKey,
+                                            preserveSpace: true,
                                             visible:
                                                 currentPosMs <
                                                 (syncedList
@@ -2653,11 +2706,9 @@ class _LyricsScreenState extends State<LyricsScreen>
                                                 currentPosMs < nextStartMs;
                                             final breakSecondsRemaining =
                                                 (breakIsActive
-                                                        ? nextStartMs -
-                                                              currentPosMs
-                                                        : nextStartMs -
-                                                              lineEndMs) /
-                                                    1000;
+                                                    ? nextStartMs - currentPosMs
+                                                    : nextStartMs - lineEndMs) /
+                                                1000;
 
                                             return Column(
                                               children: [
@@ -2738,7 +2789,15 @@ class _LyricsScreenState extends State<LyricsScreen>
                                                   ),
                                                 ),
                                                 _buildAnimatedInstrumentalCard(
+                                                  key:
+                                                      i <
+                                                          _instrumentalBreakKeys
+                                                              .length
+                                                      ? _instrumentalBreakKeys[i]
+                                                      : null,
                                                   visible: showBreakAfter,
+                                                  preserveSpace:
+                                                      hasInstrumentalBreak,
                                                   secondsRemaining:
                                                       breakSecondsRemaining
                                                           .ceil(),
@@ -2897,15 +2956,7 @@ class _LyricsScreenState extends State<LyricsScreen>
                         color: (isDark ? Colors.black : Colors.white)
                             .withValues(alpha: isDark ? 0.40 : 0.70),
                         child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              _isUserScrolling = false;
-                              _pendingAutoScrollIndex = _currentIndex;
-                            });
-                            if (!_instrumentalLayoutAnimating) {
-                              _schedulePendingAutoScroll();
-                            }
-                          },
+                          onTap: _scrollToCurrentSyncTarget,
                           borderRadius: BorderRadius.circular(24),
                           child: Container(
                             padding: const EdgeInsets.symmetric(

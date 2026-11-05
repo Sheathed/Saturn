@@ -12,6 +12,7 @@ import '../../utils/logging.dart';
 const String _kNeuroApiBaseUrl = 'https://api.neurokaraoke.com/api';
 const String _kNeuroStorageBaseUrl = 'https://storage.neurokaraoke.com';
 const String _kNeuroImageBaseUrl = 'https://images.neurokaraoke.com';
+
 /// Neuro's recommendation feed is a fixed 50-song mix, returned in pages.
 const int neuroYourMixTotal = 50;
 
@@ -23,7 +24,9 @@ String _formatNeuroImageUrl(
 }) {
   if (path is Map) {
     final cloudflareId = path['cloudflareId']?.toString().trim();
-    if (cloudflareId != null && cloudflareId.isNotEmpty && cloudflareId != 'null') {
+    if (cloudflareId != null &&
+        cloudflareId.isNotEmpty &&
+        cloudflareId != 'null') {
       path = '/WxURxyML82UkE7gY-PiBKw/$cloudflareId';
     } else {
       path = path['absolutePath'] ?? path['url'] ?? path['art'];
@@ -36,8 +39,7 @@ String _formatNeuroImageUrl(
   }
   if (p.startsWith('http://') || p.startsWith('https://')) {
     final uri = Uri.tryParse(p);
-    if (uri != null &&
-        uri.path.contains('/WxURxyML82UkE7gY-PiBKw/')) {
+    if (uri != null && uri.path.contains('/WxURxyML82UkE7gY-PiBKw/')) {
       // API responses can already contain a Cloudflare variant URL. Normalize
       // it too, otherwise the field called `fullUrl` can silently remain the
       // 128px thumbnail even when callers request full artwork.
@@ -67,13 +69,16 @@ String _formatNeuroImageUrl(
 
 List<Track> _tracksWithUniqueArt(List<Track> tracks) {
   final seen = <String>{};
-  return tracks.where((track) {
-    final url = track.albumArt?.fullUrl?.trim();
-    return url != null &&
-        url.isNotEmpty &&
-        !url.contains('/img/nosource.png') &&
-        seen.add(url);
-  }).take(4).toList();
+  return tracks
+      .where((track) {
+        final url = track.albumArt?.fullUrl?.trim();
+        return url != null &&
+            url.isNotEmpty &&
+            !url.contains('/img/nosource.png') &&
+            seen.add(url);
+      })
+      .take(4)
+      .toList();
 }
 
 List<String>? _trackMosaicUrls(List<Track> tracks) {
@@ -194,12 +199,11 @@ class NeuroKaraokeAPI {
         currentUsername = data['userName'] ?? data['username'];
         currentUserId = data['id']?.toString();
         currentUserAvatarUrl = data['avatarUrl'] as String?;
-        final currentConfig =
-            settings.platformConfigs['neurokaraoke'] is Map
-                ? Map<String, dynamic>.from(
-                    settings.platformConfigs['neurokaraoke'],
-                  )
-                : <String, dynamic>{};
+        final currentConfig = settings.platformConfigs['neurokaraoke'] is Map
+            ? Map<String, dynamic>.from(
+                settings.platformConfigs['neurokaraoke'],
+              )
+            : <String, dynamic>{};
         settings.platformConfigs['neurokaraoke'] = {
           ...currentConfig,
           'token': _authToken,
@@ -373,8 +377,8 @@ class NeuroKaraokeAPI {
       final songMap = (item is Map && item['song'] is Map)
           ? Map<String, dynamic>.from(item['song'] as Map)
           : (item is Map<String, dynamic> && item['title'] != null
-              ? item
-              : null);
+                ? item
+                : null);
       if (songMap != null) {
         final track = _mapToTrack(songMap);
         final added = item is Map
@@ -383,9 +387,11 @@ class NeuroKaraokeAPI {
         if (added is int) {
           track.addedDate = added < 10000000000 ? added * 1000 : added;
         } else if (added is String) {
-          track.addedDate = DateTime.tryParse(
-            added.replaceAll('/', '-'),
-          )?.millisecondsSinceEpoch ?? i;
+          track.addedDate =
+              DateTime.tryParse(
+                added.replaceAll('/', '-'),
+              )?.millisecondsSinceEpoch ??
+              i;
         } else {
           track.addedDate = i;
         }
@@ -402,7 +408,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Toggle favorite failed with status ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Toggle favorite failed with status ${response.statusCode}: ${response.body}',
+      );
     }
   }
 
@@ -414,7 +422,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Get favorite playlists failed with status ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Get favorite playlists failed with status ${response.statusCode}: ${response.body}',
+      );
       return [];
     }
 
@@ -442,7 +452,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Get created playlists failed with status ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Get created playlists failed with status ${response.statusCode}: ${response.body}',
+      );
       return [];
     }
 
@@ -460,7 +472,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Toggle favorite playlist failed with status ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Toggle favorite playlist failed with status ${response.statusCode}: ${response.body}',
+      );
     }
   }
 
@@ -520,7 +534,8 @@ class NeuroKaraokeAPI {
     // Parse playlists
     List<Playlist> playlists = [];
     if (responses[1].statusCode == 200) {
-      final data = await decodeJsonAsync(responses[1].body) as List<dynamic>? ?? [];
+      final data =
+          await decodeJsonAsync(responses[1].body) as List<dynamic>? ?? [];
       playlists = data
           .map((item) => _mapToPlaylist(item as Map<String, dynamic>))
           .toList();
@@ -529,7 +544,8 @@ class NeuroKaraokeAPI {
     // Parse setlists
     List<Playlist> setlists = [];
     if (responses[2].statusCode == 200) {
-      final data = await decodeJsonAsync(responses[2].body) as List<dynamic>? ?? [];
+      final data =
+          await decodeJsonAsync(responses[2].body) as List<dynamic>? ?? [];
       setlists = data
           .map((item) => _mapToPlaylist(item as Map<String, dynamic>))
           .toList();
@@ -538,7 +554,8 @@ class NeuroKaraokeAPI {
     // Parse artists
     List<Artist> artists = [];
     if (responses[3].statusCode == 200) {
-      final data = await decodeJsonAsync(responses[3].body) as List<dynamic>? ?? [];
+      final data =
+          await decodeJsonAsync(responses[3].body) as List<dynamic>? ?? [];
       artists = data
           .map((item) => _mapToArtist(item as Map<String, dynamic>))
           .toList();
@@ -582,7 +599,9 @@ class NeuroKaraokeAPI {
 
     if (response.statusCode != 200) {
       if (kDebugMode) {
-        appLogger.warning('Get tracks failed with status ${response.statusCode}: ${response.body}');
+        appLogger.warning(
+          'Get tracks failed with status ${response.statusCode}: ${response.body}',
+        );
       }
       throw Exception('Failed to fetch tracks by ids');
     }
@@ -598,7 +617,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Get track failed with status ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Get track failed with status ${response.statusCode}: ${response.body}',
+      );
       throw Exception('Failed to fetch track: $id');
     }
 
@@ -620,7 +641,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Get song raw failed with status ${response.statusCode}');
+      appLogger.warning(
+        'Get song raw failed with status ${response.statusCode}',
+      );
       return null;
     }
 
@@ -695,7 +718,9 @@ class NeuroKaraokeAPI {
     final artistRes = await _client.get(artistUri, headers: _headers);
     if (artistRes.statusCode != 200) return null;
 
-    final Map<String, dynamic> artistData = await decodeJsonAsync(artistRes.body);
+    final Map<String, dynamic> artistData = await decodeJsonAsync(
+      artistRes.body,
+    );
 
     return _mapToArtist(artistData);
   }
@@ -817,7 +842,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Get playlist failed with status ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Get playlist failed with status ${response.statusCode}: ${response.body}',
+      );
       throw Exception('Failed to fetch playlist: $id');
     }
 
@@ -878,7 +905,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Create playlist failed: ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Create playlist failed: ${response.statusCode}: ${response.body}',
+      );
       throw Exception('Failed to create playlist');
     }
     return response.body.replaceAll('"', '').trim();
@@ -897,7 +926,9 @@ class NeuroKaraokeAPI {
     if (getResponse.statusCode != 200) {
       throw Exception('Failed to get playlist');
     }
-    final Map<String, dynamic> playlistData = await decodeJsonAsync(getResponse.body);
+    final Map<String, dynamic> playlistData = await decodeJsonAsync(
+      getResponse.body,
+    );
 
     playlistData['Name'] = title;
     playlistData['name'] = title; // Handle API casing inconsistencies
@@ -912,7 +943,9 @@ class NeuroKaraokeAPI {
       body: jsonEncode(playlistData),
     );
     if (saveResponse.statusCode != 200) {
-      appLogger.warning('Update playlist failed: ${saveResponse.statusCode}: ${saveResponse.body}');
+      appLogger.warning(
+        'Update playlist failed: ${saveResponse.statusCode}: ${saveResponse.body}',
+      );
       throw Exception('Failed to update playlist');
     }
   }
@@ -923,7 +956,9 @@ class NeuroKaraokeAPI {
       headers: _headers,
     );
     if (response.statusCode != 200) {
-      appLogger.warning('Delete playlist failed: ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Delete playlist failed: ${response.statusCode}: ${response.body}',
+      );
     }
   }
 
@@ -956,7 +991,9 @@ class NeuroKaraokeAPI {
     );
 
     if (response.statusCode != 200) {
-      appLogger.warning('Get lyrics failed with status ${response.statusCode}: ${response.body}');
+      appLogger.warning(
+        'Get lyrics failed with status ${response.statusCode}: ${response.body}',
+      );
       return Lyrics(id: id, errorMessage: 'Lyrics not found');
     }
 
@@ -1020,7 +1057,8 @@ class NeuroKaraokeAPI {
 
   String? _extractCoverArtArtist(dynamic coverArt, [dynamic container]) {
     if (coverArt is Map) {
-      final artist = coverArt['artist'] ??
+      final artist =
+          coverArt['artist'] ??
           coverArt['author'] ??
           coverArt['creator'] ??
           coverArt['credit'] ??
@@ -1040,13 +1078,13 @@ class NeuroKaraokeAPI {
       }
     }
     if (container is Map) {
-      final alt = container['coverArtArtist'] ??
+      final alt =
+          container['coverArtArtist'] ??
           container['artArtist'] ??
           container['artistCredit'] ??
           container['artCredit'];
       if (alt is Map) {
-        final name =
-            alt['name'] ?? alt['username'] ?? alt['displayName'];
+        final name = alt['name'] ?? alt['username'] ?? alt['displayName'];
         if (name != null && name.toString().trim().isNotEmpty) {
           return name.toString().trim();
         }
@@ -1055,7 +1093,8 @@ class NeuroKaraokeAPI {
       }
       final meta = container['metadata'];
       if (meta is Map) {
-        final art = meta['artArtist'] ??
+        final art =
+            meta['artArtist'] ??
             meta['coverArtist'] ??
             meta['coverArtArtist'] ??
             meta['artworkArtist'];
@@ -1065,10 +1104,7 @@ class NeuroKaraokeAPI {
     return null;
   }
 
-  Track _mapToTrack(
-    Map<String, dynamic> song, {
-    bool expectAudioPath = true,
-  }) {
+  Track _mapToTrack(Map<String, dynamic> song, {bool expectAudioPath = true}) {
     List<String> extractArtists(List<dynamic>? neuroArtists) {
       if (neuroArtists == null) return [];
       final result = <String>[];
@@ -1084,6 +1120,39 @@ class NeuroKaraokeAPI {
 
     final coverArtists = extractArtists(song['coverArtists']);
     final originalArtists = extractArtists(song['originalArtists']);
+
+    List<String>? contributorValues(dynamic value) {
+      if (value == null) return null;
+      final values = value is List ? value : [value];
+      final names = values
+          .map((item) {
+            if (item is Map) {
+              return (item['name'] ?? item['username'] ?? item['displayName'])
+                  ?.toString()
+                  .trim();
+            }
+            return item.toString().trim();
+          })
+          .whereType<String>()
+          .where((name) => name.isNotEmpty)
+          .toSet()
+          .toList();
+      return names.isEmpty ? null : names;
+    }
+
+    final metadata = song['metadata'] is Map
+        ? Map<String, dynamic>.from(song['metadata'] as Map)
+        : const <String, dynamic>{};
+    final credits = song['credits'] is Map
+        ? Map<String, dynamic>.from(song['credits'] as Map)
+        : const <String, dynamic>{};
+    List<String>? creditFor(String role) => contributorValues(
+      metadata[role] ??
+          metadata['${role}s'] ??
+          credits[role] ??
+          credits['${role}s'] ??
+          song[role],
+    );
 
     String originalArtistsStr = originalArtists.isNotEmpty
         ? originalArtists.join(', ')
@@ -1159,6 +1228,12 @@ class NeuroKaraokeAPI {
                 .map((a) => Artist(id: a, name: a, platformId: 'neurokaraoke'))
                 .toList()
           : null,
+      contributors: Contributors(
+        composers: creditFor('composer'),
+        producers: creditFor('producer'),
+        authors: creditFor('author'),
+        writers: creditFor('writer'),
+      ),
       playbackDetails: path == null ? const [] : [streamUrl, format],
       platformId: 'neurokaraoke',
     );
@@ -1172,7 +1247,8 @@ class NeuroKaraokeAPI {
     String? imagePath;
     if (media is Map) {
       final cloudflareId = media['cloudflareId']?.toString().trim();
-      final path = cloudflareId != null &&
+      final path =
+          cloudflareId != null &&
               cloudflareId.isNotEmpty &&
               cloudflareId != 'null'
           ? '/WxURxyML82UkE7gY-PiBKw/$cloudflareId'
@@ -1238,10 +1314,7 @@ class NeuroKaraokeAPI {
       description: data['description'],
       user: creator != null ? User(name: creator) : null,
       trackCount: data['songCount'] ?? 0,
-      image: ImageDetails(
-        fullUrl: fullImageUrl,
-        caption: playlistArtCaption,
-      ),
+      image: ImageDetails(fullUrl: fullImageUrl, caption: playlistArtCaption),
       mosaicImages: (mosaicUrls.isNotEmpty && !hasCustomImage)
           ? mosaicUrls
           : null,
@@ -1333,7 +1406,9 @@ class NeuroKaraokeAPI {
       headers: _headers,
     );
     if (response.statusCode == 200) {
-      return CoverDistributionStats.fromJson(await decodeJsonAsync(response.body));
+      return CoverDistributionStats.fromJson(
+        await decodeJsonAsync(response.body),
+      );
     }
     return null;
   }

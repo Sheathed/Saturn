@@ -297,6 +297,14 @@ JsonDict parseSongMenuData(JsonDict data) {
     if (item == null) {
       continue;
     }
+    final creditsBrowseId = nav(item, [
+      menuNavigationItem,
+      ...navigationBrowse,
+      'browseId',
+    ], absent: true);
+    if (creditsBrowseId is String && creditsBrowseId.startsWith('MPTC')) {
+      result['creditsBrowseId'] = creditsBrowseId;
+    }
     final menuItem =
         asJsonDict(
           nav(item, ['toggleMenuServiceItemRenderer'], absent: true),

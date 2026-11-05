@@ -348,10 +348,16 @@ class Track {
         if (val != null) return int.tryParse(val.toString());
         return null;
       }(),
-      contributors:
-          (json['SNG_CONTRIBUTORS'] != null && json['SNG_CONTRIBUTORS'] is Map)
-          ? Contributors.fromPrivateJson(json['SNG_CONTRIBUTORS'])
-          : null,
+      contributors: (() {
+        // Deezer can place contributor credits on the requested track while
+        // supplying playable metadata through FALLBACK. Keep the credits from
+        // the original record, with fallback credits as a secondary source.
+        final rawContributors =
+            originalJson['SNG_CONTRIBUTORS'] ?? json['SNG_CONTRIBUTORS'];
+        return rawContributors is Map
+            ? Contributors.fromPrivateJson(rawContributors)
+            : null;
+      })(),
       fallback: (originalJson['FALLBACK'] != null)
           ? Track(id: originalJson['FALLBACK']['SNG_ID'].toString())
           : null,

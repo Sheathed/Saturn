@@ -632,7 +632,19 @@ class _DownloadCoordinator {
     int downloadId,
     Map<String, dynamic> message,
   ) async {
-    final download = _queue.firstWhere((item) => item.id == downloadId);
+    // A worker can have a message in flight while its download is removed or
+    // the queue is reloaded. In that case there is no longer a queue item to
+    // update; treating that expected stale message as fatal crashes the whole
+    // download isolate.
+    final downloadIndex = _queue.indexWhere((item) => item.id == downloadId);
+    if (downloadIndex < 0) {
+      _logger?.log(
+        'Ignoring ${message['type']} message from worker for removed '
+        'download id $downloadId',
+      );
+      return;
+    }
+    final download = _queue[downloadIndex];
     switch (message['type']) {
       case 'progress':
         download.received = message['received'] as int;
@@ -1014,7 +1026,10 @@ class _DownloadWorker {
           settings['overwriteFile'] as bool? ??
           false;
       if (await outputFile.exists() && !overwrite) {
-        _log('File already exists, skipping ${outputFile.path}');
+        _log('File already exists; refreshing metadata in ${outputFile.path}');
+        if (!download.private) {
+          await _postProcess(outputFile, platform, metadata);
+        }
         final outputSize = await outputFile.length();
         resolvedBitrate ??= _estimateBitrateKbps(
           outputSize,
@@ -1106,9 +1121,9 @@ class _DownloadWorker {
 
   Future<LyricsFull?> _resolveOfflineLyrics(
     MusicPlatform nativePlatform,
-    PlatformDownloadMetadata metadata,
-    {bool allowWhenDisabled = false}
-  ) async {
+    PlatformDownloadMetadata metadata, {
+    bool allowWhenDisabled = false,
+  }) async {
     final track = metadata.track;
     if (!allowWhenDisabled &&
         !(settings['saveOfflineTrackLyrics'] as bool? ?? false)) {
@@ -1147,9 +1162,9 @@ class _DownloadWorker {
             final results = await provider.search(query);
             final result = results.tracks?.firstOrNull;
             if (result?.id == null) continue;
-            lyrics = await provider.getLyrics(result!.id!).timeout(
-              const Duration(seconds: 15),
-            );
+            lyrics = await provider
+                .getLyrics(result!.id!)
+                .timeout(const Duration(seconds: 15));
             if (lyrics.isLoaded()) break;
           }
         }
@@ -1178,18 +1193,17 @@ class _DownloadWorker {
                     .firstOrNull;
           lyrics =
               selected?.lyrics ??
-              await lyricProvider.getLyrics(lookupTrack).timeout(
-                const Duration(seconds: 15),
-              );
+              await lyricProvider
+                  .getLyrics(lookupTrack)
+                  .timeout(const Duration(seconds: 15));
         }
       }
 
       if (lyrics?.isLoaded() != true) {
-        final configuredProviders = (settings['downloadLyricsProviders']
-                as List<dynamic>? ??
-            const [])
-            .whereType<String>()
-            .toList();
+        final configuredProviders =
+            (settings['downloadLyricsProviders'] as List<dynamic>? ?? const [])
+                .whereType<String>()
+                .toList();
         final providerIds = configuredProviders.isNotEmpty
             ? [
                 if (!configuredProviders.contains('platform:origin'))
@@ -1198,9 +1212,9 @@ class _DownloadWorker {
               ]
             : [
                 'platform:origin',
-                ...LyricsRegistry.instance
-                    .getAll()
-                    .map((provider) => provider.id),
+                ...LyricsRegistry.instance.getAll().map(
+                  (provider) => provider.id,
+                ),
               ];
         for (final providerId in providerIds) {
           try {
@@ -1215,8 +1229,7 @@ class _DownloadWorker {
               final provider = await createDownloadPlatform(
                 platformId,
                 settings,
-                executeJavaScriptOnRootIsolate:
-                    executeJavaScriptOnRootIsolate,
+                executeJavaScriptOnRootIsolate: executeJavaScriptOnRootIsolate,
               );
               resolvedSource = 'platform:${provider.platformId}';
               lyrics = await _getPlatformDownloadLyrics(
@@ -1228,9 +1241,9 @@ class _DownloadWorker {
               final provider = LyricsRegistry.instance.get(providerId);
               if (provider == null) continue;
               final lookupTrack = _lyricsLookupTrack(nativePlatform, track);
-              final candidate = await provider.getLyrics(lookupTrack).timeout(
-                const Duration(seconds: 15),
-              );
+              final candidate = await provider
+                  .getLyrics(lookupTrack)
+                  .timeout(const Duration(seconds: 15));
               if (candidate.isLoaded()) {
                 resolvedSource = provider.id;
                 lyrics = candidate;
@@ -1290,9 +1303,9 @@ class _DownloadWorker {
                       .firstOrNull;
             lyrics =
                 selected?.lyrics ??
-                await lyricProvider.getLyrics(lookupTrack).timeout(
-                  const Duration(seconds: 15),
-                );
+                await lyricProvider
+                    .getLyrics(lookupTrack)
+                    .timeout(const Duration(seconds: 15));
           }
         }
       }
@@ -1351,13 +1364,13 @@ class _DownloadWorker {
     }
     final trackId = metadata.lyricsTrackId ?? metadata.track.id;
     if (trackId == null) return null;
-    var lyrics = await platform.getLyrics(trackId).timeout(
-      const Duration(seconds: 15),
-    );
+    var lyrics = await platform
+        .getLyrics(trackId)
+        .timeout(const Duration(seconds: 15));
     if (!lyrics.isLoaded() && metadata.track.fallback?.id != null) {
-      lyrics = await platform.getLyrics(metadata.track.fallback!.id!).timeout(
-        const Duration(seconds: 15),
-      );
+      lyrics = await platform
+          .getLyrics(metadata.track.fallback!.id!)
+          .timeout(const Duration(seconds: 15));
     }
     return lyrics;
   }
@@ -1371,9 +1384,7 @@ class _DownloadWorker {
     final artist = separator > 0
         ? query.substring(0, separator).trim()
         : track.artistString?.trim() ?? '';
-    final title = separator > 0
-        ? query.substring(separator + 3).trim()
-        : query;
+    final title = separator > 0 ? query.substring(separator + 3).trim() : query;
     if (title.isEmpty) return track;
     return Track(
       id: track.id,
@@ -1391,9 +1402,9 @@ class _DownloadWorker {
 
   Future<Lyrics?> _getPlatformDownloadLyrics(
     MusicPlatform platform,
-    PlatformDownloadMetadata metadata,
-    {MusicPlatform? searchPlatform}
-  ) async {
+    PlatformDownloadMetadata metadata, {
+    MusicPlatform? searchPlatform,
+  }) async {
     final track = metadata.track;
     if (platform.platformId == metadata.track.platformId) {
       return _getNativeLyrics(platform, metadata);
@@ -1407,14 +1418,14 @@ class _DownloadWorker {
       ...lookupTrack.lyricSearchQueries,
     }..removeWhere((query) => query.trim().isEmpty);
     for (final query in queries) {
-      final results = await platform.search(query).timeout(
-        const Duration(seconds: 15),
-      );
+      final results = await platform
+          .search(query)
+          .timeout(const Duration(seconds: 15));
       final result = results.tracks?.firstOrNull;
       if (result?.id == null) continue;
-      final lyrics = await platform.getLyrics(result!.id!).timeout(
-        const Duration(seconds: 15),
-      );
+      final lyrics = await platform
+          .getLyrics(result!.id!)
+          .timeout(const Duration(seconds: 15));
       if (lyrics.isLoaded()) return lyrics;
     }
     return null;
@@ -1630,7 +1641,9 @@ class _DownloadWorker {
     try {
       final decoded = img.decodeImage(bytes);
       if (decoded == null || decoded.width == decoded.height) return bytes;
-      final side = decoded.width < decoded.height ? decoded.width : decoded.height;
+      final side = decoded.width < decoded.height
+          ? decoded.width
+          : decoded.height;
       final cropped = img.copyCrop(
         decoded,
         x: (decoded.width - side) ~/ 2,
@@ -1655,6 +1668,7 @@ class _DownloadWorker {
       final enabled = settings['tags'] as List<dynamic>? ?? const [];
       final separator = settings['artistSeparator'] as String? ?? ', ';
       final tags = <MetadataTag>[];
+      final isWebmContainer = await _isWebmContainer(audioFile);
 
       void textTag(String setting, String tag, Object? value) {
         final stringValue = value?.toString();
@@ -1710,12 +1724,41 @@ class _DownloadWorker {
       for (final entry in metadata.extraTags.entries) {
         tags.add(MetadataTag.text(entry.key, entry.value));
       }
-      if (enabled.contains('art') && coverBytes != null) {
+      if (enabled.contains('art') && coverBytes != null && !isWebmContainer) {
         tags.add(MetadataTag.binary(CommonTags.albumArt, coverBytes));
+      } else if (enabled.contains('art') &&
+          coverBytes != null &&
+          isWebmContainer) {
+        _log(
+          'Skipping embedded artwork for WebM container ${audioFile.path}; '
+          'MetaTagger does not support WebM artwork',
+        );
       }
-      if (tags.isNotEmpty) await MetaTagger().writeTags(audioFile.path, tags);
+      if (tags.isNotEmpty) {
+        await MetaTagger().writeTags(audioFile.path, tags);
+      }
     } catch (error, stackTrace) {
       _error('Tagging failed: $error\n$stackTrace');
+    }
+  }
+
+  Future<bool> _isWebmContainer(File file) async {
+    try {
+      final handle = await file.open();
+      try {
+        final header = await handle.read(4);
+        // WebM and Matroska files use the EBML document signature.
+        return header.length == 4 &&
+            header[0] == 0x1a &&
+            header[1] == 0x45 &&
+            header[2] == 0xdf &&
+            header[3] == 0xa3;
+      } finally {
+        await handle.close();
+      }
+    } catch (error) {
+      _log('Could not inspect audio container before tagging: $error');
+      return false;
     }
   }
 

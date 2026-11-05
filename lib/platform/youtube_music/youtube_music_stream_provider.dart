@@ -365,7 +365,7 @@ class YouTubeMusicStreamProvider extends StreamProvider {
         .toList();
     final candidates = defaultAudio.isNotEmpty ? defaultAudio : audio;
     final target = switch (quality) {
-      AudioQuality.MP3_128 => 48,
+      AudioQuality.MP3_128 => 64,
       AudioQuality.MP3_320 => 128,
       AudioQuality.FLAC || AudioQuality.ASK => 256,
     };

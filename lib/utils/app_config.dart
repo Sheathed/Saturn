@@ -46,12 +46,21 @@ Future<Directory> getFlavorSupportDirectory() async {
 Future<String> getFlavorDatabaseDirectory() async {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     final supportDirectory = await getFlavorSupportDirectory();
-    final directory = Directory(p.join(supportDirectory.path, 'databases'));
+    // AppImageLauncher can replace an AppImage-managed application directory
+    // during updates. Keep Linux's offline database beside settings.json so
+    // both use the same persistent per-flavor support directory.
+    final directory = Platform.isLinux
+        ? supportDirectory
+        : Directory(p.join(supportDirectory.path, 'databases'));
     await directory.create(recursive: true);
 
     final legacyDirectories = <String>[supportDirectory.path];
+    if (Platform.isLinux) {
+      // Previous Linux releases kept offline2.db in a nested databases folder.
+      legacyDirectories.insert(0, p.join(supportDirectory.path, 'databases'));
+    }
     try {
-      legacyDirectories.insert(0, p.absolute(await getDatabasesPath()));
+      legacyDirectories.add(p.absolute(await getDatabasesPath()));
     } catch (_) {
       // Continue with app-support and Documents locations if FFI cannot
       // resolve its working-directory database path.

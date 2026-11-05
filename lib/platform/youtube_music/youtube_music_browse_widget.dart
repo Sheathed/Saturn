@@ -25,6 +25,35 @@ import 'youtube_music_platform.dart';
 import 'youtube_music_speed_dial.dart';
 import 'youtube_music_tiles.dart';
 
+
+bool _playHomeShelfTracks(List items, String title) {
+  final tracks = <Track>[];
+  for (final item in items) {
+    if (item is! Map) continue;
+    Track? track;
+    if (item['musicResponsiveListItemRenderer'] != null) {
+      track = YouTubeMusicParsers.parseTrackFromResponsiveListItem(
+        item['musicResponsiveListItemRenderer'],
+      );
+    } else if (item['musicTwoRowItemRenderer'] != null) {
+      track = YouTubeMusicParsers.parseTrackFromTwoRowItem(
+        item['musicTwoRowItemRenderer'],
+      );
+    }
+    if (track != null && track.id != null && track.id!.isNotEmpty) {
+      tracks.add(track);
+    }
+  }
+  if (tracks.isEmpty) return false;
+
+  GetIt.I<AudioPlayerHandler>().playFromTrackList(
+    tracks,
+    tracks.first.id!,
+    QueueSource(id: title, text: title, source: 'homepage'),
+  );
+  return true;
+}
+
 /// Full-featured YouTube Music Browse and Home widget matching Metrolist styling and behavior.
 class YouTubeMusicBrowseWidget extends StatefulWidget {
   final String browseId;
@@ -134,6 +163,8 @@ class _YouTubeMusicBrowseWidgetState extends State<YouTubeMusicBrowseWidget> {
   Future<void> _load({String? chipParams}) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
+    _listenAgainBrowseId = null;
+    _listenAgainParams = null;
     setState(() {
       _loading = true;
       _error = null;
@@ -264,16 +295,14 @@ class _YouTubeMusicBrowseWidgetState extends State<YouTubeMusicBrowseWidget> {
                   ?['musicCarouselShelfBasicHeaderRenderer'];
           final moreBtn =
               headerRenderer?['moreContentButton']?['buttonRenderer'];
-          final titleRuns =
-              headerRenderer?['title']?['runs'] as List? ?? [];
-          final titleNav =
-              (titleRuns.isNotEmpty && titleRuns[0]['navigationEndpoint'] != null)
-                  ? titleRuns[0]['navigationEndpoint']
-                  : null;
-          final nav = moreBtn?['navigationEndpoint'] ?? titleNav;
-          if (nav != null && nav['browseEndpoint'] != null) {
-            _listenAgainBrowseId = nav['browseEndpoint']['browseId'] as String?;
-            _listenAgainParams = nav['browseEndpoint']['params'] as String?;
+          // Only expose the mobile "more" affordance when Innertube
+          // actually returned that button. The title can have its own link
+          // even when the section has no more-content endpoint.
+          final nav = moreBtn?['navigationEndpoint'];
+          if (moreBtn != null && nav is Map && nav['browseEndpoint'] is Map) {
+            final browseEndpoint = nav['browseEndpoint'] as Map;
+            _listenAgainBrowseId = browseEndpoint['browseId'] as String?;
+            _listenAgainParams = browseEndpoint['params'] as String?;
           }
           displaySections.remove(listenAgainSection);
         }
@@ -832,6 +861,16 @@ class _YouTubeMusicBrowseWidgetState extends State<YouTubeMusicBrowseWidget> {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                         ),
                         onPressed: () {
+                          final isMixPath = path.startsWith('play:') ||
+                              path.startsWith('mix:') ||
+                              path.startsWith('VLRD') ||
+                              path.startsWith('RD');
+                          if (isMixPath) {
+                            // Play the items displayed in this shelf. Its
+                            // header endpoint may instead point to a seeded mix.
+                            _playHomeShelfTracks(items, title);
+                            return;
+                          }
                           if (path.startsWith('play:')) {
                             final id = path.substring(5);
                             GetIt.I<AudioPlayerHandler>().playMix(
@@ -986,14 +1025,13 @@ class _YouTubeMusicBrowseWidgetState extends State<YouTubeMusicBrowseWidget> {
                     hidePlatformBadge: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
                     onTap: () {
-                      GetIt.I<AudioPlayerHandler>().playFromTrackList(
-                        parsedTracks,
-                        track.id ?? '',
-                        QueueSource(
-                          source: 'browse',
-                          id: track.id ?? '',
-                          text: track.title ?? '',
-                        ),
+                      final trackId = track.id;
+                      if (trackId == null || trackId.isEmpty) return;
+                      GetIt.I<AudioPlayerHandler>().playMix(
+                        trackId.startsWith('RD') ? trackId : 'RDAMVM$trackId',
+                        track.title ?? '',
+                        platformId: 'youtube_music',
+                        seedTrack: track,
                       );
                     },
                     onHold: () {

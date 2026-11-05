@@ -578,5 +578,7 @@ const language_en_US = {
     'Selectable player text': 'Selectable player text',
     'Allow selecting the song title and artist on the fullscreen player.':
         'Allow selecting the song title and artist on the fullscreen player.',
+    'Open downloads folder': 'Open downloads folder',
+    'Could not open downloads folder': 'Could not open downloads folder',
   },
 };

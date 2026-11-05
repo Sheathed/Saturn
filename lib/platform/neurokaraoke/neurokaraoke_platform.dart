@@ -628,7 +628,7 @@ class NeuroKaraokePlatform extends MusicPlatform {
   @override
   Duration radioPositionAdjustment(String stationId) {
     if (stationId != kNeuroRadioStationId) return Duration.zero;
-    if (Platform.isAndroid) return const Duration(seconds: 5);
+    // if (Platform.isAndroid) return const Duration(seconds: 5);
     if (Platform.isLinux || Platform.isWindows) {
       return const Duration(seconds: 3);
     }

@@ -182,6 +182,37 @@ Future<void> _configureDesktopWindow() async {
   if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) return;
 
   try {
+    DesktopWindowState.instance.setShutdownCallback(() async {
+      if (GetIt.I.isRegistered<AudioPlayerHandler>()) {
+        try {
+          await GetIt.I<AudioPlayerHandler>().dispose();
+        } catch (error, stackTrace) {
+          Logger.root.warning(
+            'Could not dispose audio service on exit',
+            error,
+            stackTrace,
+          );
+        }
+      }
+      try {
+        await (await TrayService.getInstance()).destroy();
+      } catch (error, stackTrace) {
+        Logger.root.warning(
+          'Could not dispose system tray on exit',
+          error,
+          stackTrace,
+        );
+      }
+      try {
+        (await DiscordRPCService.getInstance()).dispose();
+      } catch (error, stackTrace) {
+        Logger.root.warning(
+          'Could not disconnect Discord RPC on exit',
+          error,
+          stackTrace,
+        );
+      }
+    });
     await DesktopWindowState.instance.initializeAndRestore();
   } catch (error, stackTrace) {
     Logger.root.warning(
@@ -191,6 +222,7 @@ Future<void> _configureDesktopWindow() async {
     );
   }
 }
+
 
 Future<void> _requestNotificationPermission() async {
   if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;

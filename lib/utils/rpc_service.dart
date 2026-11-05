@@ -6,6 +6,7 @@ import 'package:saturn/utils/app_config.dart';
 class DiscordRPCService {
   static DiscordRPCService? _instance;
   bool _isInitialized = false;
+  bool _started = false;
 
   DiscordRPCService._();
 
@@ -24,6 +25,7 @@ class DiscordRPCService {
   }
 
   void initialize() {
+    _started = true;
     FlutterDiscordRPC.initialize('882672432144592957');
     FlutterDiscordRPC.instance.connect(autoRetry: true);
     FlutterDiscordRPC.instance.isConnectedStream.listen((isConnected) {
@@ -89,7 +91,9 @@ class DiscordRPCService {
   }
 
   void dispose() {
+    if (!_started) return;
     FlutterDiscordRPC.instance.dispose();
     _isInitialized = false;
+    _started = false;
   }
 }

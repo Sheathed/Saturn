@@ -218,12 +218,49 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     });
   }
 
+  Future<void> _openDownloadsFolder() async {
+    final path = settings.downloadPath?.trim();
+    if (path == null || path.isEmpty) return;
+
+    try {
+      final directory = Directory(path);
+      await directory.create(recursive: true);
+      if (Platform.isWindows) {
+        await Process.start('explorer.exe', [
+          directory.path,
+        ], mode: ProcessStartMode.detached);
+      } else if (Platform.isMacOS) {
+        await Process.start('open', [
+          directory.path,
+        ], mode: ProcessStartMode.detached);
+      } else if (Platform.isLinux) {
+        await Process.start('xdg-open', [
+          directory.path,
+        ], mode: ProcessStartMode.detached);
+      }
+    } catch (error, stackTrace) {
+      _log.warning('Could not open downloads folder', error, stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Could not open downloads folder'.i18n)),
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: FreezerAppBar(
         'Downloads'.i18n,
         actions: [
+          if (Platform.isWindows || Platform.isMacOS || Platform.isLinux)
+            IconButton(
+              tooltip: 'Open downloads folder'.i18n,
+              icon: const Icon(Icons.folder_open),
+              onPressed: _openDownloadsFolder,
+            ),
           IconButton(
             icon: Icon(Icons.delete_sweep, semanticLabel: 'Clear all'.i18n),
             onPressed: () async {

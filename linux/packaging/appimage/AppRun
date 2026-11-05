@@ -5,30 +5,6 @@ set -u
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SATURN_BIN="${APPDIR}/Saturn"
 
-export LD_LIBRARY_PATH="${APPDIR}/lib:${APPDIR}/lib64"
-
-SYSTEM_LIBDIRS=(
-    "/usr/lib/x86_64-linux-gnu"      # Debian/Ubuntu
-    "/usr/lib64"                     # Fedora/RHEL/openSUSE (64-bit)
-    "/usr/lib"                       # Generic (many distros)
-    "/lib/x86_64-linux-gnu"          # Debian/Ubuntu
-    "/lib64"                         # Fedora/RHEL/openSUSE (64-bit)
-    "/lib"                           # Generic (Arch, Alpine, etc.)
-    "/usr/local/lib"                 # User-installed libraries
-    "/usr/local/lib64"               # User-installed libraries (64-bit)
-)
-
-for libdir in "${SYSTEM_LIBDIRS[@]}"; do
-    if [ -d "$libdir" ]; then
-        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${libdir}"
-    fi
-done
-
-# Preserve any existing LD_LIBRARY_PATH from the user's environment
-if [ -n "${LD_LIBRARY_PATH:-}" ]; then
-    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}"
-fi
-
 if [ -n "${APPIMAGE:-}" ] && [ -x "$APPDIR/saturn-appimage-integrate" ]; then
     # Install a hidden per-user launcher/icon so taskbars can resolve the
     # flavor StartupWMClass without adding Saturn to the application menu.
@@ -65,7 +41,7 @@ echo "Diagnostics:" >&2
 echo "  Saturn binary: $SATURN_BIN" >&2
 echo "  Binary exists: $([ -f "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
 echo "  Binary executable: $([ -x "$SATURN_BIN" ] && echo "yes" || echo "no")" >&2
-echo "  LD_LIBRARY_PATH: ${LD_LIBRARY_PATH}" >&2
+echo "  LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-}" >&2
 echo "" >&2
 echo "To fix this, ensure the following packages are installed:" >&2
 echo "  Arch Linux:        pacman -S gtk3 libayatana-appindicator" >&2

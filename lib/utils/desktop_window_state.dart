@@ -23,6 +23,13 @@ class DesktopWindowState with WindowListener {
   bool _minimized = false;
   bool _restoring = false;
   bool _initialized = false;
+  bool _closeInProgress = false;
+  bool _allowClose = false;
+  Future<void> Function()? _shutdownCallback;
+
+  void setShutdownCallback(Future<void> Function() callback) {
+    _shutdownCallback = callback;
+  }
 
   Future<void> initializeAndRestore() async {
     if (_initialized) return;
@@ -46,6 +53,10 @@ class DesktopWindowState with WindowListener {
         _minimized = await windowManager.isMinimized();
       }
       await windowManager.setTitle(appTitle);
+      // Keep the native window alive while Dart services are shut down. The
+      // Linux MPV backend owns native callbacks that must be released before
+      // Flutter tears down its engine.
+      await windowManager.setPreventClose(true);
       windowManager.addListener(this);
       if (!_maximized && !_minimized) {
         _normalBounds ??= await windowManager.getBounds();
@@ -174,7 +185,36 @@ class DesktopWindowState with WindowListener {
 
   @override
   void onWindowClose() {
+    if (_allowClose || _closeInProgress) return;
+    _closeInProgress = true;
     _saveTimer?.cancel();
-    unawaited(_saveState());
+    unawaited(_closeGracefully());
+  }
+
+  Future<void> _closeGracefully() async {
+    try {
+      // prevent-close keeps native window APIs and plugin channels available
+      // while the final geometry snapshot and service cleanup run.
+      await _saveState();
+      await _shutdownCallback?.call();
+    } catch (error, stackTrace) {
+      appLogger.warning(
+        'Error while shutting down desktop services',
+        error,
+        stackTrace,
+      );
+    } finally {
+      try {
+        await windowManager.setPreventClose(false);
+        _allowClose = true;
+        await windowManager.close();
+      } catch (error, stackTrace) {
+        appLogger.warning(
+          'Could not close desktop window cleanly',
+          error,
+          stackTrace,
+        );
+      }
+    }
   }
 }

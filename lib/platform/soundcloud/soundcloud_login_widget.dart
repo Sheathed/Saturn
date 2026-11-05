@@ -224,26 +224,6 @@ class _SoundCloudLoginWidgetState extends State<SoundCloudLoginWidget> {
     } catch (_) {}
   }
 
-  Future<void> _continueAsGuest() async {
-    setState(() {
-      _checking = true;
-      _error = null;
-    });
-    try {
-      final result = await widget.platform.login({'guest': true});
-      if (!mounted) return;
-      if (result.success) {
-        widget.onSuccess();
-      } else {
-        setState(() => _error = result.error ?? 'Guest mode failed');
-      }
-    } catch (error) {
-      if (mounted) setState(() => _error = 'Guest login error: $error');
-    } finally {
-      if (mounted) setState(() => _checking = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -321,11 +301,6 @@ class _SoundCloudLoginWidgetState extends State<SoundCloudLoginWidget> {
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          LoginSecondaryButton(
-            label: 'Continue as Guest',
-            onPressed: _checking ? null : _continueAsGuest,
-          ),
         ],
       ),
     );

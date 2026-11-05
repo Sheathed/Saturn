@@ -1248,14 +1248,76 @@ class DeezerPlatform extends MusicPlatform {
 
   @override
   Future<PlatformDownloadMetadata> getDownloadMetadata(String trackId) async {
-    final track = await getTrack(trackId);
+    final track = await _api.track(trackId);
+    final albumId = track.album?.id;
+    if (albumId != null && albumId.isNotEmpty) {
+      try {
+        final albumCreditJson = await _api.downloadAlbumContributors(
+          albumId,
+          trackId,
+        );
+        if (albumCreditJson != null) {
+          final albumTrackCredits = albumCreditJson['trackContributors'];
+          final albumCredits = albumCreditJson['albumContributors'];
+          final parsedAlbumTrack = albumTrackCredits is Map
+              ? Contributors.fromPrivateJson(albumTrackCredits)
+              : null;
+          final parsedAlbum = albumCredits is Map
+              ? Contributors.fromPrivateJson(albumCredits)
+              : null;
+          final current = track.contributors;
+          List<String>? pick(
+            List<String>? existing,
+            List<String>? song,
+            List<String>? album,
+          ) => existing?.isNotEmpty == true
+              ? existing
+              : song?.isNotEmpty == true
+              ? song
+              : album;
+          track.contributors = Contributors(
+            composers: pick(
+              current?.composers,
+              parsedAlbumTrack?.composers,
+              parsedAlbum?.composers,
+            ),
+            engineers: pick(
+              current?.engineers,
+              parsedAlbumTrack?.engineers,
+              parsedAlbum?.engineers,
+            ),
+            mixers: pick(
+              current?.mixers,
+              parsedAlbumTrack?.mixers,
+              parsedAlbum?.mixers,
+            ),
+            producers: pick(
+              current?.producers,
+              parsedAlbumTrack?.producers,
+              parsedAlbum?.producers,
+            ),
+            authors: pick(
+              current?.authors,
+              parsedAlbumTrack?.authors,
+              parsedAlbum?.authors,
+            ),
+            writers: pick(
+              current?.writers,
+              parsedAlbumTrack?.writers,
+              parsedAlbum?.writers,
+            ),
+          );
+        }
+      } catch (_) {
+        // Public track metadata remains available if the optional credit lookup fails.
+      }
+    }
     Map<dynamic, dynamic> publicTrack = const {};
     Map<dynamic, dynamic> publicAlbum = const {};
 
     try {
       publicTrack = await _api.callPublicApi('track/$trackId');
     } catch (_) {}
-    final albumId = track.album?.id;
     if (albumId != null) {
       try {
         publicAlbum = await _api.callPublicApi('album/$albumId');
@@ -1273,7 +1335,7 @@ class DeezerPlatform extends MusicPlatform {
         ? deezerImageUrl(art!.type, art.imageHash, resolution, resolution)
         : art?.full;
 
-    return PlatformDownloadMetadata.fromTrack(
+    final metadata = PlatformDownloadMetadata.fromTrack(
       track,
       coverUrl: coverUrl,
       trackTotal: publicAlbum['nb_tracks'] as int?,
@@ -1283,6 +1345,7 @@ class DeezerPlatform extends MusicPlatform {
       upc: publicAlbum['upc']?.toString(),
       bpm: publicTrack['bpm']?.toString(),
     );
+    return metadata;
   }
 
   // ---------------------------------------------------------------------------

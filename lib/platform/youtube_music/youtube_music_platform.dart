@@ -1243,11 +1243,12 @@ class YouTubeMusicPlatform extends MusicPlatform {
 
   @override
   List<DownloadQualityOption> get availableDownloadQualities => const [
+    DownloadQualityOption(AudioQuality.MP3_128, 'Low Quality (~64kbps)'),
+    DownloadQualityOption(AudioQuality.MP3_320, 'Medium Quality (~128kbps)'),
     DownloadQualityOption(
-      AudioQuality.MP3_320,
+      AudioQuality.FLAC,
       'High Quality (Opus ~160kbps / AAC 256kbps)',
     ),
-    DownloadQualityOption(AudioQuality.MP3_128, 'Standard Quality (~128kbps)'),
   ];
 
   @override
@@ -1255,7 +1256,7 @@ class YouTubeMusicPlatform extends MusicPlatform {
     if (trackId.startsWith('radio:')) {
       throw UnsupportedError('YouTube Music livestreams cannot be downloaded');
     }
-    final track = await getTrack(trackId);
+    final track = await _api.getTrack(trackId, includeCredits: true);
     // The selected YouTube stream may be Opus/WebM or AAC/M4A. Let the
     // download worker derive the extension from the resolved stream instead
     // of assuming every track uses Opus.

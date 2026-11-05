@@ -882,20 +882,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
             children: [
               if (settings.blurPlayerBackground)
                 ClipRect(
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: _blurImage ?? const NetworkImage(''),
-                          fit: BoxFit.cover,
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withValues(alpha: 0.25),
-                            BlendMode.dstATop,
-                          ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: _blurImage ?? const NetworkImage(''),
+                        fit: BoxFit.cover,
+                        colorFilter: ColorFilter.mode(
+                          Colors.black.withValues(alpha: 0.25),
+                          BlendMode.dstATop,
                         ),
                       ),
-                      child: const SizedBox.expand(),
+                    ),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(color: Colors.transparent),
                     ),
                   ),
                 ),
@@ -1604,7 +1604,8 @@ class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
                 ],
               ),
               Expanded(
-                child: TabBarView(
+                child: _LyricsAwareTabBarView(
+                  onLyricsOpened: _lyricsController.scrollToCurrentLyric,
                   children: [
                     _DesktopQueueTab(
                       onLoadingChanged: (loading) {
@@ -1622,6 +1623,59 @@ class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
       ),
     );
   }
+}
+
+class _LyricsAwareTabBarView extends StatefulWidget {
+  final List<Widget> children;
+  final VoidCallback onLyricsOpened;
+
+  const _LyricsAwareTabBarView({
+    required this.children,
+    required this.onLyricsOpened,
+  });
+
+  @override
+  State<_LyricsAwareTabBarView> createState() => _LyricsAwareTabBarViewState();
+}
+
+class _LyricsAwareTabBarViewState extends State<_LyricsAwareTabBarView> {
+  TabController? _tabController;
+  int _lastSettledIndex = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextController = DefaultTabController.of(context);
+    if (identical(nextController, _tabController)) return;
+    _tabController?.removeListener(_handleTabChange);
+    _tabController = nextController;
+    _lastSettledIndex = nextController.index;
+    nextController.addListener(_handleTabChange);
+  }
+
+  void _handleTabChange() {
+    final controller = _tabController;
+    if (controller == null || controller.indexIsChanging) return;
+    final index = controller.index;
+    if (index == _lastSettledIndex) return;
+    _lastSettledIndex = index;
+    if (index != 2) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _tabController?.index == 2) {
+        widget.onLyricsOpened();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController?.removeListener(_handleTabChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TabBarView(children: widget.children);
 }
 
 class _DesktopQueueTab extends StatefulWidget {

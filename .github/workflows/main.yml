@@ -115,12 +115,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            file \
             libgtk-3-dev \
+            libgirepository1.0-dev \
             libx11-dev \
             libxi-dev \
             libayatana-appindicator3-dev \
             libmpv-dev \
             libwebkit2gtk-4.1-dev \
+            librsvg2-dev \
             libfuse2 \
             imagemagick \
             rpm \
@@ -163,6 +166,12 @@ jobs:
           wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x appimagetool
           sudo mv appimagetool /usr/local/bin/
+          wget -O linuxdeploy "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          chmod +x linuxdeploy
+          sudo mv linuxdeploy /usr/local/bin/
+          wget -O linuxdeploy-plugin-gtk.sh "https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh"
+          chmod +x linuxdeploy-plugin-gtk.sh
+          sudo mv linuxdeploy-plugin-gtk.sh /usr/local/bin/
 
       - name: Install Fastforge
         run: dart pub global activate fastforge "$FASTFORGE_VERSION"

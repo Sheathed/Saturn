@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -eu
 
 : "${OUTPUT_DIRECTORY:?Fastforge did not provide OUTPUT_DIRECTORY}"

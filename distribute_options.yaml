@@ -32,14 +32,15 @@ releases:
           target: exe
           build_args:
             flavor: stable
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && mkdir -p "$BUILD_OUTPUT_DIRECTORY" && cp -R "$(pwd)/build/windows/x64/stable/runner/Release/." "$BUILD_OUTPUT_DIRECTORY/"
   - name: macos
     jobs:
       - name: release-release-mac-dmg
         package:
           platform: macos
           target: dmg
-          build_args:
-            flavor: stable
 
   - name: linux-dev
     jobs:

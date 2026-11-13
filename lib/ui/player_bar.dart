@@ -5,10 +5,14 @@ import 'dart:math' as math;
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 
+import '../api/cache.dart';
+import '../api/definitions.dart';
+import '../platform/platform_manager.dart';
 import '../service/audio_service.dart';
 import '../router/app_router.dart';
 import '../settings.dart';
@@ -49,8 +53,7 @@ class PlayerBarState extends State<PlayerBar> {
         AudioProcessingState.idle) {
       return 0.0;
     }
-    final item = audioHandler.mediaItem.value;
-    final dur = item?.duration;
+    final dur = audioHandler.effectiveDuration;
     if (dur == null || dur.inMilliseconds == 0) {
       return 0.0; // Avoid division by 0 and null pointer exception
     }
@@ -59,7 +62,7 @@ class PlayerBarState extends State<PlayerBar> {
     }
     final pos = audioHandler.isRadio
         ? audioHandler.syncedPosition
-        : audioHandler.playbackState.value.position;
+        : audioHandler.player.position;
     return (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
   }
 
@@ -357,7 +360,7 @@ class PlayerBarState extends State<PlayerBar> {
                         const Duration(milliseconds: 250),
                       ),
                       builder: (context, _) {
-                        final duration = audioHandler.mediaItem.value?.duration;
+                        final duration = audioHandler.effectiveDuration;
                         if (audioHandler.isRadio &&
                             (!audioHandler.hasRadioClock ||
                                 duration == null ||
@@ -388,159 +391,189 @@ class PlayerBarState extends State<PlayerBar> {
     final transport =
         AudioPlayerHandler.isRadioItem(item) || audioHandler.isRadio;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        InkWell(
-          focusNode: _focusNode,
-          onTap: () {
-            openPlayerScreen();
-            SystemChrome.setSystemUIOverlayStyle(
-              SystemUiOverlayStyle(
-                systemNavigationBarColor:
-                    settings.themeData.scaffoldBackgroundColor,
-              ),
-            );
-          },
-          child: Container(
-            height: 64,
-            color: _focusNode.hasFocus
-                ? Colors.black26
-                : settings.themeAdditonalItems
-                ? Colors.transparent
-                : Theme.of(context).bottomAppBarTheme.color,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 4,
+    return SizedBox(
+      height: 68,
+      child: Stack(
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InkWell(
+                focusNode: _focusNode,
+                onTap: () {
+                  openPlayerScreen();
+                  SystemChrome.setSystemUIOverlayStyle(
+                    SystemUiOverlayStyle(
+                      systemNavigationBarColor:
+                          settings.themeData.scaffoldBackgroundColor,
+                    ),
+                  );
+                },
+                child: Container(
+                  height: 64,
+                  color: _focusNode.hasFocus
+                      ? Colors.black26
+                      : settings.themeAdditonalItems
+                      ? Colors.transparent
+                      : Theme.of(context).bottomAppBarTheme.color,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: CachedImage(
-                          width: 48,
-                          height: 48,
-                          url:
-                              item.extras?['saturnOriginalArtUri'] ??
-                              item.artUri?.toString() ??
-                              item.extras?['thumb'] ??
-                              '',
-                        ),
-                      ),
-                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        flex: 4,
+                        child: Row(
                           children: [
-                            Text(
-                              item.displayTitle ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 15),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: CachedImage(
+                                width: 48,
+                                height: 48,
+                                url:
+                                    item.extras?['saturnOriginalArtUri'] ??
+                                    item.artUri?.toString() ??
+                                    item.extras?['thumb'] ??
+                                    '',
+                              ),
                             ),
-                            const SizedBox(height: 3),
-                            Text(
-                              item.displaySubtitle ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: foreground.withValues(alpha: 0.82),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.displayTitle ?? '',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontSize: 15),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          item.displaySubtitle ?? '',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: foreground.withValues(
+                                              alpha: 0.82,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _DesktopPlayerFavoriteButton(
+                                    key: ValueKey(
+                                      '${item.id}:${item.extras?['radioTrackId']}',
+                                    ),
+                                    item: item,
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (!transport) PrevNextButton(iconSize, prev: true),
-                      PlayPauseButton(iconSize),
-                      if (!transport) PrevNextButton(iconSize),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (!transport) ...[
-                        StreamBuilder(
-                          stream: audioHandler.playbackState,
-                          builder: (context, _) {
-                            return Text(
-                              _formatPosition(
-                                audioHandler.playbackState.value.position,
-                              ),
-                              style: const TextStyle(
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ).copyWith(color: foreground),
-                            );
-                          },
+                      Expanded(
+                        flex: 3,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (!transport)
+                              PrevNextButton(iconSize, prev: true),
+                            PlayPauseButton(iconSize),
+                            if (!transport) PrevNextButton(iconSize),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                      ],
-                      const Flexible(child: QualityInfoWidget()),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (!transport) ...[
+                              StreamBuilder(
+                                stream: audioHandler.playbackState,
+                                builder: (context, _) {
+                                  return Text(
+                                    _formatPosition(
+                                      audioHandler.player.position,
+                                    ),
+                                    style: const TextStyle(
+                                      fontFeatures: [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ).copyWith(color: foreground),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            const Flexible(child: QualityInfoWidget()),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const DesktopVolumeControl(),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                const DesktopVolumeControl(),
-              ],
-            ),
+              ),
+              SizedBox(
+                height: 4,
+                child: StreamBuilder(
+                  stream: Stream.periodic(const Duration(milliseconds: 250)),
+                  builder: (context, _) {
+                    final duration = audioHandler.effectiveDuration;
+                    if (transport &&
+                        (!audioHandler.hasRadioClock ||
+                            duration == null ||
+                            duration <= Duration.zero)) {
+                      return const SizedBox.shrink();
+                    }
+                    return LinearProgressIndicator(
+                      minHeight: 4,
+                      color: Theme.of(context).primaryColor,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).primaryColor.withValues(alpha: 0.1),
+                      value: _progress,
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        ),
-        SizedBox(
-          height: 4,
-          child: LayoutBuilder(
-            builder: (context, constraints) => GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: transport || item.duration == null
-                  ? null
-                  : (details) => _seekFromProgress(
-                      details.localPosition.dx,
-                      constraints.maxWidth,
-                      item.duration!,
-                    ),
-              onHorizontalDragUpdate: transport || item.duration == null
-                  ? null
-                  : (details) => _seekFromProgress(
-                      details.localPosition.dx,
-                      constraints.maxWidth,
-                      item.duration!,
-                    ),
-              child: StreamBuilder(
-                stream: Stream.periodic(const Duration(milliseconds: 250)),
-                builder: (context, _) {
-                  final duration = item.duration;
-                  if (transport &&
-                      (!audioHandler.hasRadioClock ||
-                          duration == null ||
-                          duration <= Duration.zero)) {
-                    return const SizedBox.shrink();
-                  }
-                  return LinearProgressIndicator(
-                    minHeight: 4,
-                    color: Theme.of(context).primaryColor,
-                    backgroundColor: Theme.of(
-                      context,
-                    ).primaryColor.withValues(alpha: 0.1),
-                    value: _progress,
-                  );
-                },
+          if (!transport && audioHandler.effectiveDuration != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 8,
+              child: LayoutBuilder(
+                builder: (context, constraints) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) => _seekFromProgress(
+                    details.localPosition.dx,
+                    constraints.maxWidth,
+                    audioHandler.effectiveDuration!,
+                  ),
+                  onHorizontalDragUpdate: (details) => _seekFromProgress(
+                    details.localPosition.dx,
+                    constraints.maxWidth,
+                    audioHandler.effectiveDuration!,
+                  ),
+                  child: const SizedBox.expand(),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -557,6 +590,109 @@ class PlayerBarState extends State<PlayerBar> {
       audioHandler.seek(
         Duration(milliseconds: (duration.inMilliseconds * progress).round()),
       ),
+    );
+  }
+}
+
+class _DesktopPlayerFavoriteButton extends StatefulWidget {
+  final MediaItem item;
+
+  const _DesktopPlayerFavoriteButton({super.key, required this.item});
+
+  @override
+  State<_DesktopPlayerFavoriteButton> createState() =>
+      _DesktopPlayerFavoriteButtonState();
+}
+
+class _DesktopPlayerFavoriteButtonState
+    extends State<_DesktopPlayerFavoriteButton> {
+  bool _isFavorite = false;
+  bool _isSaving = false;
+
+  Track? get _track {
+    final item = widget.item;
+    final baseTrack = Track.fromMediaItem(item);
+    final id =
+        item.extras?['radioTrackId'] as String? ??
+        (item.extras?['isRadio'] == true ? null : item.id);
+    if (id == null || id.isEmpty) return null;
+    return Track(id: id, platformId: baseTrack.platformId);
+  }
+
+  bool get _canFavorite {
+    final track = _track;
+    if (track == null) return false;
+    return PlatformManager.instance
+        .getPlatform(track.platformId)
+        .capabilities
+        .supportsLibrarySync;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _syncFavoriteState();
+  }
+
+  void _syncFavoriteState() {
+    final track = _track;
+    _isFavorite = track != null && cache.checkTrackFavorite(track);
+  }
+
+  @override
+  void didUpdateWidget(covariant _DesktopPlayerFavoriteButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id ||
+        oldWidget.item.extras?['radioTrackId'] !=
+            widget.item.extras?['radioTrackId']) {
+      _syncFavoriteState();
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    final track = _track;
+    if (track == null || _isSaving) return;
+    final wasFavorite = cache.checkTrackFavorite(track);
+    final nextFavorite = !wasFavorite;
+    setState(() {
+      _isFavorite = nextFavorite;
+      _isSaving = true;
+    });
+    cache.updateTrackFavorite(track, favorite: nextFavorite);
+    final platform = PlatformManager.instance.getPlatform(track.platformId);
+    try {
+      if (nextFavorite) {
+        await platform.addFavoriteTrack(track.id!);
+      } else {
+        await platform.removeFavoriteTrack(track.id!);
+      }
+      await cache.save();
+    } catch (error) {
+      cache.updateTrackFavorite(track, favorite: wasFavorite);
+      if (mounted) {
+        setState(() => _isFavorite = wasFavorite);
+        Fluttertoast.showToast(msg: 'Could not update favorite: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_canFavorite) return const SizedBox.shrink();
+    return IconButton(
+      tooltip: (_isFavorite ? 'Unlove' : 'Love').i18n,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+      padding: EdgeInsets.zero,
+      onPressed: _isSaving ? null : _toggleFavorite,
+      icon: _isSaving
+          ? const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(_isFavorite ? Icons.favorite : Icons.favorite_border),
     );
   }
 }

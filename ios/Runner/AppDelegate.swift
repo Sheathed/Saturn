@@ -6,6 +6,7 @@ import WebKit
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private var proxyChannel: FlutterMethodChannel?
+  private var formFactorChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -13,6 +14,17 @@ import WebKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     if let controller = window?.rootViewController as? FlutterViewController {
+      formFactorChannel = FlutterMethodChannel(
+        name: "s.s.saturn/form_factor",
+        binaryMessenger: controller.binaryMessenger
+      )
+      formFactorChannel?.setMethodCallHandler { call, result in
+        guard call.method == "isPhone" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        result(UIDevice.current.userInterfaceIdiom == .phone)
+      }
       proxyChannel = FlutterMethodChannel(
         name: "s.s.saturn/webview_proxy",
         binaryMessenger: controller.binaryMessenger

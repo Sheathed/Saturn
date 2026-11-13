@@ -212,6 +212,21 @@ class AudioPlayerHandler extends BaseAudioHandler
 
   AudioPlayer get player => _player;
 
+  /// The queue item may not contain a duration even after the player has
+  /// loaded the stream. Prefer its metadata when valid, then use the duration
+  /// reported by just_audio so every player surface and RPC shares one value.
+  Duration? get effectiveDuration {
+    final itemDuration = mediaItem.value?.duration;
+    if (itemDuration != null && itemDuration > Duration.zero) {
+      return itemDuration;
+    }
+    if (!_playerInitializedCompleter.isCompleted) return null;
+    final playerDuration = _player.duration;
+    return playerDuration != null && playerDuration > Duration.zero
+        ? playerDuration
+        : null;
+  }
+
   Scrobblenaut? _scrobblenaut;
   bool _scrobblenautReady = false;
   final Map<String, DateTime> _recentLastFmScrobbles = {};
@@ -1249,8 +1264,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       // Last.fm scrobbling separate from that, and submit once the configured
       // percentage of the track has actually been listened to.
       final activeItem = mediaItem.value;
-      if (activeItem != null &&
-          _lastFmScrobbleThresholdReached(activeItem)) {
+      if (activeItem != null && _lastFmScrobbleThresholdReached(activeItem)) {
         unawaited(_addToHistory(activeItem));
       }
 
@@ -1905,11 +1919,7 @@ class AudioPlayerHandler extends BaseAudioHandler
         (_player.processingState == ProcessingState.completed ||
             _player.processingState == ProcessingState.idle ||
             _playerAtTrackEnd())) {
-      await _playTrackAtIndex(
-        index,
-        position: Duration.zero,
-        autoPlay: true,
-      );
+      await _playTrackAtIndex(index, position: Duration.zero, autoPlay: true);
       return;
     }
     if (_playerQueueCanSeekTo(index) &&
@@ -3685,8 +3695,7 @@ class AudioPlayerHandler extends BaseAudioHandler
       final now = DateTime.now().toUtc();
       final previousScrobble = _recentLastFmScrobbles[scrobbleKey];
       if (previousScrobble != null &&
-          now.difference(previousScrobble) <
-              _lastFmDuplicateScrobbleCooldown) {
+          now.difference(previousScrobble) < _lastFmDuplicateScrobbleCooldown) {
         _loggedTrackId = historyId;
         Logger.root.fine(
           'Skipping duplicate Last.fm scrobble for ${scrobble.artist} - '
@@ -3731,8 +3740,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     if (duration == null || duration <= Duration.zero) return true;
 
     final threshold = settings.lastFMScrobbleThresholdPercent.clamp(1, 100);
-    return _currentTrackListenedSeconds * 100 >=
-        duration.inSeconds * threshold;
+    return _currentTrackListenedSeconds * 100 >= duration.inSeconds * threshold;
   }
 
   Future<void> _updateDiscordRPC(MediaItem item) async {
@@ -3745,12 +3753,8 @@ class AudioPlayerHandler extends BaseAudioHandler
       final platformName = platform?.platformName;
       final shareUrl = platform?.getShareUrl('track', item.id);
 
-      // Determine if radio item (duration is null or 0 for radios usually, but could also be explicitly flagged)
-      final bool radio =
-          isRadioItem(item) ||
-          isRadio ||
-          item.duration == null ||
-          item.duration == Duration.zero;
+      final duration = effectiveDuration;
+      final bool radio = isRadioItem(item) || isRadio;
 
       final isPlaying = _player.playing;
 
@@ -3772,9 +3776,9 @@ class AudioPlayerHandler extends BaseAudioHandler
           start:
               DateTime.now().millisecondsSinceEpoch -
               _player.position.inMilliseconds,
-          end: (!radio && item.duration != null)
+          end: (!radio && duration != null)
               ? DateTime.now().millisecondsSinceEpoch +
-                    (item.duration! - _player.position).inMilliseconds
+                    (duration - _player.position).inMilliseconds
               : null,
         ),
       );
@@ -4347,11 +4351,7 @@ class AudioPlayerHandler extends BaseAudioHandler
     if (_player.processingState == ProcessingState.completed ||
         _player.processingState == ProcessingState.idle ||
         (index == currentIndex && _playerAtTrackEnd())) {
-      await _playTrackAtIndex(
-        index,
-        position: Duration.zero,
-        autoPlay: true,
-      );
+      await _playTrackAtIndex(index, position: Duration.zero, autoPlay: true);
       return;
     }
     await skipToQueueItem(index);

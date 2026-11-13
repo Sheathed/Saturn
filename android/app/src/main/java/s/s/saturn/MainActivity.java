@@ -15,6 +15,7 @@ import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends AudioServiceActivity {
     private static final String CHANNEL = "s.s.saturn/native";
+    private static final String FORM_FACTOR_CHANNEL = "s.s.saturn/form_factor";
     private static final String WEBVIEW_PROXY_CHANNEL = "s.s.saturn/webview_proxy";
     private String intentPreload;
 
@@ -27,6 +28,14 @@ public class MainActivity extends AudioServiceActivity {
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
+        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), FORM_FACTOR_CHANNEL)
+                .setMethodCallHandler((call, result) -> {
+                    if (!call.method.equals("isPhone")) {
+                        result.notImplemented();
+                        return;
+                    }
+                    result.success(getResources().getConfiguration().smallestScreenWidthDp < 600);
+                });
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), WEBVIEW_PROXY_CHANNEL)
                 .setMethodCallHandler((call, result) -> {
                     if (!call.method.equals("configure")) {

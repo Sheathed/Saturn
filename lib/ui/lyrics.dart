@@ -1074,7 +1074,7 @@ class _LyricsScreenState extends State<LyricsScreen>
     final item = handler.mediaItem.value;
     final primary = Theme.of(context).colorScheme.primary;
     final surface = Theme.of(context).colorScheme.surface;
-    final duration = handler.player.duration;
+    final duration = handler.effectiveDuration;
     final artUrl =
         item?.extras?['saturnOriginalArtUri'] as String? ??
         item?.artUri?.toString() ??
@@ -1173,7 +1173,8 @@ class _LyricsScreenState extends State<LyricsScreen>
                               stream: handler.isRadio
                                   ? Stream.value(item?.duration)
                                   : handler.player.durationStream,
-                              initialData: item?.duration ?? duration,
+                              initialData:
+                                  handler.effectiveDuration ?? duration,
                               builder: (context, durationSnapshot) {
                                 final total =
                                     durationSnapshot.data ?? Duration.zero;
@@ -2355,6 +2356,9 @@ class _LyricsScreenState extends State<LyricsScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final primaryColor = theme.colorScheme.primary;
+    final lyricFontFamily =
+        theme.textTheme.bodyLarge?.fontFamily ??
+        DefaultTextStyle.of(context).style.fontFamily;
     final legibleColor = AppTheme.legibleAccent(primaryColor, isDark: isDark);
 
     return Column(
@@ -2404,6 +2408,7 @@ class _LyricsScreenState extends State<LyricsScreen>
                   : const Duration(milliseconds: 250),
               curve: isSinging ? Curves.easeOut : Curves.easeOutQuad,
               style: TextStyle(
+                fontFamily: lyricFontFamily,
                 color: wordColor,
                 fontWeight: FontWeight.bold,
                 fontSize: 26.0,
@@ -2427,6 +2432,9 @@ class _LyricsScreenState extends State<LyricsScreen>
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
     final isDark = theme.brightness == Brightness.dark;
+    final lyricFontFamily =
+        theme.textTheme.bodyLarge?.fontFamily ??
+        DefaultTextStyle.of(context).style.fontFamily;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2436,6 +2444,7 @@ class _LyricsScreenState extends State<LyricsScreen>
           curve: Curves.easeOut,
           textAlign: TextAlign.center,
           style: TextStyle(
+            fontFamily: lyricFontFamily,
             fontSize: 26.0,
             fontWeight: FontWeight.bold,
             color: isCurrentLine

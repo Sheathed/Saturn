@@ -580,5 +580,6 @@ const language_en_US = {
         'Allow selecting the song title and artist on the fullscreen player.',
     'Open downloads folder': 'Open downloads folder',
     'Could not open downloads folder': 'Could not open downloads folder',
+    'Scroll to current item': 'Scroll to current item',
   },
 };

@@ -275,7 +275,7 @@ class Settings {
 
   //Get all available fonts
   List<String> get fonts {
-    return ['Deezer', ...GoogleFonts.asMap().keys];
+    return ['Deezer', 'First Coffee', ...GoogleFonts.asMap().keys];
   }
 
   void initArtColorListener() {
@@ -419,13 +419,17 @@ class Settings {
 
   static const deezerBg = Color(0xFF1F1A16);
   static const deezerBottom = Color(0xFF1b1714);
-  TextTheme? get textTheme => (font == 'Deezer')
+  TextTheme? get textTheme => (font == 'Deezer') || (font == 'First Coffee')
       ? null
       : GoogleFonts.getTextTheme(
           font,
           isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
         );
-  String? get _fontFamily => (font == 'Deezer') ? 'MabryPro' : null;
+  String? get _fontFamily => (font == 'Deezer')
+      ? 'MabryPro'
+      : (font == 'First Coffee')
+      ? 'First Coffee'
+      : null;
 
   //Overrides for the non-deprecated buttons to look like the old ones
   OutlinedButtonThemeData get outlinedButtonTheme => OutlinedButtonThemeData(

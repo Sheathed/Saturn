@@ -174,3 +174,6 @@ flutter:
           weight: 700
         - asset: assets/fonts/MabryProBlack.otf
           weight: 900
+    - family: First Coffee
+      fonts:
+        - asset: assets/fonts/FirstCoffee.otf

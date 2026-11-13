@@ -165,17 +165,15 @@ void main() async {
 
 Future<void> _configureMobileOrientation() async {
   if (!Platform.isAndroid && !Platform.isIOS) return;
-  final views = WidgetsBinding.instance.platformDispatcher.views;
-  if (views.isEmpty) return;
-  final view = views.first;
-  final logicalSize = view.physicalSize / view.devicePixelRatio;
-  // A 600 dp shortest side is Flutter's standard tablet breakpoint. Checking
-  // shortestSide keeps phones portrait-locked even when currently rotated.
-  if (logicalSize.shortestSide < 600) {
-    await SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-    ]);
-  }
+  final isPhone = await const MethodChannel(
+    's.s.saturn/form_factor',
+  ).invokeMethod<bool>('isPhone');
+
+  await SystemChrome.setPreferredOrientations(
+    isPhone == true
+        ? const [DeviceOrientation.portraitUp]
+        : DeviceOrientation.values,
+  );
 }
 
 Future<void> _configureDesktopWindow() async {
@@ -222,7 +220,6 @@ Future<void> _configureDesktopWindow() async {
     );
   }
 }
-
 
 Future<void> _requestNotificationPermission() async {
   if (!Platform.isAndroid && !Platform.isIOS && !Platform.isWindows) return;

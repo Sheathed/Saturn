@@ -47,6 +47,10 @@ bool _queueHasMixedPlatforms(Iterable<MediaItem> items) =>
         .length >
     1;
 
+// Keep desktop queue position for this process only, including when the player
+// route is closed and reopened. It intentionally isn't written to settings.
+double _desktopQueueScrollOffset = 0;
+
 class _QueuePositionIndicator extends StatelessWidget {
   final QueueState queueState;
 
@@ -1438,6 +1442,8 @@ class _DesktopPlayerTabs extends StatefulWidget {
 class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
   final LyricsScreenController _lyricsController = LyricsScreenController();
   final ValueNotifier<bool> _queueLoading = ValueNotifier(false);
+  final GlobalKey<_DesktopQueueTabState> _queueTabKey =
+      GlobalKey<_DesktopQueueTabState>();
 
   @override
   void dispose() {
@@ -1510,6 +1516,13 @@ class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
                                 _QueuePositionIndicator(
                                   queueState:
                                       snapshot.data ?? handler.queueState,
+                                ),
+                                IconButton(
+                                  tooltip: 'Scroll to current item'.i18n,
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () => _queueTabKey.currentState
+                                      ?.scrollToCurrentItem(),
+                                  icon: const Icon(Icons.my_location),
                                 ),
                                 IconButton(
                                   tooltip: 'Shuffle'.i18n,
@@ -1608,6 +1621,7 @@ class _DesktopPlayerTabsState extends State<_DesktopPlayerTabs> {
                   onLyricsOpened: _lyricsController.scrollToCurrentLyric,
                   children: [
                     _DesktopQueueTab(
+                      key: _queueTabKey,
                       onLoadingChanged: (loading) {
                         if (mounted) _queueLoading.value = loading;
                       },
@@ -1681,28 +1695,95 @@ class _LyricsAwareTabBarViewState extends State<_LyricsAwareTabBarView> {
 class _DesktopQueueTab extends StatefulWidget {
   final ValueChanged<bool> onLoadingChanged;
 
-  const _DesktopQueueTab({required this.onLoadingChanged});
+  const _DesktopQueueTab({super.key, required this.onLoadingChanged});
 
   @override
   State<_DesktopQueueTab> createState() => _DesktopQueueTabState();
 }
 
-class _DesktopQueueTabState extends State<_DesktopQueueTab> {
+class _DesktopQueueTabState extends State<_DesktopQueueTab>
+    with AutomaticKeepAliveClientMixin<_DesktopQueueTab> {
   final AudioPlayerHandler _handler = GetIt.I<AudioPlayerHandler>();
   late final ScrollController _scrollController;
+  bool _restoreOffsetPending = true;
+  bool _restoreOffsetScheduled = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController()..addListener(_maybeLoadMore);
+    // Restore after the queue has laid out. Supplying initialScrollOffset here
+    // can be clamped to zero when the list first attaches with no children.
+    _scrollController = ScrollController(keepScrollOffset: false)
+      ..addListener(_handleScroll);
+  }
+
+  void _handleScroll() {
+    if (_restoreOffsetPending) return;
+    if (_scrollController.hasClients) {
+      _desktopQueueScrollOffset = _scrollController.offset;
+    }
+    _maybeLoadMore();
+  }
+
+  void _restoreQueueScrollOffsetWhenReady(QueueState state) {
+    if (!_restoreOffsetPending ||
+        _restoreOffsetScheduled ||
+        state.queue.isEmpty) {
+      return;
+    }
+    _restoreOffsetScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _restoreOffsetScheduled = false;
+      if (!mounted || !_scrollController.hasClients) return;
+
+      final position = _scrollController.position;
+      final target = _desktopQueueScrollOffset.clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if ((position.pixels - target).abs() > 0.5) {
+        _scrollController.jumpTo(target);
+      }
+      _desktopQueueScrollOffset = _scrollController.offset;
+      _restoreOffsetPending = false;
+    });
   }
 
   @override
   void dispose() {
     _scrollController
-      ..removeListener(_maybeLoadMore)
+      ..removeListener(_handleScroll)
       ..dispose();
     super.dispose();
+  }
+
+  void scrollToCurrentItem() {
+    final state = _handler.queueState;
+    if (state.queue.isEmpty || !_scrollController.hasClients) return;
+    final queueIndex = state.queueIndex ?? 0;
+    final displayIndex = state.shuffleMode == AudioServiceShuffleMode.all
+        ? state.indices.indexOf(queueIndex)
+        : queueIndex;
+    if (displayIndex < 0) return;
+
+    final position = _scrollController.position;
+    final itemCount = state.queue.length;
+    final estimatedExtent =
+        (position.maxScrollExtent + position.viewportDimension) / itemCount;
+    final targetOffset = (displayIndex * estimatedExtent).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    unawaited(
+      _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      ),
+    );
   }
 
   void _maybeLoadMore() {
@@ -1729,11 +1810,13 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return StreamBuilder<QueueState>(
       stream: _handler.queueStateStream,
       initialData: _handler.queueState,
       builder: (context, snapshot) {
         final state = snapshot.data ?? _handler.queueState;
+        _restoreQueueScrollOffsetWhenReady(state);
         final showPlatformBadges = _queueHasMixedPlatforms(state.queue);
         return SilkyScroll.fromConfig(
           config: silkyScrollConfig,
@@ -3452,8 +3535,7 @@ class _SeekBarState extends State<SeekBar> {
       }
       return p;
     }
-    double p = audioHandler.playbackState.value.position.inMilliseconds
-        .toDouble();
+    double p = audioHandler.player.position.inMilliseconds.toDouble();
     if (p > duration) return duration;
     return p;
   }
@@ -3469,9 +3551,9 @@ class _SeekBarState extends State<SeekBar> {
   }
 
   double get duration {
-    final item = audioHandler.mediaItem.value;
-    if (item == null || item.duration == null) return 1.0;
-    return item.duration!.inMilliseconds.toDouble();
+    final duration = audioHandler.effectiveDuration;
+    if (duration == null || duration <= Duration.zero) return 1.0;
+    return duration.inMilliseconds.toDouble();
   }
 
   @override

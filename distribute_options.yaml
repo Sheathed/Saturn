@@ -9,6 +9,9 @@ releases:
           target: rpm
           build_args:
             flavor: stable
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/stable/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
       - name: release-release-linux-appimage
         package:
           platform: linux
@@ -16,6 +19,8 @@ releases:
           build_args:
             flavor: stable
           hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/stable/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
             post:
               - 'STARTUP_WM_CLASS=s.s.saturn bash linux/packaging/appimage/postprocess.sh'
       - name: release-release-linux-deb
@@ -24,6 +29,9 @@ releases:
           target: deb
           build_args:
             flavor: stable
+          hooks:
+            pre:
+              - mkdir -p "$(dirname "$BUILD_OUTPUT_DIRECTORY")" && rm -rf "$BUILD_OUTPUT_DIRECTORY" && ln -sfn "$(pwd)/build/linux/x64/stable/release/bundle" "$BUILD_OUTPUT_DIRECTORY"
   - name: windows
     jobs:
       - name: release-release-windows-exe

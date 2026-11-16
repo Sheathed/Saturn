@@ -430,6 +430,7 @@ class _LibraryTracksState extends State<LibraryTracks> {
           } else {
             cache.platformLibraryTracks[platformId] = ids;
           }
+          cache.notifyTrackFavoritesChanged();
           _loading = false;
         });
         await cache.save();

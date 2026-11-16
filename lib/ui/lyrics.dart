@@ -2583,8 +2583,14 @@ class _LyricsScreenState extends State<LyricsScreen>
                             ),
                           )
                         : LayoutBuilder(
-                            builder: (context, _) {
+                            builder: (context, constraints) {
                               _scheduleLyricsEdgePaddingMeasurement();
+                              // Unsynchronized lyrics have no per-line edge
+                              // measurement, so give their first and last
+                              // lines enough scroll room to clear the fade.
+                              final unsyncedFadePadding = syncedList.isEmpty
+                                  ? constraints.maxHeight * 0.1
+                                  : 0.0;
                               return NotificationListener<
                                 ScrollUpdateNotification
                               >(
@@ -2613,8 +2619,12 @@ class _LyricsScreenState extends State<LyricsScreen>
                                     padding: EdgeInsets.only(
                                       left: 16,
                                       right: 16,
-                                      top: _lyricEdgePadding.top,
-                                      bottom: _lyricEdgePadding.bottom,
+                                      top:
+                                          _lyricEdgePadding.top +
+                                          unsyncedFadePadding,
+                                      bottom:
+                                          _lyricEdgePadding.bottom +
+                                          unsyncedFadePadding,
                                     ),
                                     child: Column(
                                       crossAxisAlignment:

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart' as p;
 
@@ -16,6 +17,9 @@ late Cache cache;
 //Cache for miscellaneous things
 @JsonSerializable()
 class Cache {
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final ValueNotifier<int> trackFavoriteRevision = ValueNotifier<int>(0);
+
   //Map of platform ID to ID's of tracks that are in library
   @JsonKey(defaultValue: {})
   Map<String, List<String>> platformLibraryTracks = {};
@@ -93,6 +97,11 @@ class Cache {
   set activeLibraryTracks(List<String> tracks) {
     final pid = PlatformManager.instance.activePlatformId;
     platformLibraryTracks[pid] = tracks;
+    notifyTrackFavoritesChanged();
+  }
+
+  void notifyTrackFavoritesChanged() {
+    trackFavoriteRevision.value++;
   }
 
   //Wrapper to test if track is favorite against cache
@@ -108,6 +117,7 @@ class Cache {
   void updateTrackFavorite(Track track, {required bool favorite}) {
     final id = track.id;
     if (id == null || id.isEmpty) return;
+    final wasFavorite = checkTrackFavorite(track);
     final tracks = platformLibraryTracks.putIfAbsent(
       track.platformId,
       () => <String>[],
@@ -117,6 +127,7 @@ class Cache {
     } else {
       tracks.removeWhere((trackId) => trackId == id);
     }
+    if (wasFavorite != favorite) notifyTrackFavoritesChanged();
   }
 
   // Get active platform's library playlists list, initializing if necessary

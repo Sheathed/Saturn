@@ -606,7 +606,6 @@ class _DesktopPlayerFavoriteButton extends StatefulWidget {
 
 class _DesktopPlayerFavoriteButtonState
     extends State<_DesktopPlayerFavoriteButton> {
-  bool _isFavorite = false;
   bool _isSaving = false;
 
   Track? get _track {
@@ -628,36 +627,12 @@ class _DesktopPlayerFavoriteButtonState
         .supportsLibrarySync;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _syncFavoriteState();
-  }
-
-  void _syncFavoriteState() {
-    final track = _track;
-    _isFavorite = track != null && cache.checkTrackFavorite(track);
-  }
-
-  @override
-  void didUpdateWidget(covariant _DesktopPlayerFavoriteButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.id != widget.item.id ||
-        oldWidget.item.extras?['radioTrackId'] !=
-            widget.item.extras?['radioTrackId']) {
-      _syncFavoriteState();
-    }
-  }
-
   Future<void> _toggleFavorite() async {
     final track = _track;
     if (track == null || _isSaving) return;
     final wasFavorite = cache.checkTrackFavorite(track);
     final nextFavorite = !wasFavorite;
-    setState(() {
-      _isFavorite = nextFavorite;
-      _isSaving = true;
-    });
+    setState(() => _isSaving = true);
     cache.updateTrackFavorite(track, favorite: nextFavorite);
     final platform = PlatformManager.instance.getPlatform(track.platformId);
     try {
@@ -670,7 +645,6 @@ class _DesktopPlayerFavoriteButtonState
     } catch (error) {
       cache.updateTrackFavorite(track, favorite: wasFavorite);
       if (mounted) {
-        setState(() => _isFavorite = wasFavorite);
         Fluttertoast.showToast(msg: 'Could not update favorite: $error');
       }
     } finally {
@@ -681,18 +655,20 @@ class _DesktopPlayerFavoriteButtonState
   @override
   Widget build(BuildContext context) {
     if (!_canFavorite) return const SizedBox.shrink();
-    return IconButton(
-      tooltip: (_isFavorite ? 'Unlove' : 'Love').i18n,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
-      padding: EdgeInsets.zero,
-      onPressed: _isSaving ? null : _toggleFavorite,
-      icon: _isSaving
-          ? const SizedBox.square(
-              dimension: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(_isFavorite ? Icons.favorite : Icons.favorite_border),
+    return ValueListenableBuilder<int>(
+      valueListenable: cache.trackFavoriteRevision,
+      builder: (context, _, _) {
+        final track = _track;
+        final isFavorite = track != null && cache.checkTrackFavorite(track);
+        return IconButton(
+          tooltip: (isFavorite ? 'Unlove' : 'Love').i18n,
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+          padding: EdgeInsets.zero,
+          onPressed: _isSaving ? null : _toggleFavorite,
+          icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+        );
+      },
     );
   }
 }

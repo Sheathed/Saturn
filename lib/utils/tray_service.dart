@@ -43,7 +43,11 @@ class TrayService {
       final icon = ImageAsset.fromAsset(iconPath);
       if (icon == null) {
         trayIcon.dispose();
-        throw ArgumentError.value(iconPath, 'iconPath', 'Unable to load tray icon');
+        throw ArgumentError.value(
+          iconPath,
+          'iconPath',
+          'Unable to load tray icon',
+        );
       }
 
       _trayIcon = trayIcon;
@@ -58,7 +62,11 @@ class TrayService {
       _isInitialized = true;
     } catch (error, stackTrace) {
       await _disposeNativeObjects();
-      _logger.warning('Could not initialize the system tray.', error, stackTrace);
+      _logger.warning(
+        'Could not initialize the system tray.',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -67,11 +75,15 @@ class TrayService {
     if (trayIcon == null) return;
 
     final menu = Menu.create();
-    if (menu == null) throw StateError('The native tray menu could not be created.');
+    if (menu == null) {
+      throw StateError('The native tray menu could not be created.');
+    }
 
     MenuItem createItem(String label, Future<void> Function() onClick) {
       final item = MenuItem.createWithLabelAndType(label, MenuItemType.normal);
-      if (item == null) throw StateError('Could not create tray menu item: $label');
+      if (item == null) {
+        throw StateError('Could not create tray menu item: $label');
+      }
       item.addListener((event) {
         if (event is MenuItemClickedEvent) unawaited(onClick());
       });
@@ -123,11 +135,13 @@ class TrayService {
   }
 
   Future<void> _showWindow() async {
-    if (await windowManager.isMinimized()) {
-      await windowManager.restore();
+    final window = WindowManager.instance.getCurrent();
+    if (window == null) return;
+    if (window.isMinimized) {
+      window.restore();
     }
-    await windowManager.show();
-    await windowManager.focus();
+    window.show();
+    window.focus();
   }
 
   Future<void> _disposeNativeObjects() async {

@@ -10,7 +10,7 @@ import 'app_config.dart';
 import 'logging.dart';
 
 /// Persists desktop window geometry and restores maximized/minimized state.
-class DesktopWindowState with WindowListener {
+class DesktopWindowState {
   DesktopWindowState._();
 
   static final DesktopWindowState instance = DesktopWindowState._();
@@ -26,6 +26,8 @@ class DesktopWindowState with WindowListener {
   bool _closeInProgress = false;
   bool _allowClose = false;
   Future<void> Function()? _shutdownCallback;
+  Window? _window;
+  ListenerId? _listenerId;
 
   void setShutdownCallback(Future<void> Function() callback) {
     _shutdownCallback = callback;
@@ -34,7 +36,12 @@ class DesktopWindowState with WindowListener {
   Future<void> initializeAndRestore() async {
     if (_initialized) return;
     _initialized = true;
-    await windowManager.ensureInitialized();
+    if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) return;
+
+    final window = WindowManager.instance.getCurrent();
+    _window = window;
+    if (window == null) return;
+
     _restoring = true;
     try {
       final state = await _readState();
@@ -44,32 +51,66 @@ class DesktopWindowState with WindowListener {
             bounds.width >= _minimumWindowSize.width &&
             bounds.height >= _minimumWindowSize.height) {
           _normalBounds = bounds;
-          await windowManager.setBounds(bounds);
+          window.bounds = bounds.toNative();
         }
         _maximized = state['maximized'] == true;
         _minimized = state['minimized'] == true;
       } else {
-        _maximized = await windowManager.isMaximized();
-        _minimized = await windowManager.isMinimized();
+        _maximized = window.isMaximized;
+        _minimized = window.isMinimized;
       }
-      await windowManager.setTitle(appTitle);
+      window.title = appTitle;
       // Keep the native window alive while Dart services are shut down. The
       // Linux MPV backend owns native callbacks that must be released before
       // Flutter tears down its engine.
-      await windowManager.setPreventClose(true);
-      windowManager.addListener(this);
+      _listenerId = window.addListener(_onWindowEvent);
       if (!_maximized && !_minimized) {
-        _normalBounds ??= await windowManager.getBounds();
+        _normalBounds ??= window.bounds.toRect();
       }
-      if (_maximized) await windowManager.maximize();
+      if (_maximized) window.maximize();
       if (_minimized) {
-        await windowManager.show();
-        await windowManager.minimize();
+        window.show();
+        window.minimize();
       }
     } finally {
       _restoring = false;
     }
     _scheduleSave();
+  }
+
+  void _onWindowEvent(WindowEvent event) {
+    switch (event) {
+      case WindowMovedEvent():
+      case WindowResizedEvent():
+        _scheduleSave();
+      case WindowMaximizedEvent():
+        _maximized = true;
+        _minimized = false;
+        _scheduleSave();
+      case WindowMinimizedEvent():
+        _minimized = true;
+        _scheduleSave();
+      case WindowRestoredEvent():
+        if (_minimized) {
+          _minimized = false;
+        } else if (_maximized) {
+          _maximized = false;
+        } else {
+          _minimized = false;
+        }
+        _scheduleSave();
+      case WindowCloseRequestedEvent(:final request):
+        if (_allowClose) return;
+        if (request.isCancelable) {
+          request.cancel();
+        }
+        if (_closeInProgress) return;
+        _closeInProgress = true;
+        _saveTimer?.cancel();
+        unawaited(_closeGracefully());
+      default:
+        break;
+    }
   }
 
   Future<Map<String, dynamic>?> _readState() async {
@@ -100,11 +141,13 @@ class DesktopWindowState with WindowListener {
   }
 
   Future<void> _saveState() async {
+    final window = _window;
+    if (window == null) return;
     try {
-      _minimized = await windowManager.isMinimized();
-      _maximized = await windowManager.isMaximized() || _maximized;
+      _minimized = window.isMinimized;
+      _maximized = window.isMaximized || _maximized;
       if (!_minimized && !_maximized) {
-        final bounds = await windowManager.getBounds();
+        final bounds = window.bounds.toRect();
         if (bounds.width >= _minimumWindowSize.width &&
             bounds.height >= _minimumWindowSize.height) {
           _normalBounds = bounds;
@@ -146,51 +189,6 @@ class DesktopWindowState with WindowListener {
     return Rect.fromLTWH(x, y, width, height);
   }
 
-  @override
-  void onWindowMove() => _scheduleSave();
-
-  @override
-  void onWindowResize() => _scheduleSave();
-
-  @override
-  void onWindowMoved() => _scheduleSave();
-
-  @override
-  void onWindowResized() => _scheduleSave();
-
-  @override
-  void onWindowMaximize() {
-    _maximized = true;
-    _minimized = false;
-    _scheduleSave();
-  }
-
-  @override
-  void onWindowUnmaximize() {
-    _maximized = false;
-    _scheduleSave();
-  }
-
-  @override
-  void onWindowMinimize() {
-    _minimized = true;
-    _scheduleSave();
-  }
-
-  @override
-  void onWindowRestore() {
-    _minimized = false;
-    _scheduleSave();
-  }
-
-  @override
-  void onWindowClose() {
-    if (_allowClose || _closeInProgress) return;
-    _closeInProgress = true;
-    _saveTimer?.cancel();
-    unawaited(_closeGracefully());
-  }
-
   Future<void> _closeGracefully() async {
     try {
       // prevent-close keeps native window APIs and plugin channels available
@@ -205,9 +203,13 @@ class DesktopWindowState with WindowListener {
       );
     } finally {
       try {
-        await windowManager.setPreventClose(false);
         _allowClose = true;
-        await windowManager.close();
+        final listenerId = _listenerId;
+        if (listenerId != null) {
+          _window?.removeListener(listenerId);
+          _listenerId = null;
+        }
+        _window?.close();
       } catch (error, stackTrace) {
         appLogger.warning(
           'Could not close desktop window cleanly',

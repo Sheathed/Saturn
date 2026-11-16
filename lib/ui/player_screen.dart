@@ -1,6 +1,7 @@
 import 'package:saturn/platform/platform_manager.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -36,20 +37,105 @@ import 'router.dart';
 import 'settings_screen.dart';
 import 'smooth_scroll_config.dart';
 import 'tiles.dart';
+import '../utils/app_config.dart';
 import '../utils/logging.dart';
 import '../utils/seasonal_track_matcher.dart';
 
-bool _queueHasMixedPlatforms(Iterable<MediaItem> items) =>
-    items
-        .map((item) => item.extras?['platformId'] as String? ?? 'deezer')
-        .where((platformId) => platformId.isNotEmpty)
-        .toSet()
-        .length >
-    1;
+final Expando<bool> _mixedQueuePlatformCache = Expando<bool>(
+  'mixed queue platform cache',
+);
 
-// Keep desktop queue position for this process only, including when the player
-// route is closed and reopened. It intentionally isn't written to settings.
+bool _queueHasMixedPlatforms(List<MediaItem> items) {
+  final cached = _mixedQueuePlatformCache[items];
+  if (cached != null) return cached;
+
+  String? firstPlatform;
+  var hasMultiplePlatforms = false;
+  for (final item in items) {
+    final platformId = item.extras?['platformId'] as String? ?? 'deezer';
+    if (platformId.isEmpty) continue;
+    if (firstPlatform == null) {
+      firstPlatform = platformId;
+    } else if (platformId != firstPlatform) {
+      hasMultiplePlatforms = true;
+      break;
+    }
+  }
+  _mixedQueuePlatformCache[items] = hasMultiplePlatforms;
+  return hasMultiplePlatforms;
+}
+
+// Keep desktop queue position across player routes and app restarts.
 double _desktopQueueScrollOffset = 0;
+int _desktopQueueWindowStart = 0;
+int _desktopQueueWindowEnd = 100;
+const int _desktopQueueWindowSize = 100;
+// Queue rows use the compact 48 px artwork tile plus a small vertical inset.
+// Keep the virtual list and its placeholders at this same compact height so
+// windowed rendering does not introduce visible gaps between tracks.
+const double _desktopQueueItemExtent = 56.0;
+int _desktopQueueAnchorIndex = 0;
+double _desktopQueueAnchorOffset = 0;
+bool _desktopQueueHasAnchor = false;
+bool _desktopQueuePositionLoaded = false;
+Future<void>? _desktopQueuePositionLoad;
+Timer? _desktopQueuePositionSaveTimer;
+
+Future<void> _ensureDesktopQueuePositionLoaded() {
+  return _desktopQueuePositionLoad ??= () async {
+    try {
+      final directory = await getFlavorSupportDirectory();
+      final file = File('${directory.path}/desktop_queue_position.json');
+      if (await file.exists()) {
+        final decoded = jsonDecode(await file.readAsString());
+        if (decoded is Map) {
+          final index = decoded['index'];
+          final offset = decoded['offset'];
+          if (index is num && offset is num) {
+            _desktopQueueAnchorIndex = math.max(0, index.toInt());
+            _desktopQueueAnchorOffset = math.max(0.0, offset.toDouble());
+            _desktopQueueHasAnchor = true;
+            _desktopQueueWindowStart = math.max(
+              0,
+              _desktopQueueAnchorIndex - _desktopQueueWindowSize ~/ 2,
+            );
+            _desktopQueueWindowEnd =
+                _desktopQueueWindowStart + _desktopQueueWindowSize;
+          }
+        }
+      }
+    } catch (_) {
+      // A missing or unreadable position file should not prevent opening Queue.
+    } finally {
+      _desktopQueuePositionLoaded = true;
+    }
+  }();
+}
+
+void _scheduleDesktopQueuePositionSave() {
+  if (!_desktopQueuePositionLoaded || !_desktopQueueHasAnchor) return;
+  _desktopQueuePositionSaveTimer?.cancel();
+  _desktopQueuePositionSaveTimer = Timer(const Duration(milliseconds: 500), () {
+    unawaited(_writeDesktopQueuePosition());
+  });
+}
+
+Future<void> _writeDesktopQueuePosition() async {
+  if (!_desktopQueuePositionLoaded || !_desktopQueueHasAnchor) return;
+  try {
+    final directory = await getFlavorSupportDirectory();
+    final file = File('${directory.path}/desktop_queue_position.json');
+    await file.writeAsString(
+      jsonEncode({
+        'index': _desktopQueueAnchorIndex,
+        'offset': _desktopQueueAnchorOffset,
+      }),
+      flush: true,
+    );
+  } catch (_) {
+    // Keep queue scrolling usable if the position cannot be persisted.
+  }
+}
 
 class _QueuePositionIndicator extends StatelessWidget {
   final QueueState queueState;
@@ -1707,9 +1793,16 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
   late final ScrollController _scrollController;
   bool _restoreOffsetPending = true;
   bool _restoreOffsetScheduled = false;
+  double _lastScrollOffset = 0;
 
   @override
   bool get wantKeepAlive => true;
+
+  int _queueDisplayItemCount(QueueState state) {
+    final reportedTotal = state.totalCount;
+    if (reportedTotal == null) return state.queue.length;
+    return math.max(state.queue.length, reportedTotal);
+  }
 
   @override
   void initState() {
@@ -1718,18 +1811,55 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
     // can be clamped to zero when the list first attaches with no children.
     _scrollController = ScrollController(keepScrollOffset: false)
       ..addListener(_handleScroll);
+    unawaited(
+      _ensureDesktopQueuePositionLoaded().then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
   }
 
   void _handleScroll() {
-    if (_restoreOffsetPending) return;
-    if (_scrollController.hasClients) {
-      _desktopQueueScrollOffset = _scrollController.offset;
+    if (_restoreOffsetPending || !_scrollController.hasClients) {
+      return;
     }
-    _maybeLoadMore();
+    final position = _scrollController.position;
+    final offset = position.pixels;
+    final direction = (offset - _lastScrollOffset).sign.toInt();
+    _lastScrollOffset = offset;
+    _desktopQueueScrollOffset = offset;
+    final state = _handler.queueState;
+    final itemCount = _queueDisplayItemCount(state);
+    _saveVisibleAnchor(position, itemCount);
+
+    if (itemCount > 0) {
+      final visibleIndex = (offset / _desktopQueueItemExtent)
+          .floor()
+          .clamp(0, itemCount - 1)
+          .toInt();
+      final prefetchRows = _desktopQueueWindowSize ~/ 4;
+      if (visibleIndex < _desktopQueueWindowStart + prefetchRows ||
+          visibleIndex >= _desktopQueueWindowEnd - prefetchRows) {
+        final maxStart = math.max(0, itemCount - _desktopQueueWindowSize);
+        final nextStart = math.min(
+          maxStart,
+          math.max(0, visibleIndex - _desktopQueueWindowSize ~/ 2),
+        );
+        if (nextStart != _desktopQueueWindowStart) {
+          _desktopQueueWindowStart = nextStart;
+          _desktopQueueWindowEnd = math.min(
+            itemCount,
+            nextStart + _desktopQueueWindowSize,
+          );
+          setState(() {});
+        }
+      }
+    }
+    _maybeLoadMore(direction);
   }
 
   void _restoreQueueScrollOffsetWhenReady(QueueState state) {
-    if (!_restoreOffsetPending ||
+    if (!_desktopQueuePositionLoaded ||
+        !_restoreOffsetPending ||
         _restoreOffsetScheduled ||
         state.queue.isEmpty) {
       return;
@@ -1740,7 +1870,27 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
       if (!mounted || !_scrollController.hasClients) return;
 
       final position = _scrollController.position;
-      final target = _desktopQueueScrollOffset.clamp(
+      var savedOffset = _desktopQueueScrollOffset;
+      if (_desktopQueueHasAnchor) {
+        final itemCount = _queueDisplayItemCount(state);
+        if (_desktopQueueAnchorIndex >= itemCount) {
+          _desktopQueueAnchorIndex = itemCount - 1;
+          _desktopQueueAnchorOffset = 0;
+        }
+        final maxWindowStart = math.max(0, itemCount - _desktopQueueWindowSize);
+        _desktopQueueWindowStart = math.min(
+          maxWindowStart,
+          math.max(0, _desktopQueueAnchorIndex - _desktopQueueWindowSize ~/ 2),
+        );
+        _desktopQueueWindowEnd = math.min(
+          itemCount,
+          _desktopQueueWindowStart + _desktopQueueWindowSize,
+        );
+        savedOffset =
+            _desktopQueueAnchorIndex * _desktopQueueItemExtent +
+            _desktopQueueAnchorOffset;
+      }
+      final target = savedOffset.clamp(
         position.minScrollExtent,
         position.maxScrollExtent,
       );
@@ -1748,12 +1898,30 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
         _scrollController.jumpTo(target);
       }
       _desktopQueueScrollOffset = _scrollController.offset;
+      _lastScrollOffset = _scrollController.offset;
+      _saveVisibleAnchor(position, _queueDisplayItemCount(state));
       _restoreOffsetPending = false;
+      _maybeLoadMore(0);
     });
+  }
+
+  void _saveVisibleAnchor(ScrollPosition position, int itemCount) {
+    if (itemCount <= 0) return;
+    final localIndex = (position.pixels / _desktopQueueItemExtent)
+        .floor()
+        .clamp(0, itemCount - 1)
+        .toInt();
+    _desktopQueueAnchorIndex = localIndex;
+    _desktopQueueAnchorOffset =
+        position.pixels - localIndex * _desktopQueueItemExtent;
+    _desktopQueueHasAnchor = true;
+    _scheduleDesktopQueuePositionSave();
   }
 
   @override
   void dispose() {
+    _desktopQueuePositionSaveTimer?.cancel();
+    unawaited(_writeDesktopQueuePosition());
     _scrollController
       ..removeListener(_handleScroll)
       ..dispose();
@@ -1767,44 +1935,72 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
     final displayIndex = state.shuffleMode == AudioServiceShuffleMode.all
         ? state.indices.indexOf(queueIndex)
         : queueIndex;
-    if (displayIndex < 0) return;
+    if (displayIndex < 0 || displayIndex >= state.queue.length) return;
 
-    final position = _scrollController.position;
-    final itemCount = state.queue.length;
-    final estimatedExtent =
-        (position.maxScrollExtent + position.viewportDimension) / itemCount;
-    final targetOffset = (displayIndex * estimatedExtent).clamp(
-      0.0,
-      position.maxScrollExtent,
+    final itemCount = _queueDisplayItemCount(state);
+    final maxStart = math.max(0, itemCount - _desktopQueueWindowSize);
+    _desktopQueueWindowStart = math.min(
+      maxStart,
+      math.max(0, displayIndex - _desktopQueueWindowSize ~/ 2),
     );
-    unawaited(
-      _scrollController.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      ),
+    _desktopQueueWindowEnd = math.min(
+      itemCount,
+      _desktopQueueWindowStart + _desktopQueueWindowSize,
     );
+    _desktopQueueAnchorIndex = displayIndex;
+    _desktopQueueAnchorOffset = 0;
+    _desktopQueueHasAnchor = true;
+    _scheduleDesktopQueuePositionSave();
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final currentPosition = _scrollController.position;
+      final targetOffset = (displayIndex * _desktopQueueItemExtent).clamp(
+        currentPosition.minScrollExtent,
+        currentPosition.maxScrollExtent,
+      );
+      unawaited(
+        _scrollController.animateTo(
+          targetOffset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        ),
+      );
+    });
   }
 
-  void _maybeLoadMore() {
+  void _maybeLoadMore(int scrollDirection) {
     if (!_scrollController.hasClients ||
         !_handler.canLoadMoreQueue ||
         _handler.isLoadingMoreQueue) {
       return;
     }
     final position = _scrollController.position;
-    if (position.maxScrollExtent - position.pixels <
-        position.viewportDimension * 1.25) {
+    final state = _handler.queueState;
+    final displayItemCount = _queueDisplayItemCount(state);
+    final threshold = position.viewportDimension * 1.25;
+    final loadedContentEnd = state.queue.length * _desktopQueueItemExtent;
+    final nearLoadedEnd = state.queue.length < displayItemCount
+        ? loadedContentEnd - (position.pixels + position.viewportDimension) <
+              threshold
+        : position.maxScrollExtent - position.pixels < threshold;
+    if (nearLoadedEnd && (scrollDirection > 0 || scrollDirection == 0)) {
       unawaited(_loadMoreQueue());
     }
   }
 
   Future<void> _loadMoreQueue() async {
     widget.onLoadingChanged(true);
+    var loadedMore = false;
     try {
-      await _handler.loadMoreQueueItems();
+      loadedMore = await _handler.loadMoreQueueItems();
     } finally {
       widget.onLoadingChanged(false);
+    }
+    if (loadedMore && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeLoadMore(0);
+      });
     }
   }
 
@@ -1816,13 +2012,34 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
       initialData: _handler.queueState,
       builder: (context, snapshot) {
         final state = snapshot.data ?? _handler.queueState;
+        final itemCount = _queueDisplayItemCount(state);
+        final loadedItemCount = state.queue.length;
+        final maxWindowStart = math.max(0, itemCount - _desktopQueueWindowSize);
+        final windowStart = _desktopQueueWindowStart.clamp(0, maxWindowStart);
+        if (windowStart != _desktopQueueWindowStart) {
+          _desktopQueueWindowStart = windowStart;
+          _desktopQueueWindowEnd = math.min(
+            itemCount,
+            windowStart + _desktopQueueWindowSize,
+          );
+        }
+        final windowEnd = math.min(itemCount, _desktopQueueWindowEnd);
         _restoreQueueScrollOffsetWhenReady(state);
         final showPlatformBadges = _queueHasMixedPlatforms(state.queue);
         return SilkyScroll.fromConfig(
           config: silkyScrollConfig,
           controller: _scrollController,
           builder: (context, controller, physics, _) {
-            Widget buildQueueItem(int displayIndex) {
+            Widget buildQueueItem(int localIndex) {
+              if (localIndex < windowStart ||
+                  localIndex >= windowEnd ||
+                  localIndex >= loadedItemCount) {
+                return SizedBox(
+                  key: ValueKey('queue-placeholder:$localIndex'),
+                  height: _desktopQueueItemExtent,
+                );
+              }
+              final displayIndex = localIndex;
               final queueIndex =
                   state.shuffleMode == AudioServiceShuffleMode.all &&
                       displayIndex < state.indices.length
@@ -1883,6 +2100,7 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
                       state.shuffleMode != AudioServiceShuffleMode.all;
                   return TrackTile(
                     track,
+                    minTileHeight: _desktopQueueItemExtent,
                     showPlatformBadge: showPlatformBadges,
                     onTap: () => _handler.skipToQueueItem(queueIndex),
                     trailing: canReorder
@@ -1891,7 +2109,7 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
                             children: [
                               trailing,
                               ReorderableDragStartListener(
-                                index: displayIndex,
+                                index: localIndex,
                                 child: const Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 8),
                                   child: MouseRegion(
@@ -1911,29 +2129,49 @@ class _DesktopQueueTabState extends State<_DesktopQueueTab>
             }
 
             if (state.shuffleMode == AudioServiceShuffleMode.all) {
-              return ListView.builder(
+              final queueList = ListView.builder(
                 controller: controller,
                 physics: physics,
-                itemCount: state.queue.length,
+                padding: const EdgeInsets.only(right: 14),
+                itemExtent: _desktopQueueItemExtent,
+                itemCount: itemCount,
                 itemBuilder: (context, index) => buildQueueItem(index),
               );
+              return _buildQueueViewport(controller, queueList);
             }
-            return ReorderableListView.builder(
+            final queueList = ReorderableListView.builder(
               scrollController: controller,
               physics: physics,
+              padding: const EdgeInsets.only(right: 14),
               buildDefaultDragHandles: false,
-              itemCount: state.queue.length,
+              itemExtent: _desktopQueueItemExtent,
+              itemCount: itemCount,
               onReorderItem: (oldIndex, newIndex) async {
+                if (oldIndex >= loadedItemCount || loadedItemCount == 0) {
+                  return;
+                }
                 if (newIndex > oldIndex) newIndex--;
+                newIndex = newIndex.clamp(0, loadedItemCount - 1);
                 if (oldIndex != newIndex) {
                   await _handler.moveQueueItem(oldIndex, newIndex);
                 }
               },
               itemBuilder: (context, index) => buildQueueItem(index),
             );
+            return _buildQueueViewport(controller, queueList);
           },
         );
       },
+    );
+  }
+
+  Widget _buildQueueViewport(ScrollController controller, Widget queueList) {
+    return Scrollbar(
+      controller: controller,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: queueList,
+      ),
     );
   }
 }
@@ -3090,7 +3328,10 @@ class _PlaybackControlsState extends State<PlaybackControls> {
               (item?.extras?['radioTrackId'] as String?)?.isNotEmpty == true)
             IconButton(
               padding: EdgeInsets.zero,
-              icon: libraryIcon,
+              icon: ValueListenableBuilder<int>(
+                valueListenable: cache.trackFavoriteRevision,
+                builder: (context, _, _) => libraryIcon,
+              ),
               onPressed: () async {
                 final currentItem = audioHandler.mediaItem.value;
                 if (currentItem == null) return;
@@ -3348,21 +3589,6 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final keyCounts = <String, int>{};
-    final pageKeys = <Key>[];
-    final keyToIndex = <Key, int>{};
-    for (var index = 0; index < _queue.length; index++) {
-      final id = _queue[index].id;
-      final occurrence = keyCounts.update(
-        id,
-        (count) => count + 1,
-        ifAbsent: () => 0,
-      );
-      final key = ValueKey<String>('$id#$occurrence');
-      pageKeys.add(key);
-      keyToIndex[key] = index;
-    }
-
     return VisibilityDetector(
       key: const Key('big_album_art'),
       onVisibilityChanged: (VisibilityInfo info) {
@@ -3384,11 +3610,22 @@ class _BigAlbumArtState extends State<BigAlbumArt> with WidgetsBindingObserver {
             child: PageView.builder(
               controller: _pageController,
               itemCount: _queue.length,
-              findChildIndexCallback: (key) => keyToIndex[key],
+              // Keep carousel children attached to their queue entries when
+              // the queue is reordered. Resolve the new index only when the
+              // sliver asks about an existing child; building the player no
+              // longer allocates keys and two maps for every queued track.
+              findChildIndexCallback: (key) {
+                if (key is! ObjectKey) return null;
+                final item = key.value;
+                final index = _queue.indexWhere(
+                  (queued) => identical(queued, item),
+                );
+                return index < 0 ? null : index;
+              },
               itemBuilder: (context, index) {
                 final item = _queue[index];
                 return ZoomableImage(
-                  key: pageKeys[index],
+                  key: ObjectKey(item),
                   url: _displayArtworkSource(item) ?? '',
                   caption: item.extras?['caption'] as String?,
                   downloadFileName:

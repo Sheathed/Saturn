@@ -23,14 +23,22 @@ class SingleInstanceService {
         [],
         'saturn_music_app',
         onSecondWindow: (args) async {
-          await windowManager.show();
-          await windowManager.focus();
+          final window = WindowManager.instance.getCurrent();
+          if (window != null) {
+            window.show();
+            if (window.isMinimized) window.restore();
+            window.focus();
+          }
         },
       );
     } else if (Platform.isLinux || Platform.isMacOS) {
       _singleInstance = await unixSingleInstance([], (args) async {
-        await windowManager.show();
-        await windowManager.focus();
+        final window = WindowManager.instance.getCurrent();
+        if (window != null) {
+          window.show();
+          if (window.isMinimized) window.restore();
+          window.focus();
+        }
       });
     }
 

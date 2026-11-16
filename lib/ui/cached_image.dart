@@ -467,7 +467,7 @@ class _ZoomableImageState extends State<ZoomableImage> {
                                 color: Colors.black.withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(16.0),
                               ),
-                              child: Text(
+                              child: SelectableText(
                                 widget.caption!,
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(

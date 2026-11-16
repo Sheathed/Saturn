@@ -1,3 +1,5 @@
+import 'package:window_manager/window_manager.dart';
+
 import '../utils/app_config.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -23,7 +25,6 @@ import 'package:rxdart/rxdart.dart';
 import 'package:scrobblenaut/scrobblenaut.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:saturn/utils/rpc_service.dart';
-import 'package:window_manager/window_manager.dart';
 
 import '../api/cache.dart';
 import '../api/download.dart';
@@ -81,9 +82,12 @@ Future<AudioPlayerHandler> initAudioService() async {
 
 Future<void> _raiseWindowFromMpris() async {
   try {
-    await windowManager.show();
-    if (await windowManager.isMinimized()) await windowManager.restore();
-    await windowManager.focus();
+    final window = WindowManager.instance.getCurrent();
+    if (window != null) {
+      window.show();
+      if (window.isMinimized) window.restore();
+      window.focus();
+    }
     if (rootNavigatorKey.currentState != null) {
       openPlayerScreen();
     } else {
@@ -101,7 +105,7 @@ Future<void> _quitFromMpris() async {
   try {
     // Use the same orderly close path as the window manager. exit(0) tears
     // down Flutter while MPV and its Dart callbacks are still live.
-    await windowManager.close();
+    WindowManager.instance.getCurrent()?.close();
   } catch (error, stack) {
     Logger.root.warning(
       'Could not close Saturn from MPRIS: $error',

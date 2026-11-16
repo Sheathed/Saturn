@@ -7,8 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
-import 'package:flutter_localizations/flutter_localizations.dart'
-    as flutter_localizations;
 import 'package:get_it/get_it.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:i18n_extension/i18n_extension.dart';
@@ -51,10 +49,17 @@ bool get _supportsDesktopSpacebar =>
 
 bool _textEntryHasFocus() {
   final context = FocusManager.instance.primaryFocus?.context;
-  return context != null &&
-      (context.widget is EditableText ||
-          context.findAncestorWidgetOfExactType<EditableText>() != null ||
-          context.findAncestorWidgetOfExactType<TextField>() != null);
+  if (context == null) return false;
+
+  final editableText = context.widget is EditableText
+      ? context.widget as EditableText
+      : context.findAncestorWidgetOfExactType<EditableText>();
+  if (editableText != null) return !editableText.readOnly;
+
+  final textField = context.widget is TextField
+      ? context.widget as TextField
+      : context.findAncestorWidgetOfExactType<TextField>();
+  return textField != null && !textField.readOnly;
 }
 
 late Function updateTheme;
@@ -302,28 +307,30 @@ class _SaturnAppState extends State<SaturnApp> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleGlobalPlaybackKey);
     //Make update theme global
     updateTheme = _updateTheme;
     _updateTheme();
   }
 
-  KeyEventResult _handleGlobalPlaybackKey(KeyEvent event) {
+  bool _handleGlobalPlaybackKey(KeyEvent event) {
     if (event.logicalKey != LogicalKeyboardKey.space ||
         !_supportsDesktopSpacebar ||
+        !settings.spacebarPlaybackToggle ||
         _textEntryHasFocus()) {
-      return KeyEventResult.ignored;
+      return false;
     }
-    if (settings.spacebarPlaybackToggle &&
-        event is KeyDownEvent &&
-        GetIt.I.isRegistered<AudioPlayerHandler>()) {
+    if (event is KeyDownEvent && GetIt.I.isRegistered<AudioPlayerHandler>()) {
       final player = GetIt.I<AudioPlayerHandler>();
       unawaited(player.isPlaybackActive ? player.pause() : player.play());
     }
-    return KeyEventResult.handled;
+    // Handle before focused widgets, including SelectableText, can consume it.
+    return true;
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleGlobalPlaybackKey);
     super.dispose();
   }
 
@@ -398,19 +405,15 @@ class _SaturnAppState extends State<SaturnApp> {
             ...GlobalMaterialLocalizations.delegates,
             // CountryPickerDialog still uses Flutter's SDK Material widgets.
             // Register that parallel localization type alongside material_ui's.
-            flutter_localizations.GlobalMaterialLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
           ],
           supportedLocales: supportedLocales,
           routerConfig: appRouter,
           debugShowCheckedModeBanner: false,
           builder: (context, child) {
-            return Focus(
-              canRequestFocus: false,
-              onKeyEvent: (_, event) => _handleGlobalPlaybackKey(event),
-              child: I18n(
-                initialLocale: _locale(),
-                child: child ?? const SizedBox.shrink(),
-              ),
+            return I18n(
+              initialLocale: _locale(),
+              child: child ?? const SizedBox.shrink(),
             );
           },
         );

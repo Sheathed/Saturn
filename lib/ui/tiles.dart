@@ -581,50 +581,52 @@ class _TrackTileState extends State<TrackTile> {
                       (widget.trailingBypass == true && isWideScreen))) ...[
                 if (!isDeezerRadioStation &&
                     capabilities?.supportsLibrarySync == true)
-                  IconButton(
-                    icon: cache.checkTrackFavorite(widget.track)
-                        ? const Icon(Icons.favorite)
-                        : const Icon(Icons.favorite_border),
-                    onPressed: () async {
-                      final isFavorite = cache.checkTrackFavorite(widget.track);
-                      final pId = widget.track.platformId;
-                      final trackId = widget.track.id ?? '';
-                      appLogger.info(
-                        '[UI] TrackTile favorite pressed: trackId=$trackId, platformId=$pId, currentlyFavorite=$isFavorite',
-                      );
-                      final platform = PlatformManager.instance.getPlatform(
-                        pId,
-                      );
-                      cache.updateTrackFavorite(
-                        widget.track,
-                        favorite: !isFavorite,
-                      );
-                      setState(() {});
-                      try {
-                        if (isFavorite) {
-                          await platform.removeFavoriteTrack(trackId);
-                        } else {
-                          await platform.addFavoriteTrack(trackId);
-                        }
-                      } catch (error, stackTrace) {
-                        appLogger.warning(
-                          '[UI] Could not update track favorite: trackId=$trackId',
-                          error,
-                          stackTrace,
+                  ValueListenableBuilder<int>(
+                    valueListenable: cache.trackFavoriteRevision,
+                    builder: (context, _, _) => IconButton(
+                      icon: cache.checkTrackFavorite(widget.track)
+                          ? const Icon(Icons.favorite)
+                          : const Icon(Icons.favorite_border),
+                      onPressed: () async {
+                        final isFavorite = cache.checkTrackFavorite(
+                          widget.track,
+                        );
+                        final pId = widget.track.platformId;
+                        final trackId = widget.track.id ?? '';
+                        appLogger.info(
+                          '[UI] TrackTile favorite pressed: trackId=$trackId, platformId=$pId, currentlyFavorite=$isFavorite',
+                        );
+                        final platform = PlatformManager.instance.getPlatform(
+                          pId,
                         );
                         cache.updateTrackFavorite(
                           widget.track,
-                          favorite: isFavorite,
+                          favorite: !isFavorite,
                         );
-                        if (mounted) setState(() {});
-                        Fluttertoast.showToast(
-                          msg: 'Could not update favorite: $error',
-                        );
-                        return;
-                      }
-                      await cache.save();
-                      if (mounted) setState(() {});
-                    },
+                        try {
+                          if (isFavorite) {
+                            await platform.removeFavoriteTrack(trackId);
+                          } else {
+                            await platform.addFavoriteTrack(trackId);
+                          }
+                        } catch (error, stackTrace) {
+                          appLogger.warning(
+                            '[UI] Could not update track favorite: trackId=$trackId',
+                            error,
+                            stackTrace,
+                          );
+                          cache.updateTrackFavorite(
+                            widget.track,
+                            favorite: isFavorite,
+                          );
+                          Fluttertoast.showToast(
+                            msg: 'Could not update favorite: $error',
+                          );
+                          return;
+                        }
+                        await cache.save();
+                      },
+                    ),
                   ),
                 if (!isDeezerRadioStation &&
                     capabilities?.supportsPlaylistEdit == true)

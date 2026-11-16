@@ -1,6 +1,6 @@
 import 'package:draggable_scrollbar/draggable_scrollbar.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:silky_scroll/silky_scroll.dart';
 
 import 'smooth_scroll_config.dart';
@@ -31,10 +31,8 @@ class MobileScrollbar extends StatelessWidget {
       return SilkyScroll.fromConfig(
         config: silkyScrollConfig,
         controller: controller,
-        builder: (context, smoothController, physics, _) => childBuilder(
-          smoothController,
-          physics,
-        ),
+        builder: (context, smoothController, physics, _) =>
+            childBuilder(smoothController, physics),
       );
     }
 

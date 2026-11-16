@@ -1,5 +1,5 @@
 import 'package:flutter/services.dart';
-import 'package:flutter/material.dart' as flutter_material;
+import 'package:material_ui/material_ui.dart' as flutter_material;
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:logging/logging.dart';
 import 'package:saturn/platform/deezer/deezer_widgets.dart';

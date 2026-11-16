@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
-import 'package:flutter/material.dart' show Axis, Curves, TargetPlatform;
+import 'package:material_ui/material_ui.dart' show Axis, Curves, TargetPlatform;
 import 'package:silky_scroll/silky_scroll.dart';
 
 const _verticalSilkyScrollConfig = SilkyScrollConfig(
